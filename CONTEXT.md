@@ -36,6 +36,10 @@ _Avoid_: Bucket label, display name.
 The local date the board is currently organized around for a user. It is normally today in the user's timezone, but may be tomorrow after the user completes the day early.
 _Avoid_: Display date, selected date.
 
+**Future Bucket**:
+A bucket that belongs to the user's Planning Date while that Planning Date is still ahead of today in the user's timezone. Future buckets are visible planning-ahead state and cannot be manually completed.
+_Avoid_: Tomorrow bucket, upcoming bucket.
+
 **Bucket Expiration**:
 The moment when a time-based bucket's period has ended in the user's timezone. An expired bucket no longer represents the current period for its horizon.
 _Avoid_: Due date, deadline.
@@ -48,12 +52,20 @@ _Avoid_: Sync, refresh.
 The review of incomplete todos from an expired or completed bucket, where each todo is either carried into the next period for that bucket horizon or moved back to the broader bucket.
 _Avoid_: Rollover, cleanup.
 
+**Pending Migration Bucket**:
+A bucket that no longer belongs on the active board but still contains incomplete todos that require user migration choices before it can be archived.
+_Avoid_: Active expired bucket, blocked bucket.
+
 **Migration Flow**:
 A sequence of one or more bucket migrations presented to the user when multiple buckets need attention. Each step migrates one bucket before moving to the next bucket.
 _Avoid_: Batch migration, bulk rollover.
 
+**Migration Step**:
+One bucket migration inside a migration flow. A migration step becomes durable only when the user confirms its choices.
+_Avoid_: Draft migration, partial migration.
+
 **Completion Recap**:
-A summary shown when the user manually completes a bucket, before the bucket is closed or migrated. It gives feedback on completed and incomplete todos for that bucket.
+A summary shown before a migration flow begins, or after the user manually completes the most granular bucket with nothing left to migrate. It gives feedback on completed and incomplete todos in the buckets that need attention.
 _Avoid_: Report, retrospective.
 
 **Todo**:

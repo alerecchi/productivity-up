@@ -11,6 +11,8 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AuthPagesRouteRouteImport } from './routes/_auth-pages/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as PrototypePreMigrationRouteImport } from './routes/prototype/pre-migration'
+import { Route as PrototypeMigrationRouteImport } from './routes/prototype/migration'
 import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
 import { Route as AuthPagesSignupRouteImport } from './routes/_auth-pages/signup'
 import { Route as AuthPagesResetPasswordRouteImport } from './routes/_auth-pages/reset-password'
@@ -25,6 +27,16 @@ const AuthPagesRouteRoute = AuthPagesRouteRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrototypePreMigrationRoute = PrototypePreMigrationRouteImport.update({
+  id: '/prototype/pre-migration',
+  path: '/prototype/pre-migration',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PrototypeMigrationRoute = PrototypeMigrationRouteImport.update({
+  id: '/prototype/migration',
+  path: '/prototype/migration',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthenticatedBoardRoute = AuthenticatedBoardRouteImport.update({
@@ -66,6 +78,8 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof AuthPagesResetPasswordRoute
   '/signup': typeof AuthPagesSignupRoute
   '/board': typeof AuthenticatedBoardRoute
+  '/prototype/migration': typeof PrototypeMigrationRoute
+  '/prototype/pre-migration': typeof PrototypePreMigrationRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesByTo {
@@ -75,6 +89,8 @@ export interface FileRoutesByTo {
   '/reset-password': typeof AuthPagesResetPasswordRoute
   '/signup': typeof AuthPagesSignupRoute
   '/board': typeof AuthenticatedBoardRoute
+  '/prototype/migration': typeof PrototypeMigrationRoute
+  '/prototype/pre-migration': typeof PrototypePreMigrationRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRoutesById {
@@ -86,6 +102,8 @@ export interface FileRoutesById {
   '/_auth-pages/reset-password': typeof AuthPagesResetPasswordRoute
   '/_auth-pages/signup': typeof AuthPagesSignupRoute
   '/_authenticated/board': typeof AuthenticatedBoardRoute
+  '/prototype/migration': typeof PrototypeMigrationRoute
+  '/prototype/pre-migration': typeof PrototypePreMigrationRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
 }
 export interface FileRouteTypes {
@@ -97,6 +115,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/board'
+    | '/prototype/migration'
+    | '/prototype/pre-migration'
     | '/api/auth/$'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -106,6 +126,8 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/board'
+    | '/prototype/migration'
+    | '/prototype/pre-migration'
     | '/api/auth/$'
   id:
     | '__root__'
@@ -116,6 +138,8 @@ export interface FileRouteTypes {
     | '/_auth-pages/reset-password'
     | '/_auth-pages/signup'
     | '/_authenticated/board'
+    | '/prototype/migration'
+    | '/prototype/pre-migration'
     | '/api/auth/$'
   fileRoutesById: FileRoutesById
 }
@@ -123,6 +147,8 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AuthPagesRouteRoute: typeof AuthPagesRouteRouteWithChildren
   AuthenticatedBoardRoute: typeof AuthenticatedBoardRoute
+  PrototypeMigrationRoute: typeof PrototypeMigrationRoute
+  PrototypePreMigrationRoute: typeof PrototypePreMigrationRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
@@ -140,6 +166,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/prototype/pre-migration': {
+      id: '/prototype/pre-migration'
+      path: '/prototype/pre-migration'
+      fullPath: '/prototype/pre-migration'
+      preLoaderRoute: typeof PrototypePreMigrationRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/prototype/migration': {
+      id: '/prototype/migration'
+      path: '/prototype/migration'
+      fullPath: '/prototype/migration'
+      preLoaderRoute: typeof PrototypeMigrationRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_authenticated/board': {
@@ -209,6 +249,8 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AuthPagesRouteRoute: AuthPagesRouteRouteWithChildren,
   AuthenticatedBoardRoute: AuthenticatedBoardRoute,
+  PrototypeMigrationRoute: PrototypeMigrationRoute,
+  PrototypePreMigrationRoute: PrototypePreMigrationRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
