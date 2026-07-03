@@ -168,13 +168,7 @@ function ModalShell({ children, className }: { children: ReactNode; className?: 
   )
 }
 
-function ModalActions({
-  className,
-  primaryLabel,
-}: {
-  className?: string
-  primaryLabel: string
-}) {
+function ModalActions({ className, primaryLabel }: { className?: string; primaryLabel: string }) {
   return (
     <div className={cn('flex justify-end', className)}>
       <Button type='button'>

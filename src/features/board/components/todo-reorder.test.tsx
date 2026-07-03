@@ -210,7 +210,7 @@ describe('Todo reordering within a Bucket', () => {
     queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
 
     renderBucket(bucket, queryClient)
-    const bucketList = screen.getByRole('list', { name: 'daily Todos' })
+    const bucketList = screen.getByRole('list', { name: 'Wednesday 24 Todos' })
     const scrollTo = vi.fn()
     Object.defineProperty(bucketList, 'scrollHeight', { value: 720 })
     bucketList.scrollTo = scrollTo
@@ -458,10 +458,10 @@ describe('Bucket column layout', () => {
 
     const bucketSections = screen.getAllByRole('region')
     expect(bucketSections).toHaveLength(3)
-    expect(screen.getByRole('region', { name: 'daily' })).toHaveClass('h-full', 'w-80', 'shrink-0')
+    expect(screen.getByRole('region', { name: 'Wednesday 24' })).toHaveClass('h-full', 'w-80', 'shrink-0')
 
-    expect(screen.getByRole('heading', { name: 'daily' }).closest('header')).toHaveClass('sticky', 'top-0')
-    expect(screen.getByRole('list', { name: 'daily Todos' })).toHaveClass(
+    expect(screen.getByRole('heading', { name: 'Wednesday 24' }).closest('header')).toHaveClass('sticky', 'top-0')
+    expect(screen.getByRole('list', { name: 'Wednesday 24 Todos' })).toHaveClass(
       'overflow-y-auto',
       'min-h-0',
       'overscroll-y-none',
@@ -526,8 +526,8 @@ describe('Bucket column layout', () => {
 
     render(<Board />, { queryClient })
 
-    const sourceList = screen.getByRole('list', { name: 'daily Todos' })
-    const destinationList = screen.getByRole('list', { name: 'monthly Todos' })
+    const sourceList = screen.getByRole('list', { name: 'Wednesday 24 Todos' })
+    const destinationList = screen.getByRole('list', { name: 'June Todos' })
     sourceList.scrollBy = vi.fn()
     destinationList.scrollBy = vi.fn()
     sourceList.getBoundingClientRect = () => createDomRect({ bottom: 620, left: 0, right: 320, top: 120 })

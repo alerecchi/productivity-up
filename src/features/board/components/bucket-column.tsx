@@ -12,6 +12,7 @@ import type { PendingTodoMove } from '@/features/board/components/todo-drag-drop
 import { getTodosQueryOptions } from '@/features/board/queries/todo-queries'
 import { Badge } from '@/features/shared/components/ui/badge'
 import { cn } from '@/features/shared/utils/tailwind'
+import { formatBucketLabel } from '@/lib/periods'
 import type { Bucket, BucketType } from '@/lib/types/Bucket'
 import type { Todo } from '@/lib/types/Todo'
 
@@ -27,6 +28,7 @@ export function BucketColumn({ bucket, buckets }: BucketProps) {
   const displayedTodos = applyPendingTodoMove(todoList, bucket.id, pendingTodoMove)
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null)
   const { icon: Icon, textColor, bgColor } = bucketStyles[bucket.type]
+  const bucketLabel = formatBucketLabel({ periodKey: bucket.period, type: bucket.type })
   const headingId = `bucket-${bucket.id}-heading`
 
   return (
@@ -36,13 +38,13 @@ export function BucketColumn({ bucket, buckets }: BucketProps) {
           <Icon className='size-6' />
         </div>
         <h2 className={cn('block text-xl font-semibold capitalize', textColor)} id={headingId}>
-          {bucket.type}
+          {bucketLabel}
         </h2>
         <Badge className={cn(textColor, bgColor)}>{displayedTodos.length}</Badge>
         <AddTodoButton bucketId={bucket.id} buckets={buckets} />
       </header>
       <div
-        aria-label={`${bucket.type} Todos`}
+        aria-label={`${bucketLabel} Todos`}
         className='flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-none rounded-lg bg-secondary pt-2'
         data-bucket-id={bucket.id}
         data-bucket-todo-list

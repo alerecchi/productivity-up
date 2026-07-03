@@ -49,7 +49,7 @@ function RouteComponent() {
   const [isComplete, setIsComplete] = useState(false)
   const steps = scenario === 'single' ? [migrationSteps[0]] : migrationSteps
   const step = steps[stepIndex]
-  const currentDecisions = step ? getStepDecisions(step, decisions) : []
+  const currentDecisions = getStepDecisions(step, decisions)
   const decidedCount = currentDecisions.filter(Boolean).length
 
   function restart(nextScenario = scenario) {
@@ -64,10 +64,6 @@ function RouteComponent() {
   }
 
   function resolveStep(decision?: Decision) {
-    if (!step) {
-      return
-    }
-
     if (decision) {
       setDecisions((previous) => ({
         ...previous,
@@ -121,7 +117,7 @@ function RouteComponent() {
 
         {isComplete ? (
           <MigrationComplete onRestart={() => restart()} />
-        ) : step ? (
+        ) : (
           <MigrationFlow
             decisions={currentDecisions}
             decidedCount={decidedCount}
@@ -131,7 +127,7 @@ function RouteComponent() {
             stepCount={steps.length}
             stepIndex={stepIndex}
           />
-        ) : null}
+        )}
       </div>
     </main>
   )
