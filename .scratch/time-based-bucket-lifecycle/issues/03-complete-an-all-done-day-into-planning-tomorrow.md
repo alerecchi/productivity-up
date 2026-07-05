@@ -1,6 +1,6 @@
 # Complete An All-Done Day Into Planning Tomorrow
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -12,15 +12,15 @@ Add the manual Complete day command for the all-complete daily Bucket path. Clic
 
 ## Acceptance criteria
 
-- [ ] Complete day is available on the normal board when Planning Date is not ahead of today.
-- [ ] Completing an all-done daily Bucket archives that Bucket and sets `archivedAt`.
-- [ ] Complete day advances Planning Date to tomorrow and reconciles the active Bucket set for that Planning Date.
-- [ ] The close-only Completion Recap shows completed counts and no migration language.
-- [ ] The close-only Completion Recap is dismissible because it is success feedback, not a migration gate.
-- [ ] The all-complete recap can show client-only delight copy or confetti without persisting that presentation state.
-- [ ] Refreshing after the recap does not restore the old day.
-- [ ] Future Buckets are usable for normal planning, but manual completion is disabled with clear planning-ahead feedback.
-- [ ] Component tests cover the all-complete recap, dismiss behavior, planning-ahead status, and disabled Complete day feedback.
+- [x] Complete day is available on the normal board when Planning Date is not ahead of today.
+- [x] Completing an all-done daily Bucket archives that Bucket and sets `archivedAt`.
+- [x] Complete day advances Planning Date to tomorrow and reconciles the active Bucket set for that Planning Date.
+- [x] The close-only Completion Recap shows completed counts and no migration language.
+- [x] The close-only Completion Recap is dismissible because it is success feedback, not a migration gate.
+- [x] The all-complete recap can show client-only delight copy or confetti without persisting that presentation state.
+- [x] Refreshing after the recap does not restore the old day.
+- [x] Future Buckets are usable for normal planning, but manual completion is disabled with clear planning-ahead feedback.
+- [x] Component tests cover the all-complete recap, dismiss behavior, planning-ahead status, and disabled Complete day feedback.
 
 ## Blocked by
 

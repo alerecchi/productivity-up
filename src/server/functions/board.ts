@@ -4,8 +4,8 @@ import { z } from 'zod'
 
 import { db } from '@/server/db/client'
 import { users } from '@/server/db/schema/auth-schema'
-import { buckets } from '@/server/db/schema/schema'
-import { loadBoardForUser } from '@/server/functions/board.core'
+import { buckets, todos } from '@/server/db/schema/schema'
+import { completeDayForUser, loadBoardForUser } from '@/server/functions/board.core'
 import type { BoardRepository } from '@/server/functions/board.core'
 import { authRequiredMiddleware } from '@/server/middlewares/auth-middleware'
 
@@ -26,6 +26,15 @@ export const getBoard = createServerFn()
     })
   })
 
+export const completeDay = createServerFn()
+  .middleware([authRequiredMiddleware])
+  .handler(async ({ context }) => {
+    return completeDayForUser({
+      repository: boardRepository,
+      userId: context.session.user.id,
+    })
+  })
+
 export const getBuckets = createServerFn()
   .middleware([authRequiredMiddleware])
   .handler(async ({ context }) => {
@@ -38,6 +47,18 @@ export const getBuckets = createServerFn()
 // TODO: think if the parent folder should be called functions / fn / api / apis
 
 const boardRepository: BoardRepository = {
+  async archiveBucket(bucketId, archivedAt) {
+    const [bucket] = await db
+      .update(buckets)
+      .set({
+        archivedAt,
+        status: 'archived',
+      })
+      .where(eq(buckets.id, bucketId))
+      .returning()
+
+    return bucket
+  },
   async createBucket(bucketToCreate) {
     const insertedBuckets = await db
       .insert(buckets)
@@ -77,6 +98,9 @@ const boardRepository: BoardRepository = {
       .where(and(eq(buckets.userId, userId), eq(buckets.status, 'active')))
 
     return bucketRows
+  },
+  getTodosByBucket(bucketId) {
+    return db.select().from(todos).where(eq(todos.bucketId, bucketId))
   },
   getUser(userId) {
     return db.query.users.findFirst({

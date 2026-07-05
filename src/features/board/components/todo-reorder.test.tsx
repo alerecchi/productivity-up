@@ -458,7 +458,8 @@ describe('Bucket column layout', () => {
     render(<Board />, { queryClient })
 
     expect(screen.getByRole('region', { name: 'Todo Buckets board' })).toHaveClass(
-      'h-[calc(100dvh-3.5rem)]',
+      'flex-1',
+      'min-h-0',
       'overflow-x-auto',
       'overflow-y-hidden',
     )
