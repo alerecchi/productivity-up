@@ -7,6 +7,7 @@ import z from 'zod'
 
 import { authClient } from '@/features/authentication/auth-client'
 import { userSessionQuery } from '@/features/authentication/queries/user-session'
+import { EMAIL_VERIFICATION_CALLBACK_PATH } from '@/features/authentication/utils/verification'
 
 type RegistrationInput = {
   name: string
@@ -72,7 +73,11 @@ export function SignUpForm() {
   // TODO: do I need a manual resetQueries like in the login form?
   const { mutateAsync: registerMutation } = useMutation({
     mutationKey: userSessionQuery.key,
-    mutationFn: async (data: RegistrationInput) => await authClient.signUp.email(data),
+    mutationFn: async (data: RegistrationInput) =>
+      await authClient.signUp.email({
+        ...data,
+        callbackURL: EMAIL_VERIFICATION_CALLBACK_PATH,
+      }),
   })
 
   const form = useAppForm({

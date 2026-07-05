@@ -1,3 +1,4 @@
+export const BOARD_QUERY_KEY = 'board'
 export const BUCKETS_QUERY_KEY = 'buckets'
 export const CATEGORIES_QUERY_KEY = 'categories'
 export const TAGS_QUERY_KEY = 'tags'

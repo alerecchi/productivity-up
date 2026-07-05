@@ -34,6 +34,8 @@ const focusTag = {
 } as const
 
 const activeBucket = {
+  archivedAt: null,
+  createdAt: new Date('2026-06-10T08:00:00.000Z'),
   id: 2,
   period: '2026-06-11',
   status: 'active',

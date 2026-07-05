@@ -17,6 +17,7 @@ import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/
 import { Route as AuthPagesSignupRouteImport } from './routes/_auth-pages/signup'
 import { Route as AuthPagesResetPasswordRouteImport } from './routes/_auth-pages/reset-password'
 import { Route as AuthPagesLoginRouteImport } from './routes/_auth-pages/login'
+import { Route as AuthPagesEmailVerifiedRouteImport } from './routes/_auth-pages/email-verified'
 import { Route as AuthPagesEmailConfirmationRouteImport } from './routes/_auth-pages/email-confirmation'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
@@ -59,6 +60,11 @@ const AuthPagesLoginRoute = AuthPagesLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AuthPagesRouteRoute,
 } as any)
+const AuthPagesEmailVerifiedRoute = AuthPagesEmailVerifiedRouteImport.update({
+  id: '/email-verified',
+  path: '/email-verified',
+  getParentRoute: () => AuthPagesRouteRoute,
+} as any)
 const AuthPagesEmailConfirmationRoute =
   AuthPagesEmailConfirmationRouteImport.update({
     id: '/email-confirmation',
@@ -74,6 +80,7 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/email-confirmation': typeof AuthPagesEmailConfirmationRoute
+  '/email-verified': typeof AuthPagesEmailVerifiedRoute
   '/login': typeof AuthPagesLoginRoute
   '/reset-password': typeof AuthPagesResetPasswordRoute
   '/signup': typeof AuthPagesSignupRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/email-confirmation': typeof AuthPagesEmailConfirmationRoute
+  '/email-verified': typeof AuthPagesEmailVerifiedRoute
   '/login': typeof AuthPagesLoginRoute
   '/reset-password': typeof AuthPagesResetPasswordRoute
   '/signup': typeof AuthPagesSignupRoute
@@ -98,6 +106,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_auth-pages': typeof AuthPagesRouteRouteWithChildren
   '/_auth-pages/email-confirmation': typeof AuthPagesEmailConfirmationRoute
+  '/_auth-pages/email-verified': typeof AuthPagesEmailVerifiedRoute
   '/_auth-pages/login': typeof AuthPagesLoginRoute
   '/_auth-pages/reset-password': typeof AuthPagesResetPasswordRoute
   '/_auth-pages/signup': typeof AuthPagesSignupRoute
@@ -111,6 +120,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/email-confirmation'
+    | '/email-verified'
     | '/login'
     | '/reset-password'
     | '/signup'
@@ -122,6 +132,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/email-confirmation'
+    | '/email-verified'
     | '/login'
     | '/reset-password'
     | '/signup'
@@ -134,6 +145,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_auth-pages'
     | '/_auth-pages/email-confirmation'
+    | '/_auth-pages/email-verified'
     | '/_auth-pages/login'
     | '/_auth-pages/reset-password'
     | '/_auth-pages/signup'
@@ -210,6 +222,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthPagesLoginRouteImport
       parentRoute: typeof AuthPagesRouteRoute
     }
+    '/_auth-pages/email-verified': {
+      id: '/_auth-pages/email-verified'
+      path: '/email-verified'
+      fullPath: '/email-verified'
+      preLoaderRoute: typeof AuthPagesEmailVerifiedRouteImport
+      parentRoute: typeof AuthPagesRouteRoute
+    }
     '/_auth-pages/email-confirmation': {
       id: '/_auth-pages/email-confirmation'
       path: '/email-confirmation'
@@ -229,6 +248,7 @@ declare module '@tanstack/react-router' {
 
 interface AuthPagesRouteRouteChildren {
   AuthPagesEmailConfirmationRoute: typeof AuthPagesEmailConfirmationRoute
+  AuthPagesEmailVerifiedRoute: typeof AuthPagesEmailVerifiedRoute
   AuthPagesLoginRoute: typeof AuthPagesLoginRoute
   AuthPagesResetPasswordRoute: typeof AuthPagesResetPasswordRoute
   AuthPagesSignupRoute: typeof AuthPagesSignupRoute
@@ -236,6 +256,7 @@ interface AuthPagesRouteRouteChildren {
 
 const AuthPagesRouteRouteChildren: AuthPagesRouteRouteChildren = {
   AuthPagesEmailConfirmationRoute: AuthPagesEmailConfirmationRoute,
+  AuthPagesEmailVerifiedRoute: AuthPagesEmailVerifiedRoute,
   AuthPagesLoginRoute: AuthPagesLoginRoute,
   AuthPagesResetPasswordRoute: AuthPagesResetPasswordRoute,
   AuthPagesSignupRoute: AuthPagesSignupRoute,

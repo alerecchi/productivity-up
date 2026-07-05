@@ -2,7 +2,7 @@ import { useSuspenseQuery } from '@tanstack/react-query'
 
 import { BucketColumn } from '@/features/board/components/bucket-column'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
-import { getBucketsQueryOptions } from '@/features/board/queries/todo-queries'
+import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
 import type { Bucket } from '@/lib/types/Bucket'
 
 const BUCKET_TYPE_ORDER = ['inbox', 'yearly', 'monthly', 'weekly', 'daily']
@@ -13,7 +13,8 @@ const bucketPriority: Record<string, number> = BUCKET_TYPE_ORDER.reduce(
 )
 
 export function Board() {
-  const { data: bucketList = [] } = useSuspenseQuery(getBucketsQueryOptions)
+  const { data: board } = useSuspenseQuery(getBoardQueryOptions)
+  const bucketList = board.buckets
   // TODO: decide where the sorting should be (server, client before cache?, here)
   const sortedBuckets = bucketList.toSorted((a: Bucket, b: Bucket) => bucketPriority[a.type] - bucketPriority[b.type])
 

@@ -5,20 +5,26 @@ import { CATEGORY_COLOR_KEYS } from '../../../lib/types/Category'
 import { TAG_COLOR_KEYS } from '../../../lib/types/Tag'
 import { users } from './auth-schema'
 
-export const BucketStatus = pgEnum('bucket_status', ['active', 'archived'])
+export const BucketStatus = pgEnum('bucket_status', ['active', 'pending_migration', 'archived'])
 export const BucketTypeEnum = pgEnum('bucket_type', ['inbox', 'yearly', 'monthly', 'weekly', 'daily'])
 export const CategoryColorKeyEnum = pgEnum('category_color_key', CATEGORY_COLOR_KEYS)
 export const TagColorKeyEnum = pgEnum('tag_color_key', TAG_COLOR_KEYS)
 
-export const buckets = pgTable('buckets', {
-  id: integer().primaryKey().generatedAlwaysAsIdentity(),
-  period: text().notNull(),
-  type: BucketTypeEnum().notNull(),
-  status: BucketStatus().notNull(),
-  userId: text('user_id')
-    .references(() => users.id, { onDelete: 'cascade' })
-    .notNull(),
-})
+export const buckets = pgTable(
+  'buckets',
+  {
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    period: text().notNull(),
+    type: BucketTypeEnum().notNull(),
+    status: BucketStatus().notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    userId: text('user_id')
+      .references(() => users.id, { onDelete: 'cascade' })
+      .notNull(),
+  },
+  (table) => [uniqueIndex('buckets_user_id_type_period_unique').on(table.userId, table.type, table.period)],
+)
 
 export const categories = pgTable(
   'categories',

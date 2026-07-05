@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Board } from '@/features/board/components/board'
 import { BucketColumn } from '@/features/board/components/bucket-column'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
-import { BUCKETS_QUERY_KEY, TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
+import { BOARD_QUERY_KEY, TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Bucket } from '@/lib/types/Bucket'
 import type { Todo } from '@/lib/types/Todo'
 import { getTodos, moveTodo } from '@/server/functions/todos'
@@ -66,7 +66,8 @@ vi.mock('sonner', () => ({
   toast,
 }))
 
-vi.mock('@/server/functions/buckets', () => ({
+vi.mock('@/server/functions/board', () => ({
+  getBoard: vi.fn(),
   getBuckets: vi.fn(),
 }))
 
@@ -99,6 +100,12 @@ const destinationBucket = {
 } satisfies Bucket
 
 const buckets = [bucket, destinationBucket] satisfies Array<Bucket>
+const readyBoard = {
+  buckets,
+  planningDate: '2026-06-24',
+  status: 'ready',
+  timeZone: 'Europe/Berlin',
+} as const
 
 const todos = [
   createTodo({ id: 10, position: 1024, title: 'First todo' }),
@@ -444,7 +451,7 @@ describe('Todo reordering within a Bucket', () => {
 describe('Bucket column layout', () => {
   it('keeps Buckets readable in a horizontally scrolling board with independently scrolling Todo lists', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BUCKETS_QUERY_KEY], buckets)
+    queryClient.setQueryData([BOARD_QUERY_KEY], readyBoard)
     queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
     queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
 
@@ -488,7 +495,7 @@ describe('Bucket column layout', () => {
 
   it('scrolls the board horizontally during drag near the board edge', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BUCKETS_QUERY_KEY], buckets)
+    queryClient.setQueryData([BOARD_QUERY_KEY], readyBoard)
     queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
     queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
 
@@ -520,7 +527,7 @@ describe('Bucket column layout', () => {
 
   it('scrolls only the current Bucket Todo list vertically during drag', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BUCKETS_QUERY_KEY], buckets)
+    queryClient.setQueryData([BOARD_QUERY_KEY], readyBoard)
     queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
     queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
 

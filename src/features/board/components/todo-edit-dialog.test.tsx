@@ -30,8 +30,8 @@ vi.mock('@/server/functions/todos', () => ({
   updateTodo: vi.fn(),
 }))
 
-vi.mock('@/server/functions/buckets', () => ({
-  getBuckets: vi.fn(),
+vi.mock('@/server/functions/board', () => ({
+  getBoard: vi.fn(),
 }))
 
 const buckets = [
