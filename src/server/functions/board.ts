@@ -99,6 +99,14 @@ const boardRepository: BoardRepository = {
 
     return bucketRows
   },
+  async getPendingMigrationBuckets(userId) {
+    const bucketRows = await db
+      .select()
+      .from(buckets)
+      .where(and(eq(buckets.userId, userId), eq(buckets.status, 'pending_migration')))
+
+    return bucketRows
+  },
   getTodosByBucket(bucketId) {
     return db.select().from(todos).where(eq(todos.bucketId, bucketId))
   },
@@ -106,6 +114,18 @@ const boardRepository: BoardRepository = {
     return db.query.users.findFirst({
       where: eq(users.id, userId),
     })
+  },
+  async markBucketPendingMigration(bucketId) {
+    const [bucket] = await db
+      .update(buckets)
+      .set({
+        archivedAt: null,
+        status: 'pending_migration',
+      })
+      .where(eq(buckets.id, bucketId))
+      .returning()
+
+    return bucket
   },
   async updateUserPlanning(userId, updates) {
     const [user] = await db

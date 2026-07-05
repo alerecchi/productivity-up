@@ -1,4 +1,4 @@
-import { derivePeriodKeys, getEnabledBucketTypes, getTodayLocalDate } from '@/lib/periods'
+import { derivePeriodKeys, getEnabledBucketTypes, getPeriodBoundaries, getTodayLocalDate } from '@/lib/periods'
 import type { BucketType } from '@/lib/types/Bucket'
 import type { BucketDb, TodoDbSelect, UserDb } from '@/server/db/types'
 
@@ -9,8 +9,10 @@ export type BoardRepository = {
   createBucket: (bucket: Omit<BucketDb, 'id'>) => Promise<BucketDb>
   findBucketByUserTypeAndPeriod: (userId: string, type: BucketType, period: string) => Promise<BucketDb | undefined>
   getActiveBuckets: (userId: string) => Promise<Array<BucketDb>>
+  getPendingMigrationBuckets: (userId: string) => Promise<Array<BucketDb>>
   getTodosByBucket: (bucketId: number) => Promise<Array<TodoDbSelect>>
   getUser: (userId: string) => Promise<UserDb | undefined>
+  markBucketPendingMigration: (bucketId: number) => Promise<BucketDb | undefined>
   updateUserPlanning: (
     userId: string,
     updates: Pick<UserDb, 'planningDate' | 'timeZone'>,
@@ -33,6 +35,11 @@ export type CompletedBoardState = Omit<ReadyBoardState, 'status'> & {
   status: 'completed'
 }
 
+export type MigrationRequiredBoardState = Omit<ReadyBoardState, 'status'> & {
+  pendingMigrationBuckets: Array<BucketDb>
+  status: 'migration_required'
+}
+
 type LoadBoardDependencies = {
   browserTimeZone?: string
   now?: () => Date
@@ -45,7 +52,7 @@ export async function loadBoardForUser({
   now = () => new Date(),
   repository,
   userId,
-}: LoadBoardDependencies): Promise<ReadyBoardState> {
+}: LoadBoardDependencies): Promise<MigrationRequiredBoardState | ReadyBoardState> {
   const user = await repository.getUser(userId)
 
   if (!user) {
@@ -70,11 +77,30 @@ export async function loadBoardForUser({
 
   const createdAt = now()
 
-  await archiveStaleCompletedBuckets({ archivedAt: createdAt, planningDate, repository, userId })
   await ensureActiveBucketsForPlanningDate({ createdAt, planningDate, repository, userId })
+  await reconcileExpiredBucketsForBoardLoad({
+    archivedAt: createdAt,
+    now: createdAt,
+    repository,
+    timeZone,
+    userId,
+  })
+
+  const buckets = await repository.getActiveBuckets(userId)
+  const pendingMigrationBuckets = await repository.getPendingMigrationBuckets(userId)
+
+  if (pendingMigrationBuckets.length > 0) {
+    return {
+      buckets,
+      pendingMigrationBuckets,
+      planningDate,
+      status: 'migration_required',
+      timeZone,
+    }
+  }
 
   return {
-    buckets: await repository.getActiveBuckets(userId),
+    buckets,
     planningDate,
     status: 'ready',
     timeZone,
@@ -100,6 +126,12 @@ export async function completeDayForUser({
 
   if (!user.timeZone || !user.planningDate) {
     throw new Error('Board lifecycle has not been initialized')
+  }
+
+  const pendingMigrationBuckets = await repository.getPendingMigrationBuckets(userId)
+
+  if (pendingMigrationBuckets.length > 0) {
+    throw new Error('Migration is required before completing this day')
   }
 
   const today = getTodayLocalDate(now(), user.timeZone)
@@ -154,6 +186,10 @@ export async function completeDayForUser({
     userId,
   })
 
+  if (readyState.status !== 'ready') {
+    throw new Error('Migration is required before completing this day')
+  }
+
   return {
     ...readyState,
     recap: {
@@ -162,6 +198,34 @@ export async function completeDayForUser({
       kind: 'all_complete',
     },
     status: 'completed',
+  }
+}
+
+async function reconcileExpiredBucketsForBoardLoad({
+  archivedAt,
+  now,
+  repository,
+  timeZone,
+  userId,
+}: {
+  archivedAt: Date
+  now: Date
+  repository: BoardRepository
+  timeZone: string
+  userId: string
+}) {
+  const expiredBuckets = await getExpiredActiveBuckets({ now, repository, timeZone, userId })
+
+  for (const bucket of expiredBuckets) {
+    const todos = await repository.getTodosByBucket(bucket.id)
+    const hasIncompleteTodos = todos.some((todo) => !todo.completed)
+
+    if (hasIncompleteTodos) {
+      await repository.markBucketPendingMigration(bucket.id)
+      continue
+    }
+
+    await repository.archiveBucket(bucket.id, archivedAt)
   }
 }
 
@@ -193,6 +257,28 @@ async function ensureActiveBucketsForPlanningDate({
       })
     }
   }
+}
+
+async function getExpiredActiveBuckets({
+  now,
+  repository,
+  timeZone,
+  userId,
+}: {
+  now: Date
+  repository: BoardRepository
+  timeZone: string
+  userId: string
+}) {
+  const activeBuckets = await repository.getActiveBuckets(userId)
+
+  return activeBuckets.filter((bucket) => {
+    if (bucket.type === 'inbox') {
+      return false
+    }
+
+    return getPeriodBoundaries({ periodKey: bucket.period, timeZone, type: bucket.type }).end <= now
+  })
 }
 
 async function archiveStaleCompletedBuckets({
