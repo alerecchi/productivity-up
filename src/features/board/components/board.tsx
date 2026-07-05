@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { toast } from 'sonner'
 
 import { BucketColumn } from '@/features/board/components/bucket-column'
+import { MigrationFlow } from '@/features/board/components/migration-flow'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
 import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
 import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
@@ -31,6 +32,32 @@ export function Board() {
   const queryClient = useQueryClient()
   const { data: board } = useSuspenseQuery(getBoardQueryOptions)
   const [completionRecap, setCompletionRecap] = useState<CompletionRecap | null>(null)
+  const completeDayMutation = useMutation({
+    mutationFn: () => completeDay(),
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Could not complete day')
+    },
+    onSuccess: (result) => {
+      if (result.status === 'migration_required') {
+        queryClient.setQueryData([BOARD_QUERY_KEY], result)
+        return
+      }
+
+      queryClient.setQueryData([BOARD_QUERY_KEY], {
+        buckets: result.buckets,
+        planningDate: result.planningDate,
+        status: 'ready',
+        timeZone: result.timeZone,
+      })
+
+      setCompletionRecap(result.recap)
+    },
+  })
+
+  if (board.status === 'migration_required') {
+    return <MigrationFlow />
+  }
+
   const bucketList = board.buckets
   // TODO: decide where the sorting should be (server, client before cache?, here)
   const sortedBuckets = bucketList.toSorted((a: Bucket, b: Bucket) => bucketPriority[a.type] - bucketPriority[b.type])
@@ -44,22 +71,6 @@ export function Board() {
     : isPlanningBehind
       ? 'Planning earlier'
       : 'Planning today'
-  const completeDayMutation = useMutation({
-    mutationFn: () => completeDay(),
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not complete day')
-    },
-    onSuccess: (result) => {
-      queryClient.setQueryData([BOARD_QUERY_KEY], {
-        buckets: result.buckets,
-        planningDate: result.planningDate,
-        status: 'ready',
-        timeZone: result.timeZone,
-      })
-
-      setCompletionRecap(result.recap)
-    },
-  })
 
   return (
     <>

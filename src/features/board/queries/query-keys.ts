@@ -1,5 +1,6 @@
 export const BOARD_QUERY_KEY = 'board'
 export const BUCKETS_QUERY_KEY = 'buckets'
 export const CATEGORIES_QUERY_KEY = 'categories'
+export const MIGRATION_STEP_QUERY_KEY = 'migration-step'
 export const TAGS_QUERY_KEY = 'tags'
 export const TODOS_QUERY_KEY = 'todos'

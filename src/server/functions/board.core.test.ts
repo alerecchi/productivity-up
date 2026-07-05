@@ -2,7 +2,12 @@ import { describe, expect, test } from 'vitest'
 
 import type { BucketType } from '@/lib/types/Bucket'
 import type { TodoDbSelect, UserDb } from '@/server/db/types'
-import { completeDayForUser, loadBoardForUser } from '@/server/functions/board.core'
+import {
+  completeDayForUser,
+  confirmMigrationStepForUser,
+  getMigrationStepForUser,
+  loadBoardForUser,
+} from '@/server/functions/board.core'
 import type { BoardRepository } from '@/server/functions/board.core'
 
 describe('loadBoardForUser', () => {
@@ -184,6 +189,34 @@ describe('loadBoardForUser', () => {
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'weekly', '2026-W27')).resolves.toMatchObject({
       status: 'archived',
     })
+  })
+
+  test('never marks inbox pending migration or archives it during lifecycle reconciliation', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' })],
+      todos: [createTodo({ bucketId: 1, completed: false, id: 1, title: 'Keep in inbox' })],
+      user: {
+        planningDate: '2026-07-03',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    const result = await loadBoardForUser({
+      now: () => new Date('2026-07-06T07:30:00.000Z'),
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      planningDate: '2026-07-06',
+      status: 'ready',
+    })
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'inbox', 'inbox')).resolves.toMatchObject({
+      archivedAt: null,
+      status: 'active',
+    })
+    await expect(repository.getPendingMigrationBuckets('user-1')).resolves.toEqual([])
   })
 
   test('expires Buckets at the exclusive period end in the User Timezone', async () => {
@@ -373,6 +406,50 @@ describe('completeDayForUser', () => {
     })
   })
 
+  test('manual completion with incomplete Todos advances Planning Date and gates the board for migration', async () => {
+    const now = new Date('2026-07-03T15:30:00.000Z')
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026', type: 'yearly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07', type: 'monthly' }),
+        createBucket({ createdAt, id: 4, period: '2026-W27', type: 'weekly' }),
+        createBucket({ createdAt, id: 5, period: '2026-07-03', type: 'daily' }),
+      ],
+      todos: [createTodo({ bucketId: 5, completed: false, id: 1, title: 'Review tomorrow' })],
+      user: {
+        planningDate: '2026-07-03',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    const result = await completeDayForUser({
+      now: () => now,
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      buckets: [
+        expect.objectContaining({ period: 'inbox', status: 'active', type: 'inbox' }),
+        expect.objectContaining({ period: '2026', status: 'active', type: 'yearly' }),
+        expect.objectContaining({ period: '2026-07', status: 'active', type: 'monthly' }),
+        expect.objectContaining({ period: '2026-W27', status: 'active', type: 'weekly' }),
+        expect.objectContaining({ period: '2026-07-04', status: 'active', type: 'daily' }),
+      ],
+      pendingMigrationBuckets: [
+        expect.objectContaining({ period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+      ],
+      planningDate: '2026-07-04',
+      status: 'migration_required',
+    })
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
+      archivedAt: null,
+      status: 'pending_migration',
+    })
+  })
+
   test('rejects completion while Planning Date is ahead of today', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const repository = createInMemoryBoardRepository({
@@ -487,6 +564,230 @@ describe('completeDayForUser', () => {
   })
 })
 
+describe('confirmMigrationStepForUser', () => {
+  test('moves every incomplete Todo to its chosen destination, appends by source order, and archives the source Bucket', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const confirmedAt = new Date('2026-07-06T09:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026', type: 'yearly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07', type: 'monthly' }),
+        createBucket({ createdAt, id: 4, period: '2026-W28', type: 'weekly' }),
+        createBucket({ createdAt, id: 5, period: '2026-07-06', type: 'daily' }),
+        createBucket({ createdAt, id: 6, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+      ],
+      todos: [
+        createTodo({ bucketId: 4, completed: false, id: 10, position: 1024, title: 'Existing week Todo' }),
+        createTodo({ bucketId: 5, completed: false, id: 11, position: 1024, title: 'Existing day Todo' }),
+        createTodo({ bucketId: 6, completed: false, id: 12, position: 2048, title: 'Move back first' }),
+        createTodo({ bucketId: 6, completed: true, id: 13, position: 3072, title: 'Completed stays put' }),
+        createTodo({ bucketId: 6, completed: false, id: 14, position: 4096, title: 'Carry forward second' }),
+      ],
+      user: {
+        planningDate: '2026-07-06',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    const result = await confirmMigrationStepForUser({
+      data: {
+        decisions: {
+          12: 'move_back',
+          14: 'carry_forward',
+        },
+        sourceBucketId: 6,
+      },
+      now: () => confirmedAt,
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      board: {
+        planningDate: '2026-07-06',
+        status: 'ready',
+      },
+      migratedTodoPositions: [
+        { bucketId: 4, id: 12, position: 2048 },
+        { bucketId: 5, id: 14, position: 2048 },
+      ],
+      status: 'confirmed',
+    })
+    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+      expect.objectContaining({ id: 10, position: 1024 }),
+      expect.objectContaining({ bucketId: 4, id: 12, position: 2048, title: 'Move back first' }),
+    ])
+    await expect(repository.getTodosByBucket(5)).resolves.toEqual([
+      expect.objectContaining({ id: 11, position: 1024 }),
+      expect.objectContaining({ bucketId: 5, id: 14, position: 2048, title: 'Carry forward second' }),
+    ])
+    await expect(repository.getTodosByBucket(6)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 6, completed: true, id: 13, title: 'Completed stays put' }),
+    ])
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
+      archivedAt: confirmedAt,
+      status: 'archived',
+    })
+  })
+
+  test('retries the same decision map after a partial migration write failure', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const confirmedAt = new Date('2026-07-06T09:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026', type: 'yearly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07', type: 'monthly' }),
+        createBucket({ createdAt, id: 4, period: '2026-W28', type: 'weekly' }),
+        createBucket({ createdAt, id: 5, period: '2026-07-06', type: 'daily' }),
+        createBucket({ createdAt, id: 6, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+      ],
+      todos: [
+        createTodo({ bucketId: 6, completed: false, id: 12, position: 2048, title: 'Already moved before failure' }),
+        createTodo({ bucketId: 6, completed: false, id: 14, position: 4096, title: 'Retry moves this' }),
+      ],
+      user: {
+        planningDate: '2026-07-06',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+    const originalMoveTodoForMigration = repository.moveTodoForMigration
+    let moveCount = 0
+    repository.moveTodoForMigration = async (...args) => {
+      moveCount += 1
+
+      if (moveCount === 2) {
+        return undefined
+      }
+
+      return originalMoveTodoForMigration(...args)
+    }
+    const data = {
+      decisions: {
+        12: 'move_back' as const,
+        14: 'carry_forward' as const,
+      },
+      sourceBucketId: 6,
+    }
+
+    await expect(
+      confirmMigrationStepForUser({
+        data,
+        now: () => confirmedAt,
+        repository,
+        userId: 'user-1',
+      }),
+    ).rejects.toThrow('Migration Step conflict; refresh and retry')
+
+    repository.moveTodoForMigration = originalMoveTodoForMigration
+    const result = await confirmMigrationStepForUser({
+      data,
+      now: () => confirmedAt,
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      board: {
+        status: 'ready',
+      },
+      migratedTodoPositions: [{ bucketId: 5, id: 14, position: 1024 }],
+      status: 'confirmed',
+    })
+    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 4, id: 12, position: 1024 }),
+    ])
+    await expect(repository.getTodosByBucket(5)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 5, id: 14, position: 1024 }),
+    ])
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
+      archivedAt: confirmedAt,
+      status: 'archived',
+    })
+  })
+
+  test('moves yearly Todos back to inbox when no broader time-based Bucket exists', async () => {
+    const createdAt = new Date('2026-01-01T08:00:00.000Z')
+    const confirmedAt = new Date('2027-01-01T09:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2027', type: 'yearly' }),
+        createBucket({ createdAt, id: 3, period: '2026', status: 'pending_migration', type: 'yearly' }),
+      ],
+      todos: [
+        createTodo({ bucketId: 1, completed: false, id: 10, position: 1024, title: 'Existing inbox Todo' }),
+        createTodo({ bucketId: 3, completed: false, id: 11, position: 1024, title: 'Move back to inbox' }),
+      ],
+      user: {
+        planningDate: '2027-01-01',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    const result = await confirmMigrationStepForUser({
+      data: {
+        decisions: {
+          11: 'move_back',
+        },
+        sourceBucketId: 3,
+      },
+      now: () => confirmedAt,
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      migratedTodoPositions: [{ bucketId: 1, id: 11, position: 2048 }],
+      status: 'confirmed',
+    })
+    await expect(repository.getTodosByBucket(1)).resolves.toEqual([
+      expect.objectContaining({ id: 10, position: 1024 }),
+      expect.objectContaining({ bucketId: 1, id: 11, position: 2048, title: 'Move back to inbox' }),
+    ])
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'yearly', '2026')).resolves.toMatchObject({
+      archivedAt: confirmedAt,
+      status: 'archived',
+    })
+  })
+
+  test('keeps Migration Step reads as disposable draft state with no persisted choices', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026-W28', type: 'weekly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07-06', type: 'daily' }),
+        createBucket({ createdAt, id: 4, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+      ],
+      todos: [createTodo({ bucketId: 4, completed: false, id: 12, position: 1024, title: 'Draft only' })],
+      user: {
+        planningDate: '2026-07-06',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    const firstRead = await getMigrationStepForUser({
+      repository,
+      userId: 'user-1',
+    })
+    const secondRead = await getMigrationStepForUser({
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(firstRead.todos).toEqual(secondRead.todos)
+    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 4, id: 12, position: 1024 }),
+    ])
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
+      archivedAt: null,
+      status: 'pending_migration',
+    })
+  })
+})
+
 type InMemoryBucket = {
   archivedAt: Date | null
   createdAt: Date
@@ -542,6 +843,9 @@ function createInMemoryBoardRepository({
 
       return Promise.resolve(bucket)
     },
+    findBucketById(userId, bucketId) {
+      return Promise.resolve(storedBuckets.find((bucket) => bucket.userId === userId && bucket.id === bucketId))
+    },
     findBucketByUserTypeAndPeriod(userId, type, period) {
       return Promise.resolve(
         storedBuckets.find((bucket) => bucket.userId === userId && bucket.type === type && bucket.period === period),
@@ -550,6 +854,15 @@ function createInMemoryBoardRepository({
     getActiveBuckets(userId) {
       return Promise.resolve(storedBuckets.filter((bucket) => bucket.userId === userId && bucket.status === 'active'))
     },
+    getMaxTodoPosition(userId, bucketId) {
+      const bucketTodos = storedTodos.filter((todo) => todo.userId === userId && todo.bucketId === bucketId)
+
+      if (bucketTodos.length === 0) {
+        return Promise.resolve(null)
+      }
+
+      return Promise.resolve(Math.max(...bucketTodos.map((todo) => todo.position)))
+    },
     getPendingMigrationBuckets(userId) {
       return Promise.resolve(
         storedBuckets.filter((bucket) => bucket.userId === userId && bucket.status === 'pending_migration'),
@@ -557,6 +870,11 @@ function createInMemoryBoardRepository({
     },
     getTodosByBucket(bucketId) {
       return Promise.resolve(storedTodos.filter((todo) => todo.bucketId === bucketId))
+    },
+    getTodosByBucketWithDisplay(bucketId) {
+      return Promise.resolve(
+        storedTodos.filter((todo) => todo.bucketId === bucketId).map((todo) => ({ ...todo, category: null, tags: [] })),
+      )
     },
     getUser(userId) {
       return Promise.resolve(storedUser.id === userId ? storedUser : undefined)
@@ -572,6 +890,23 @@ function createInMemoryBoardRepository({
       bucket.archivedAt = null
 
       return Promise.resolve(bucket)
+    },
+    moveTodoForMigration(todoId, userId, move) {
+      const todo = storedTodos.find(
+        (storedTodo) =>
+          storedTodo.id === todoId &&
+          storedTodo.userId === userId &&
+          storedTodo.bucketId === move.expectedSourceBucketId,
+      )
+
+      if (!todo) {
+        return Promise.resolve(undefined)
+      }
+
+      todo.bucketId = move.bucketId
+      todo.position = move.position
+
+      return Promise.resolve(todo)
     },
     updateUserPlanning(userId, updates) {
       if (storedUser.id !== userId) {
@@ -633,11 +968,13 @@ function createTodo({
   bucketId,
   completed,
   id,
+  position = id * 1024,
   title,
 }: {
   bucketId: number
   completed: boolean
   id: number
+  position?: number
   title: string
 }): TodoDbSelect {
   return {
@@ -647,7 +984,7 @@ function createTodo({
     createdAt: new Date('2026-07-03T09:00:00.000Z'),
     description: '',
     id,
-    position: id * 1024,
+    position,
     title,
     userId: 'user-1',
   }
