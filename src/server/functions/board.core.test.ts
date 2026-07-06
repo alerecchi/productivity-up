@@ -191,6 +191,66 @@ describe('loadBoardForUser', () => {
     })
   })
 
+  test('uses an expired Future Bucket as the migration source after returning from a gap', async () => {
+    const createdAt = new Date('2026-07-03T15:30:00.000Z')
+    const now = new Date('2026-07-06T07:30:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026', type: 'yearly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07', type: 'monthly' }),
+        createBucket({ createdAt, id: 4, period: '2026-W27', type: 'weekly' }),
+        createBucket({ createdAt, id: 5, period: '2026-07-04', type: 'daily' }),
+      ],
+      todos: [createTodo({ bucketId: 5, completed: false, id: 1, position: 1024, title: 'Planned ahead Todo' })],
+      user: {
+        planningDate: '2026-07-04',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    const result = await loadBoardForUser({
+      now: () => now,
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      buckets: [
+        expect.objectContaining({ period: 'inbox', status: 'active', type: 'inbox' }),
+        expect.objectContaining({ period: '2026', status: 'active', type: 'yearly' }),
+        expect.objectContaining({ period: '2026-07', status: 'active', type: 'monthly' }),
+        expect.objectContaining({ period: '2026-W28', status: 'active', type: 'weekly' }),
+        expect.objectContaining({ period: '2026-07-06', status: 'active', type: 'daily' }),
+      ],
+      pendingMigrationBuckets: [
+        expect.objectContaining({ period: '2026-07-04', status: 'pending_migration', type: 'daily' }),
+      ],
+      planningDate: '2026-07-06',
+      status: 'migration_required',
+    })
+    await expect(repository.getUser('user-1')).resolves.toMatchObject({
+      planningDate: '2026-07-06',
+    })
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-04')).resolves.toMatchObject({
+      archivedAt: null,
+      status: 'pending_migration',
+    })
+    await expect(repository.getTodosByBucket(5)).resolves.toEqual([
+      expect.objectContaining({ completed: false, id: 1, title: 'Planned ahead Todo' }),
+    ])
+    await expect(getMigrationStepForUser({ repository, userId: 'user-1' })).resolves.toMatchObject({
+      carryForwardDestination: expect.objectContaining({ period: '2026-07-06', status: 'active', type: 'daily' }),
+      moveBackDestination: expect.objectContaining({ period: '2026-W28', status: 'active', type: 'weekly' }),
+      sourceBucket: expect.objectContaining({ period: '2026-07-04', status: 'pending_migration', type: 'daily' }),
+      todos: [expect.objectContaining({ completed: false, id: 1, title: 'Planned ahead Todo' })],
+    })
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-05')).resolves.toBeUndefined()
+    await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'weekly', '2026-W27')).resolves.toMatchObject({
+      status: 'archived',
+    })
+  })
+
   test('never marks inbox pending migration or archives it during lifecycle reconciliation', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const repository = createInMemoryBoardRepository({
