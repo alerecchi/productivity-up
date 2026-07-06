@@ -170,6 +170,8 @@ describe('MigrationFlow', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Carry forward' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
 
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: 'Weekly 2026-W27' })).toBeInTheDocument()
     })
@@ -272,6 +274,158 @@ describe('MigrationFlow', () => {
     expect(await screen.findByRole('heading', { name: 'Weekly 2026-W27' })).toBeInTheDocument()
     expect(screen.getByText('Weekly move')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Completion Recap' })).not.toBeInTheDocument()
+  })
+
+  it('confirms Move all back only after the bulk confirmation dialog is accepted', async () => {
+    const dailyBucket = createBucket({
+      id: 10,
+      period: '2026-07-03',
+      status: 'pending_migration',
+      type: 'daily',
+    })
+
+    mockedGetMigrationStep.mockResolvedValue({
+      carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+      completedCount: 1,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 1, incompleteCount: 2 }],
+        completedCount: 1,
+        incompleteCount: 2,
+      },
+      incompleteCount: 2,
+      moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+      pendingMigrationBuckets: [dailyBucket],
+      sourceBucket: dailyBucket,
+      todos: [
+        createTodo({ bucketId: dailyBucket.id, id: 20, title: 'Move first back' }),
+        createTodo({ bucketId: dailyBucket.id, id: 21, title: 'Move second back' }),
+      ],
+    })
+    mockedConfirmMigrationStep.mockResolvedValue({
+      board: {
+        buckets: [
+          createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
+          createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+          createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+        ],
+        planningDate: '2026-07-04',
+        status: 'ready',
+        timeZone: 'Europe/Berlin',
+      },
+      migratedTodoPositions: [
+        { bucketId: 4, id: 20, position: 1024 },
+        { bucketId: 4, id: 21, position: 2048 },
+      ],
+      status: 'confirmed',
+    })
+
+    render(
+      <Suspense fallback={<p>Loading migration</p>}>
+        <MigrationFlow />
+      </Suspense>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start migration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move all back' }))
+
+    expect(screen.getByRole('dialog', { name: 'Move all back?' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Move all back?' })).not.toBeInTheDocument()
+    expect(mockedConfirmMigrationStep).not.toHaveBeenCalled()
+    expect(screen.getByText('Move first back')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move all back' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm move all back' }))
+
+    await waitFor(() => {
+      expect(mockedConfirmMigrationStep).toHaveBeenCalledWith({
+        data: {
+          decisions: {
+            20: 'move_back',
+            21: 'move_back',
+          },
+          sourceBucketId: 10,
+        },
+      })
+    })
+  })
+
+  it('confirms Carry all forward only after the bulk confirmation dialog is accepted', async () => {
+    const weeklyBucket = createBucket({
+      id: 11,
+      period: '2026-W27',
+      status: 'pending_migration',
+      type: 'weekly',
+    })
+
+    mockedGetMigrationStep.mockResolvedValue({
+      carryForwardDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+      completedCount: 0,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 0, incompleteCount: 2 }],
+        completedCount: 0,
+        incompleteCount: 2,
+      },
+      incompleteCount: 2,
+      moveBackDestination: createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
+      pendingMigrationBuckets: [weeklyBucket],
+      sourceBucket: weeklyBucket,
+      todos: [
+        createTodo({ bucketId: weeklyBucket.id, id: 30, title: 'Carry first forward' }),
+        createTodo({ bucketId: weeklyBucket.id, id: 31, title: 'Carry second forward' }),
+      ],
+    })
+    mockedConfirmMigrationStep.mockResolvedValue({
+      board: {
+        buckets: [
+          createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
+          createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
+          createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+        ],
+        planningDate: '2026-07-04',
+        status: 'ready',
+        timeZone: 'Europe/Berlin',
+      },
+      migratedTodoPositions: [
+        { bucketId: 4, id: 30, position: 1024 },
+        { bucketId: 4, id: 31, position: 2048 },
+      ],
+      status: 'confirmed',
+    })
+
+    render(
+      <Suspense fallback={<p>Loading migration</p>}>
+        <MigrationFlow />
+      </Suspense>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Start migration' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Carry all forward' }))
+
+    expect(screen.getByRole('dialog', { name: 'Carry all forward?' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog', { name: 'Carry all forward?' })).not.toBeInTheDocument()
+    expect(mockedConfirmMigrationStep).not.toHaveBeenCalled()
+    expect(screen.getByText('Carry first forward')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Carry all forward' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm carry all forward' }))
+
+    await waitFor(() => {
+      expect(mockedConfirmMigrationStep).toHaveBeenCalledWith({
+        data: {
+          decisions: {
+            30: 'carry_forward',
+            31: 'carry_forward',
+          },
+          sourceBucketId: 11,
+        },
+      })
+    })
   })
 })
 

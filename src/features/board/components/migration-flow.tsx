@@ -6,16 +6,30 @@ import { toast } from 'sonner'
 import { BOARD_QUERY_KEY, MIGRATION_STEP_QUERY_KEY } from '@/features/board/queries/query-keys'
 import { Badge } from '@/features/shared/components/ui/badge'
 import { Button } from '@/features/shared/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/features/shared/components/ui/dialog'
 import type { Bucket } from '@/lib/types/Bucket'
 import { confirmMigrationStep, getMigrationStep } from '@/server/functions/board'
 
 type MigrationDecision = 'carry_forward' | 'move_back'
+type BulkMigrationAction = {
+  confirmLabel: string
+  decision: MigrationDecision
+  title: string
+} | null
 const MIGRATION_FLOW_STARTED_STORAGE_KEY = 'todo-buckets:migration-flow-started'
 
 export function MigrationFlow() {
   const queryClient = useQueryClient()
   const [hasStartedFlow, setHasStartedFlow] = useState(false)
   const [hasStoredFlowStarted, setHasStoredFlowStarted] = useState<boolean | null>(null)
+  const [bulkAction, setBulkAction] = useState<BulkMigrationAction>(null)
   const [decisions, setDecisions] = useState<Partial<Record<number, MigrationDecision>>>({})
   const { data: step } = useSuspenseQuery(
     queryOptions({
@@ -24,10 +38,12 @@ export function MigrationFlow() {
     }),
   )
   const confirmMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (bulkDecision?: MigrationDecision) =>
       confirmMigrationStep({
         data: {
-          decisions: getConfirmedDecisions(step.todos, decisions),
+          decisions: bulkDecision
+            ? getBulkDecisions(step.todos, bulkDecision)
+            : getConfirmedDecisions(step.todos, decisions),
           sourceBucketId: step.sourceBucket.id,
         },
       }),
@@ -43,6 +59,7 @@ export function MigrationFlow() {
 
       queryClient.setQueryData([BOARD_QUERY_KEY], result.board)
       queryClient.invalidateQueries({ queryKey: [MIGRATION_STEP_QUERY_KEY] })
+      setBulkAction(null)
     },
   })
   const hasAllDecisions = step.todos.every((todo) => decisions[todo.id] !== undefined)
@@ -54,6 +71,7 @@ export function MigrationFlow() {
 
   useEffect(() => {
     setDecisions({})
+    setBulkAction(null)
   }, [step.sourceBucket.id])
 
   useEffect(() => {
@@ -140,10 +158,45 @@ export function MigrationFlow() {
                 incomplete Todo.
               </p>
             </div>
-            <Button disabled={!hasAllDecisions || confirmMutation.isPending} onClick={() => confirmMutation.mutate()}>
-              <CheckCircle2 />
-              Confirm choices
-            </Button>
+            <div className='flex flex-wrap items-center justify-end gap-2'>
+              <Button
+                disabled={confirmMutation.isPending}
+                onClick={() =>
+                  setBulkAction({
+                    confirmLabel: 'Confirm move all back',
+                    decision: 'move_back',
+                    title: 'Move all back?',
+                  })
+                }
+                type='button'
+                variant='outline'
+              >
+                <ArrowLeft />
+                Move all back
+              </Button>
+              <Button
+                disabled={confirmMutation.isPending}
+                onClick={() =>
+                  setBulkAction({
+                    confirmLabel: 'Confirm carry all forward',
+                    decision: 'carry_forward',
+                    title: 'Carry all forward?',
+                  })
+                }
+                type='button'
+                variant='outline'
+              >
+                Carry all forward
+                <ArrowRight />
+              </Button>
+              <Button
+                disabled={!hasAllDecisions || confirmMutation.isPending}
+                onClick={() => confirmMutation.mutate(undefined)}
+              >
+                <CheckCircle2 />
+                Confirm choices
+              </Button>
+            </div>
           </div>
           <div className='divide-y rounded-md border'>
             {step.todos.map((todo) => (
@@ -202,6 +255,38 @@ export function MigrationFlow() {
           </p>
         </aside>
       </div>
+      <Dialog open={bulkAction !== null} onOpenChange={(open) => !open && setBulkAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{bulkAction?.title}</DialogTitle>
+            <DialogDescription>
+              This will commit the current Migration Step immediately for every incomplete Todo in{' '}
+              {formatBucketName(step.sourceBucket)}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              disabled={confirmMutation.isPending}
+              onClick={() => setBulkAction(null)}
+              type='button'
+              variant='outline'
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={confirmMutation.isPending}
+              onClick={() => {
+                if (bulkAction) {
+                  confirmMutation.mutate(bulkAction.decision)
+                }
+              }}
+              type='button'
+            >
+              {bulkAction?.confirmLabel}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   )
 }
@@ -227,6 +312,16 @@ function getConfirmedDecisions(
       throw new Error('Choose a destination for every Todo')
     }
 
+    confirmedDecisions[todo.id] = decision
+  }
+
+  return confirmedDecisions
+}
+
+function getBulkDecisions(todos: Array<{ id: number }>, decision: MigrationDecision) {
+  const confirmedDecisions: Record<number, MigrationDecision> = {}
+
+  for (const todo of todos) {
     confirmedDecisions[todo.id] = decision
   }
 

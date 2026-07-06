@@ -1,6 +1,6 @@
 # Add Bulk Migration Actions With Confirmation
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -12,13 +12,13 @@ Add bulk actions to the Migration Step so users can quickly resolve all incomple
 
 ## Acceptance criteria
 
-- [ ] `Move all back` opens a confirmation dialog for the current Migration Step.
-- [ ] `Carry all forward` opens a confirmation dialog for the current Migration Step.
-- [ ] Confirming a bulk dialog commits the current Migration Step immediately with that destination for every incomplete Todo.
-- [ ] Cancelling a bulk dialog leaves the Migration Step unchanged.
-- [ ] Manual per-Todo confirmation does not show an additional confirmation dialog.
-- [ ] Bulk actions respect the same source Bucket, destination, append-order, and archival rules as manual confirmation.
-- [ ] Component tests cover both bulk dialogs, confirm/cancel behavior, and manual confirmation without an extra dialog.
+- [x] `Move all back` opens a confirmation dialog for the current Migration Step.
+- [x] `Carry all forward` opens a confirmation dialog for the current Migration Step.
+- [x] Confirming a bulk dialog commits the current Migration Step immediately with that destination for every incomplete Todo.
+- [x] Cancelling a bulk dialog leaves the Migration Step unchanged.
+- [x] Manual per-Todo confirmation does not show an additional confirmation dialog.
+- [x] Bulk actions respect the same source Bucket, destination, append-order, and archival rules as manual confirmation.
+- [x] Component tests cover both bulk dialogs, confirm/cancel behavior, and manual confirmation without an extra dialog.
 
 ## Blocked by
 
