@@ -504,6 +504,17 @@ describe('completeDayForUser', () => {
       planningDate: '2026-07-04',
       status: 'migration_required',
     })
+    expect(result.status === 'migration_required' ? result.migrationRecap : null).toMatchObject({
+      bucketBreakdown: [
+        {
+          bucket: expect.objectContaining({ period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+          completedCount: 0,
+          incompleteCount: 1,
+        },
+      ],
+      completedCount: 0,
+      incompleteCount: 1,
+    })
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
       archivedAt: null,
       status: 'pending_migration',

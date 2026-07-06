@@ -3,6 +3,7 @@ import { Suspense } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { MigrationFlow } from '@/features/board/components/migration-flow'
+import { storeMigrationFlowStarted } from '@/features/board/lib/migration-flow-started'
 import type { BucketDb } from '@/server/db/types'
 import { confirmMigrationStep, getMigrationStep } from '@/server/functions/board'
 import { render } from '@/test'
@@ -23,16 +24,18 @@ vi.mock('sonner', () => ({
 
 const mockedConfirmMigrationStep = vi.mocked(confirmMigrationStep)
 const mockedGetMigrationStep = vi.mocked(getMigrationStep)
+let onFlowComplete: ReturnType<typeof vi.fn<() => void>>
 
 describe('MigrationFlow', () => {
   beforeEach(() => {
     window.sessionStorage.clear()
+    onFlowComplete = vi.fn()
     mockedConfirmMigrationStep.mockReset()
     mockedGetMigrationStep.mockReset()
     toast.error.mockReset()
   })
 
-  it('shows one aggregate Completion Recap before a multi-step Migration Flow with progress and upcoming Buckets', async () => {
+  it('shows the first Migration Step with progress and upcoming Buckets', async () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
@@ -51,6 +54,7 @@ describe('MigrationFlow', () => {
       status: 'pending_migration',
       type: 'monthly',
     })
+    storeMigrationFlowStarted([dailyBucket, weeklyBucket, monthlyBucket])
 
     mockedGetMigrationStep.mockResolvedValue({
       carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
@@ -73,28 +77,20 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow />
+        <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
 
-    expect(await screen.findByRole('heading', { name: 'Completion Recap' })).toBeInTheDocument()
-    expect(screen.getByText('4 completed')).toBeInTheDocument()
-    expect(screen.getByText('7 incomplete')).toBeInTheDocument()
-    expect(screen.getByText('Daily 2026-07-03')).toBeInTheDocument()
-    expect(screen.getByText('1 completed, 2 incomplete')).toBeInTheDocument()
-    expect(screen.getByText('Weekly 2026-W27')).toBeInTheDocument()
-    expect(screen.getByText('3 completed, 1 incomplete')).toBeInTheDocument()
-    expect(screen.getByText('Monthly 2026-06')).toBeInTheDocument()
-    expect(screen.getByText('0 completed, 4 incomplete')).toBeInTheDocument()
-    expect(screen.queryByText('Carry draft onward')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Start migration' }))
-
-    expect(screen.getByRole('heading', { name: 'Daily 2026-07-03' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
+    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Place unfinished work' })).toBeInTheDocument()
+    expect(screen.getByText('1 todo needs a new home')).toBeInTheDocument()
+    expect(screen.getByText('0/1')).toBeInTheDocument()
     expect(screen.getByText('Step 1 of 3')).toBeInTheDocument()
     expect(screen.getByText('Up next: Weekly 2026-W27, Monthly 2026-06')).toBeInTheDocument()
     expect(screen.getByText('Carry draft onward')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Completion Recap' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
   })
 
   it('advances to the next unresolved Migration Step without showing another Completion Recap', async () => {
@@ -110,6 +106,7 @@ describe('MigrationFlow', () => {
       status: 'pending_migration',
       type: 'weekly',
     })
+    storeMigrationFlowStarted([dailyBucket, weeklyBucket])
 
     mockedGetMigrationStep
       .mockResolvedValueOnce({
@@ -162,23 +159,26 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow />
+        <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Start migration' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
+    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Carry forward' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: 'Weekly 2026-W27' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Decide what moves on from Weekly 2026-W27.' })).toBeInTheDocument()
     })
-    expect(screen.getByText('Step 1 of 1')).toBeInTheDocument()
+    expect(screen.getByText('Step 2 of 2')).toBeInTheDocument()
     expect(screen.getByText('This is the last Pending Migration Bucket.')).toBeInTheDocument()
     expect(screen.getByText('Weekly move')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Completion Recap' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
+    expect(onFlowComplete).not.toHaveBeenCalled()
   })
 
   it('resumes after refresh at the next unresolved Migration Step without repeating the Completion Recap', async () => {
@@ -230,11 +230,13 @@ describe('MigrationFlow', () => {
 
     const { unmount } = render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow />
+        <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Start migration' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
+    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Carry forward' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
 
@@ -267,13 +269,15 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow />
+        <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
 
-    expect(await screen.findByRole('heading', { name: 'Weekly 2026-W27' })).toBeInTheDocument()
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Weekly 2026-W27.' }),
+    ).toBeInTheDocument()
     expect(screen.getByText('Weekly move')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Completion Recap' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
   })
 
   it('confirms Move all back only after the bulk confirmation dialog is accepted', async () => {
@@ -321,11 +325,13 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow />
+        <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Start migration' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
+    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Move all back' }))
 
     expect(screen.getByRole('dialog', { name: 'Move all back?' })).toBeInTheDocument()
@@ -350,6 +356,117 @@ describe('MigrationFlow', () => {
         },
       })
     })
+    expect(onFlowComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns to the board after confirming individual choices for the final Migration Step', async () => {
+    const dailyBucket = createBucket({
+      id: 10,
+      period: '2026-07-03',
+      status: 'pending_migration',
+      type: 'daily',
+    })
+
+    mockedGetMigrationStep.mockResolvedValue({
+      carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+      completedCount: 0,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, incompleteCount: 1 }],
+        completedCount: 0,
+        incompleteCount: 1,
+      },
+      incompleteCount: 1,
+      moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+      pendingMigrationBuckets: [dailyBucket],
+      sourceBucket: dailyBucket,
+      todos: [createTodo({ bucketId: dailyBucket.id, id: 20, title: 'Finish final step' })],
+    })
+    mockedConfirmMigrationStep.mockResolvedValue({
+      board: {
+        buckets: [
+          createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
+          createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+          createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+        ],
+        planningDate: '2026-07-04',
+        status: 'ready',
+        timeZone: 'Europe/Berlin',
+      },
+      migratedTodoPositions: [{ bucketId: 5, id: 20, position: 1024 }],
+      status: 'confirmed',
+    })
+
+    render(
+      <Suspense fallback={<p>Loading migration</p>}>
+        <MigrationFlow onFlowComplete={onFlowComplete} />
+      </Suspense>,
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Carry forward' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
+
+    await waitFor(() => {
+      expect(onFlowComplete).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  it('keeps the final Migration Step visible when returning to the board fails', async () => {
+    const dailyBucket = createBucket({
+      id: 10,
+      period: '2026-07-03',
+      status: 'pending_migration',
+      type: 'daily',
+    })
+
+    mockedGetMigrationStep.mockResolvedValue({
+      carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+      completedCount: 0,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, incompleteCount: 1 }],
+        completedCount: 0,
+        incompleteCount: 1,
+      },
+      incompleteCount: 1,
+      moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+      pendingMigrationBuckets: [dailyBucket],
+      sourceBucket: dailyBucket,
+      todos: [createTodo({ bucketId: dailyBucket.id, id: 20, title: 'Retry leaving migration' })],
+    })
+    mockedConfirmMigrationStep.mockResolvedValue({
+      board: {
+        buckets: [
+          createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
+          createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+          createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+        ],
+        planningDate: '2026-07-04',
+        status: 'ready',
+        timeZone: 'Europe/Berlin',
+      },
+      migratedTodoPositions: [{ bucketId: 5, id: 20, position: 1024 }],
+      status: 'confirmed',
+    })
+    onFlowComplete.mockRejectedValue(new Error('Navigation failed'))
+
+    render(
+      <Suspense fallback={<p>Loading migration</p>}>
+        <MigrationFlow onFlowComplete={onFlowComplete} />
+      </Suspense>,
+    )
+
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
+    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Carry forward' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Navigation failed')
+    })
+    expect(screen.getByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' })).toBeInTheDocument()
   })
 
   it('confirms Carry all forward only after the bulk confirmation dialog is accepted', async () => {
@@ -397,11 +514,13 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow />
+        <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Start migration' }))
+    expect(
+      await screen.findByRole('heading', { name: 'Decide what moves on from Weekly 2026-W27.' }),
+    ).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Carry all forward' }))
 
     expect(screen.getByRole('dialog', { name: 'Carry all forward?' })).toBeInTheDocument()
@@ -426,6 +545,7 @@ describe('MigrationFlow', () => {
         },
       })
     })
+    expect(onFlowComplete).toHaveBeenCalledTimes(1)
   })
 })
 

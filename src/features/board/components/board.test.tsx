@@ -17,6 +17,12 @@ vi.mock('@/features/board/components/todo-drag-drop-provider', () => ({
   TodoDragDropProvider: ({ children }: { children: ReactNode }) => <>{children}</>,
 }))
 
+const navigate = vi.hoisted(() => vi.fn())
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
+}))
+
 vi.mock('@/server/functions/board', () => ({
   confirmMigrationStep: vi.fn(),
   completeDay: vi.fn(),
@@ -70,6 +76,7 @@ describe('Board lifecycle controls', () => {
     mockedCompleteDay.mockReset()
     mockedConfirmMigrationStep.mockReset()
     mockedGetMigrationStep.mockReset()
+    navigate.mockReset()
     toast.error.mockReset()
   })
 
@@ -77,7 +84,7 @@ describe('Board lifecycle controls', () => {
     vi.useRealTimers()
   })
 
-  it('shows and dismisses the all-complete Completion Recap after completing the day', async () => {
+  it('shows the Completion Recap after completing an all-done day', async () => {
     mockedCompleteDay.mockResolvedValue({
       buckets: tomorrowBuckets,
       planningDate: '2026-07-04',
@@ -101,15 +108,57 @@ describe('Board lifecycle controls', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
 
-    expect(await screen.findByRole('heading', { name: 'Day complete' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: '2026-07-03 is wrapped' })).toBeInTheDocument()
+    expect(screen.getByText('Review ended buckets')).toBeInTheDocument()
+    expect(screen.getByText('No migration needed')).toBeInTheDocument()
+    expect(screen.getByText('Open the board')).toBeInTheDocument()
     expect(screen.getByText('2 completed')).toBeInTheDocument()
-    expect(screen.queryByText(/migrate/i)).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Close recap' }))
+    expect(screen.queryByRole('button', { name: 'Continue to migration' })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Close and plan tomorrow' }))
 
     await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: 'Day complete' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: '2026-07-03 is wrapped' })).not.toBeInTheDocument()
     })
     expect(mockedCompleteDay).toHaveBeenCalledWith()
+  })
+
+  it('shows the Migration Recap immediately from the Complete day response when migration is required', async () => {
+    const pendingBucket = createBucket({
+      id: 7,
+      period: '2026-07-03',
+      status: 'pending_migration',
+      type: 'daily',
+    })
+    mockedCompleteDay.mockResolvedValue({
+      buckets: tomorrowBuckets,
+      migrationRecap: {
+        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, incompleteCount: 2 }],
+        completedCount: 1,
+        incompleteCount: 2,
+      },
+      pendingMigrationBuckets: [pendingBucket],
+      planningDate: '2026-07-04',
+      status: 'migration_required',
+      timeZone: 'Europe/Berlin',
+    })
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData([BOARD_QUERY_KEY], {
+      buckets: todayBuckets,
+      planningDate: '2026-07-03',
+      status: 'ready',
+      timeZone: 'Europe/Berlin',
+    })
+
+    render(<Board />, { queryClient })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
+
+    expect(await screen.findByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
+    expect(screen.getByText('Migrate unfinished todos')).toBeInTheDocument()
+    expect(screen.getByText('1 completed')).toBeInTheDocument()
+    expect(screen.getByText('2 incomplete')).toBeInTheDocument()
+    expect(screen.getByText('Daily 2026-07-03')).toBeInTheDocument()
+    expect(mockedGetMigrationStep).not.toHaveBeenCalled()
   })
 
   it('disables Complete day with planning-ahead feedback when Planning Date is tomorrow', () => {
@@ -148,7 +197,7 @@ describe('Board lifecycle controls', () => {
     expect(screen.queryByRole('heading', { name: 'Day complete' })).not.toBeInTheDocument()
   })
 
-  it('gates the board behind a Migration Step until every incomplete Todo has a decision', async () => {
+  it('shows an undismissable Migration Recap dialog over a blurred board when migration is required', async () => {
     const pendingBucket = createBucket({
       id: 7,
       period: '2026-07-03',
@@ -167,29 +216,7 @@ describe('Board lifecycle controls', () => {
       moveBackDestination: tomorrowBuckets[3],
       pendingMigrationBuckets: [pendingBucket],
       sourceBucket: pendingBucket,
-      todos: [
-        createTodo({ bucketId: 7, id: 20, title: 'Move this back' }),
-        createTodo({
-          bucketId: 7,
-          category: { colorKey: 'blue', id: 1, name: 'Work' },
-          id: 21,
-          tags: [{ colorKey: 'green', id: 2, name: 'focus' }],
-          title: 'Carry this forward',
-        }),
-      ],
-    })
-    mockedConfirmMigrationStep.mockResolvedValue({
-      board: {
-        buckets: tomorrowBuckets,
-        planningDate: '2026-07-04',
-        status: 'ready',
-        timeZone: 'Europe/Berlin',
-      },
-      migratedTodoPositions: [
-        { bucketId: 4, id: 20, position: 2048 },
-        { bucketId: 6, id: 21, position: 1024 },
-      ],
-      status: 'confirmed',
+      todos: [],
     })
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([BOARD_QUERY_KEY], {
@@ -202,41 +229,60 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    expect(await screen.findByRole('heading', { name: 'Completion Recap' })).toBeInTheDocument()
-    expect(screen.queryByLabelText('Todo Buckets board')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
+    expect(screen.getByText('Preparing migration')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to migration' })).toBeDisabled()
+    expect(await screen.findByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
+    expect(screen.getByText('Review ended buckets')).toBeInTheDocument()
+    expect(await screen.findByText('Migrate unfinished todos')).toBeInTheDocument()
+    expect(screen.getByText('Open the board')).toBeInTheDocument()
     expect(screen.getByText('1 completed')).toBeInTheDocument()
     expect(screen.getByText('2 incomplete')).toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Start migration' }))
+    expect(screen.getByText('Daily 2026-07-03')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to migration' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
+    expect(document.querySelector('[data-todo-board]')).toHaveClass('blur-sm')
+    expect(mockedConfirmMigrationStep).not.toHaveBeenCalled()
+  })
 
-    expect(screen.getByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
-    expect(screen.getByText('Move this back')).toBeInTheDocument()
-    expect(screen.getByText('Carry this forward')).toBeInTheDocument()
-    expect(screen.getByText('Work')).toBeInTheDocument()
-    expect(screen.getByText('focus')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Confirm choices' })).toBeDisabled()
-
-    fireEvent.click(screen.getAllByRole('button', { name: 'Move back' })[0])
-    expect(screen.getByRole('button', { name: 'Confirm choices' })).toBeDisabled()
-    fireEvent.click(screen.getAllByRole('button', { name: 'Carry forward' })[1])
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
-
-    await waitFor(() => {
-      expect(mockedConfirmMigrationStep).toHaveBeenCalledWith({
-        data: {
-          decisions: {
-            20: 'move_back',
-            21: 'carry_forward',
-          },
-          sourceBucketId: 7,
-        },
-      })
+  it('shows a retry action when the pending Migration Recap cannot load its Migration Step', async () => {
+    const pendingBucket = createBucket({
+      id: 7,
+      period: '2026-07-03',
+      status: 'pending_migration',
+      type: 'daily',
     })
-    expect(queryClient.getQueryData([BOARD_QUERY_KEY])).toMatchObject({
+    mockedGetMigrationStep.mockRejectedValueOnce(new Error('Network unavailable')).mockResolvedValue({
+      carryForwardDestination: tomorrowBuckets[4],
+      completedCount: 0,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 0, incompleteCount: 1 }],
+        completedCount: 0,
+        incompleteCount: 1,
+      },
+      incompleteCount: 1,
+      moveBackDestination: tomorrowBuckets[3],
+      pendingMigrationBuckets: [pendingBucket],
+      sourceBucket: pendingBucket,
+      todos: [],
+    })
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData([BOARD_QUERY_KEY], {
+      buckets: tomorrowBuckets,
+      pendingMigrationBuckets: [pendingBucket],
       planningDate: '2026-07-04',
-      status: 'ready',
+      status: 'migration_required',
+      timeZone: 'Europe/Berlin',
     })
-    expect(await screen.findByLabelText('Todo Buckets board')).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: /migration complete/i })).not.toBeInTheDocument()
+
+    render(<Board />, { queryClient })
+
+    expect(await screen.findByRole('heading', { name: 'Migration could not load' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry migration' }))
+
+    expect(await screen.findByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Continue to migration' })).toBeEnabled()
   })
 })
 
@@ -253,42 +299,6 @@ function createBucket({
     period,
     status,
     type,
-    userId: 'user-1',
-  }
-}
-
-function createTodo({
-  bucketId,
-  category = null,
-  id,
-  tags = [],
-  title,
-}: {
-  bucketId: number
-  category?: {
-    colorKey: 'blue'
-    id: number
-    name: string
-  } | null
-  id: number
-  tags?: Array<{
-    colorKey: 'green'
-    id: number
-    name: string
-  }>
-  title: string
-}) {
-  return {
-    bucketId,
-    category,
-    categoryId: category?.id ?? null,
-    completed: false,
-    createdAt: new Date('2026-07-03T08:30:00.000Z'),
-    description: '',
-    id,
-    position: id * 1024,
-    tags,
-    title,
     userId: 'user-1',
   }
 }

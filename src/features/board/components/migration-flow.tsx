@@ -1,8 +1,22 @@
 import { queryOptions, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
-import { ArrowLeft, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { useNavigate } from '@tanstack/react-router'
+import {
+  ArrowDownToLine,
+  ArrowRight,
+  ChevronRight,
+  CornerUpLeft,
+  FastForward,
+  Layers3,
+  Route as RouteIcon,
+} from 'lucide-react'
+import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import {
+  clearStoredMigrationFlowStarted,
+  getStoredMigrationFlowBucketIds,
+} from '@/features/board/lib/migration-flow-started'
 import { BOARD_QUERY_KEY, MIGRATION_STEP_QUERY_KEY } from '@/features/board/queries/query-keys'
 import { Badge } from '@/features/shared/components/ui/badge'
 import { Button } from '@/features/shared/components/ui/button'
@@ -14,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/features/shared/components/ui/dialog'
+import { cn } from '@/features/shared/utils/tailwind'
 import type { Bucket } from '@/lib/types/Bucket'
 import { confirmMigrationStep, getMigrationStep } from '@/server/functions/board'
 
@@ -23,14 +38,13 @@ type BulkMigrationAction = {
   decision: MigrationDecision
   title: string
 } | null
-const MIGRATION_FLOW_STARTED_STORAGE_KEY = 'todo-buckets:migration-flow-started'
 
-export function MigrationFlow() {
+export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promise<void> | void }) {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const [hasStartedFlow, setHasStartedFlow] = useState(false)
-  const [hasStoredFlowStarted, setHasStoredFlowStarted] = useState<boolean | null>(null)
   const [bulkAction, setBulkAction] = useState<BulkMigrationAction>(null)
   const [decisions, setDecisions] = useState<Partial<Record<number, MigrationDecision>>>({})
+  const [isLeavingFlow, setIsLeavingFlow] = useState(false)
   const { data: step } = useSuspenseQuery(
     queryOptions({
       queryKey: [MIGRATION_STEP_QUERY_KEY],
@@ -50,11 +64,18 @@ export function MigrationFlow() {
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not confirm migration')
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.board.status === 'ready') {
-        clearStoredFlowStarted()
-        setHasStartedFlow(false)
-        setHasStoredFlowStarted(false)
+        clearStoredMigrationFlowStarted()
+        queryClient.setQueryData([BOARD_QUERY_KEY], result.board)
+        try {
+          setIsLeavingFlow(true)
+          await (onFlowComplete ? onFlowComplete() : navigate({ to: '/board' }))
+        } catch (error) {
+          setIsLeavingFlow(false)
+          toast.error(error instanceof Error ? error.message : 'Could not return to the board')
+        }
+        return
       }
 
       queryClient.setQueryData([BOARD_QUERY_KEY], result.board)
@@ -63,198 +84,196 @@ export function MigrationFlow() {
     },
   })
   const hasAllDecisions = step.todos.every((todo) => decisions[todo.id] !== undefined)
-  const currentStepIndex = getMigrationStepIndex(step.pendingMigrationBuckets, step.sourceBucket)
-  const upcomingBucketNames = step.pendingMigrationBuckets
-    .slice(currentStepIndex + 1)
-    .map(formatBucketName)
-    .join(', ')
+  const migrationFlowBucketIds = getMigrationFlowBucketIds(step.pendingMigrationBuckets, step.sourceBucket)
+  const currentStepIndex = getMigrationStepIndex(migrationFlowBucketIds, step.sourceBucket)
+  const upcomingBucketNames = getUpcomingBucketNames({
+    migrationFlowBucketIds,
+    pendingMigrationBuckets: step.pendingMigrationBuckets,
+    sourceBucket: step.sourceBucket,
+  })
 
   useEffect(() => {
     setDecisions({})
     setBulkAction(null)
   }, [step.sourceBucket.id])
 
-  useEffect(() => {
-    setHasStoredFlowStarted(isStoredFlowStarted(step.pendingMigrationBuckets))
-  }, [step.pendingMigrationBuckets])
-
-  if (hasStoredFlowStarted === null) {
-    return (
-      <main className='flex min-h-[calc(100dvh-3.5rem)] items-center justify-center bg-background'>
-        <p className='text-sm text-muted-foreground'>Loading migration</p>
-      </main>
-    )
-  }
-
-  if (!hasStartedFlow && !hasStoredFlowStarted) {
-    return (
-      <main className='flex min-h-[calc(100dvh-3.5rem)] flex-col bg-background'>
-        <header className='border-b px-6 py-5'>
-          <div className='mx-auto flex max-w-6xl flex-col gap-1'>
-            <p className='text-sm font-medium text-muted-foreground'>Migration required</p>
-            <h1 className='text-2xl font-semibold'>Completion Recap</h1>
-            <p className='text-sm text-muted-foreground'>
-              Review what ended before choosing where incomplete Todos go next.
-            </p>
-          </div>
-        </header>
-        <section className='mx-auto flex w-full max-w-6xl flex-1 flex-col gap-6 px-6 py-6'>
-          <dl className='grid gap-3 sm:grid-cols-2'>
-            <div className='rounded-md bg-secondary p-3'>
-              <dt className='text-sm text-muted-foreground'>Completed</dt>
-              <dd className='text-lg font-semibold'>{step.flowRecap.completedCount} completed</dd>
-            </div>
-            <div className='rounded-md bg-secondary p-3'>
-              <dt className='text-sm text-muted-foreground'>Incomplete</dt>
-              <dd className='text-lg font-semibold'>{step.flowRecap.incompleteCount} incomplete</dd>
-            </div>
-          </dl>
-          <div className='divide-y rounded-md border'>
-            {step.flowRecap.bucketBreakdown.map((row) => (
-              <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4' key={row.bucket.id}>
-                <h2 className='truncate text-sm font-medium'>{formatBucketName(row.bucket)}</h2>
-                <p className='text-sm text-muted-foreground'>
-                  {row.completedCount} completed, {row.incompleteCount} incomplete
-                </p>
-              </div>
-            ))}
-          </div>
-          <div className='flex justify-end'>
-            <Button
-              onClick={() => {
-                storeFlowStarted(step.pendingMigrationBuckets)
-                setHasStoredFlowStarted(true)
-                setHasStartedFlow(true)
-              }}
-            >
-              Start migration
-            </Button>
-          </div>
-        </section>
-      </main>
-    )
+  if (isLeavingFlow) {
+    return null
   }
 
   return (
-    <main className='flex min-h-[calc(100dvh-3.5rem)] flex-col bg-background'>
-      <header className='border-b px-6 py-5'>
-        <div className='mx-auto flex max-w-6xl flex-col gap-1'>
-          <p className='text-sm font-medium text-muted-foreground'>
-            Step {currentStepIndex + 1} of {step.pendingMigrationBuckets.length}
+    <main className='min-h-[calc(100dvh-3.5rem)] bg-muted/35 px-4 py-6 sm:px-6 lg:px-8'>
+      <section className='mx-auto flex max-w-6xl flex-col pb-44'>
+        <header>
+          <div className='flex flex-wrap items-center gap-2 text-xs font-semibold text-muted-foreground uppercase'>
+            <RouteIcon className='size-3.5 text-primary' aria-hidden='true' />
+            {formatMigrationEyebrow(step.sourceBucket)}
+            <span className='text-muted-foreground/60'>
+              Step {currentStepIndex + 1} of {migrationFlowBucketIds.length}
+            </span>
+          </div>
+          <h1 className='mt-3 text-3xl font-semibold'>
+            Decide what moves on from {formatBucketName(step.sourceBucket)}.
+          </h1>
+          <p className='mt-3 max-w-2xl text-sm leading-6 text-muted-foreground'>
+            This bucket has reached its end. Keep the work at the same horizon, or return it to a broader bucket for
+            another pass.
           </p>
-          <h1 className='text-2xl font-semibold'>Migration required</h1>
-          <p className='text-sm text-muted-foreground'>
+          <p className='mt-2 text-sm text-muted-foreground'>
             {upcomingBucketNames ? `Up next: ${upcomingBucketNames}` : 'This is the last Pending Migration Bucket.'}
           </p>
-        </div>
-      </header>
-      <div className='mx-auto grid w-full max-w-6xl flex-1 grid-cols-1 gap-6 px-6 py-6 lg:grid-cols-[minmax(0,1fr)_20rem]'>
-        <section className='min-w-0'>
-          <div className='mb-4 flex items-center justify-between gap-4'>
-            <div>
-              <h2 className='text-lg font-semibold'>{formatBucketName(step.sourceBucket)}</h2>
-              <p className='text-sm text-muted-foreground'>
-                Step {currentStepIndex + 1} of {step.pendingMigrationBuckets.length}. Choose a destination for each
-                incomplete Todo.
-              </p>
+        </header>
+
+        <div className='mt-7 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]'>
+          <div className='flex min-h-0 min-w-0 flex-col'>
+            <div className='mb-3 flex items-end justify-between gap-4'>
+              <div>
+                <h2 className='text-lg font-semibold'>Place unfinished work</h2>
+                <p className='mt-1 text-sm text-muted-foreground'>Each row has one deliberate destination.</p>
+              </div>
             </div>
-            <div className='flex flex-wrap items-center justify-end gap-2'>
-              <Button
-                disabled={confirmMutation.isPending}
-                onClick={() =>
-                  setBulkAction({
-                    confirmLabel: 'Confirm move all back',
-                    decision: 'move_back',
-                    title: 'Move all back?',
-                  })
-                }
-                type='button'
-                variant='outline'
-              >
-                <ArrowLeft />
-                Move all back
-              </Button>
-              <Button
-                disabled={confirmMutation.isPending}
-                onClick={() =>
-                  setBulkAction({
-                    confirmLabel: 'Confirm carry all forward',
-                    decision: 'carry_forward',
-                    title: 'Carry all forward?',
-                  })
-                }
-                type='button'
-                variant='outline'
-              >
-                Carry all forward
-                <ArrowRight />
-              </Button>
-              <Button
-                disabled={!hasAllDecisions || confirmMutation.isPending}
-                onClick={() => confirmMutation.mutate(undefined)}
-              >
-                <CheckCircle2 />
-                Confirm choices
-              </Button>
-            </div>
-          </div>
-          <div className='divide-y rounded-md border'>
-            {step.todos.map((todo) => (
-              <article className='grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4' key={todo.id}>
-                <div className='min-w-0 space-y-2'>
-                  <h3 className='truncate font-medium'>{todo.title}</h3>
-                  <div className='flex flex-wrap items-center gap-2'>
-                    {todo.category && <Badge variant='secondary'>{todo.category.name}</Badge>}
-                    {todo.tags.map((tag) => (
-                      <Badge key={tag.id} variant='outline'>
-                        {tag.name}
-                      </Badge>
-                    ))}
+            <div className='max-h-[calc(100vh-27rem)] min-h-0 overflow-y-auto rounded-lg border border-border bg-background lg:max-h-[calc(100vh-22rem)]'>
+              {step.todos.map((todo, index) => (
+                <article
+                  className={cn(
+                    'grid gap-4 p-4 lg:grid-cols-[minmax(12rem,1fr)_auto]',
+                    index < step.todos.length - 1 && 'border-b border-border',
+                  )}
+                  key={todo.id}
+                >
+                  <div className='min-w-0 border-l-4 border-blue-500 pl-3'>
+                    <div className='mb-2 flex flex-wrap items-center gap-2'>
+                      {todo.category && (
+                        <Badge className='rounded-sm border-0 bg-blue-100 px-1.5 py-0 text-[11px] text-blue-800 uppercase'>
+                          {todo.category.name}
+                        </Badge>
+                      )}
+                      {todo.tags.map((tag) => (
+                        <Badge
+                          className='rounded-sm border-blue-200 bg-blue-50 px-1.5 py-0 text-[11px] text-blue-800 uppercase'
+                          key={tag.id}
+                          variant='outline'
+                        >
+                          {tag.name}
+                        </Badge>
+                      ))}
+                    </div>
+                    <h2 className='text-sm font-semibold text-foreground'>{todo.title}</h2>
                   </div>
-                </div>
-                <div className='flex flex-wrap items-center justify-end gap-2'>
-                  <Button
-                    aria-pressed={decisions[todo.id] === 'move_back'}
-                    onClick={() => setDecisions((current) => ({ ...current, [todo.id]: 'move_back' }))}
-                    type='button'
-                    variant={decisions[todo.id] === 'move_back' ? 'default' : 'outline'}
-                  >
-                    <ArrowLeft />
-                    Move back
-                  </Button>
-                  <Button
-                    aria-pressed={decisions[todo.id] === 'carry_forward'}
-                    onClick={() => setDecisions((current) => ({ ...current, [todo.id]: 'carry_forward' }))}
-                    type='button'
-                    variant={decisions[todo.id] === 'carry_forward' ? 'default' : 'outline'}
-                  >
-                    Carry forward
-                    <ArrowRight />
-                  </Button>
-                </div>
-              </article>
-            ))}
+                  <div className='flex shrink-0 flex-col gap-2 sm:flex-row'>
+                    <Button
+                      aria-pressed={decisions[todo.id] === 'move_back'}
+                      className={cn(
+                        'border-violet-200 text-violet-800 hover:bg-violet-50 hover:text-violet-900',
+                        decisions[todo.id] === 'move_back' &&
+                          'border-violet-600 bg-violet-600 text-white hover:bg-violet-700 hover:text-white',
+                      )}
+                      onClick={() => setDecisions((current) => ({ ...current, [todo.id]: 'move_back' }))}
+                      size='sm'
+                      type='button'
+                      variant='outline'
+                    >
+                      <CornerUpLeft aria-hidden='true' />
+                      Move back
+                    </Button>
+                    <Button
+                      aria-pressed={decisions[todo.id] === 'carry_forward'}
+                      className={cn(
+                        'border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900',
+                        decisions[todo.id] === 'carry_forward' &&
+                          'border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700 hover:text-white',
+                      )}
+                      onClick={() => setDecisions((current) => ({ ...current, [todo.id]: 'carry_forward' }))}
+                      size='sm'
+                      type='button'
+                      variant='outline'
+                    >
+                      <FastForward aria-hidden='true' />
+                      Carry forward
+                    </Button>
+                  </div>
+                </article>
+              ))}
+            </div>
           </div>
-        </section>
-        <aside className='space-y-4 border-t pt-6 lg:border-t-0 lg:border-l lg:pt-0 lg:pl-6'>
-          <div>
-            <h2 className='text-sm font-semibold'>Destinations</h2>
-            <dl className='mt-3 space-y-3 text-sm'>
-              <div>
-                <dt className='text-muted-foreground'>Move back</dt>
-                <dd className='font-medium'>{formatBucketName(step.moveBackDestination)}</dd>
-              </div>
-              <div>
-                <dt className='text-muted-foreground'>Carry forward</dt>
-                <dd className='font-medium'>{formatBucketName(step.carryForwardDestination)}</dd>
-              </div>
-            </dl>
+
+          <aside className='self-start rounded-lg border border-border bg-background p-5 lg:sticky lg:top-20'>
+            <span className='flex size-10 items-center justify-center rounded-md bg-primary/10 text-primary'>
+              <Layers3 className='size-5' aria-hidden='true' />
+            </span>
+            <h2 className='mt-4 text-base font-semibold'>
+              {formatTodoCount(step.todos.length)} {step.todos.length === 1 ? 'needs' : 'need'} a new home
+            </h2>
+            <DestinationKey
+              icon={<CornerUpLeft aria-hidden='true' />}
+              label='Move back'
+              value={formatBucketName(step.moveBackDestination)}
+              tone='back'
+            />
+            <DestinationKey
+              icon={<ArrowRight aria-hidden='true' />}
+              label='Carry forward'
+              value={formatBucketName(step.carryForwardDestination)}
+              tone='forward'
+            />
+            <div className='mt-5 border-t border-border pt-4 text-xs leading-5 text-muted-foreground'>
+              The current bucket closes after every todo has a destination.
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <footer className='fixed right-0 bottom-0 left-0 z-30 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-8px_24px_rgb(15_23_42/0.08)] backdrop-blur sm:px-6'>
+        <div className='mx-auto flex max-w-6xl flex-col gap-3 lg:flex-row lg:items-center lg:justify-between'>
+          <div className='flex min-w-0 items-center gap-3'>
+            <DecisionProgress decidedCount={Object.keys(decisions).length} total={step.todos.length} />
           </div>
-          <p className='text-sm text-muted-foreground'>
-            Completed Todos stay in the source Bucket. After confirmation, you can adjust migrated Todos on the board.
-          </p>
-        </aside>
-      </div>
+          <div className='flex flex-wrap items-center justify-end gap-2'>
+            <Button
+              className='border-violet-200 text-violet-800 hover:bg-violet-50 hover:text-violet-900'
+              disabled={confirmMutation.isPending}
+              onClick={() =>
+                setBulkAction({
+                  confirmLabel: 'Confirm move all back',
+                  decision: 'move_back',
+                  title: 'Move all back?',
+                })
+              }
+              size='sm'
+              type='button'
+              variant='outline'
+            >
+              <ArrowDownToLine aria-hidden='true' />
+              Move all back
+            </Button>
+            <Button
+              className='border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900'
+              disabled={confirmMutation.isPending}
+              onClick={() =>
+                setBulkAction({
+                  confirmLabel: 'Confirm carry all forward',
+                  decision: 'carry_forward',
+                  title: 'Carry all forward?',
+                })
+              }
+              size='sm'
+              type='button'
+              variant='outline'
+            >
+              <FastForward aria-hidden='true' />
+              Carry all forward
+            </Button>
+            <Button
+              disabled={!hasAllDecisions || confirmMutation.isPending}
+              onClick={() => confirmMutation.mutate(undefined)}
+              size='sm'
+            >
+              Confirm choices
+              <ChevronRight aria-hidden='true' />
+            </Button>
+          </div>
+        </div>
+      </footer>
       <Dialog open={bulkAction !== null} onOpenChange={(open) => !open && setBulkAction(null)}>
         <DialogContent>
           <DialogHeader>
@@ -299,6 +318,57 @@ function formatBucketName(bucket: Pick<Bucket, 'period' | 'type'>) {
   return `${bucket.type[0].toUpperCase()}${bucket.type.slice(1)} ${bucket.period}`
 }
 
+function formatMigrationEyebrow(bucket: Pick<Bucket, 'type'>) {
+  if (bucket.type === 'inbox') {
+    return 'Inbox migration'
+  }
+
+  return `${bucket.type[0].toUpperCase()}${bucket.type.slice(1)} migration`
+}
+
+function formatTodoCount(count: number) {
+  return `${count} ${count === 1 ? 'todo' : 'todos'}`
+}
+
+function DestinationKey({
+  icon,
+  label,
+  tone,
+  value,
+}: {
+  icon: ReactNode
+  label: string
+  tone: 'back' | 'forward'
+  value: string
+}) {
+  return (
+    <div className={cn('mt-5 border-l-4 pl-3', tone === 'back' ? 'border-violet-500' : 'border-emerald-500')}>
+      <p className='flex items-center gap-2 text-xs font-semibold uppercase'>
+        <span className={tone === 'back' ? 'text-violet-700' : 'text-emerald-700'}>{icon}</span>
+        {label}
+      </p>
+      <p className='mt-1 text-sm font-medium'>{value}</p>
+    </div>
+  )
+}
+
+function DecisionProgress({ decidedCount, total }: { decidedCount: number; total: number }) {
+  const percentage = total === 0 ? 100 : Math.round((decidedCount / total) * 100)
+
+  return (
+    <div className='min-w-36'>
+      <div className='mb-1 flex items-baseline justify-between gap-3 text-xs'>
+        <span className='font-medium tabular-nums'>
+          {decidedCount}/{total}
+        </span>
+      </div>
+      <div className='h-1.5 overflow-hidden rounded-full bg-muted'>
+        <div className='h-full rounded-full bg-primary transition-[width]' style={{ width: `${percentage}%` }} />
+      </div>
+    </div>
+  )
+}
+
 function getConfirmedDecisions(
   todos: Array<{ id: number }>,
   draftDecisions: Partial<Record<number, MigrationDecision>>,
@@ -328,50 +398,42 @@ function getBulkDecisions(todos: Array<{ id: number }>, decision: MigrationDecis
   return confirmedDecisions
 }
 
-function getMigrationStepIndex(pendingMigrationBuckets: Array<Pick<Bucket, 'id'>>, sourceBucket: Pick<Bucket, 'id'>) {
+function getMigrationFlowBucketIds(
+  pendingMigrationBuckets: Array<Pick<Bucket, 'id'>>,
+  sourceBucket: Pick<Bucket, 'id'>,
+) {
+  const storedBucketIds = getStoredMigrationFlowBucketIds()
+
+  if (storedBucketIds.includes(sourceBucket.id)) {
+    return storedBucketIds
+  }
+
+  return pendingMigrationBuckets.map((bucket) => bucket.id)
+}
+
+function getMigrationStepIndex(migrationFlowBucketIds: Array<number>, sourceBucket: Pick<Bucket, 'id'>) {
   return Math.max(
-    pendingMigrationBuckets.findIndex((bucket) => bucket.id === sourceBucket.id),
+    migrationFlowBucketIds.findIndex((bucketId) => bucketId === sourceBucket.id),
     0,
   )
 }
 
-function isStoredFlowStarted(pendingMigrationBuckets: Array<Pick<Bucket, 'id'>>) {
-  if (typeof window === 'undefined') {
-    return false
-  }
+function getUpcomingBucketNames({
+  migrationFlowBucketIds,
+  pendingMigrationBuckets,
+  sourceBucket,
+}: {
+  migrationFlowBucketIds: Array<number>
+  pendingMigrationBuckets: Array<Pick<Bucket, 'id' | 'period' | 'type'>>
+  sourceBucket: Pick<Bucket, 'id'>
+}) {
+  const currentStepIndex = getMigrationStepIndex(migrationFlowBucketIds, sourceBucket)
+  const pendingBucketsById = new Map(pendingMigrationBuckets.map((bucket) => [bucket.id, bucket]))
 
-  try {
-    const storedBucketIds = window.sessionStorage.getItem(MIGRATION_FLOW_STARTED_STORAGE_KEY)?.split(',') ?? []
-
-    return pendingMigrationBuckets.every((bucket) => storedBucketIds.includes(String(bucket.id)))
-  } catch {
-    return false
-  }
-}
-
-function storeFlowStarted(pendingMigrationBuckets: Array<Pick<Bucket, 'id'>>) {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  try {
-    window.sessionStorage.setItem(
-      MIGRATION_FLOW_STARTED_STORAGE_KEY,
-      pendingMigrationBuckets.map((bucket) => bucket.id).join(','),
-    )
-  } catch {
-    // The in-memory state still lets the current flow continue when storage is blocked.
-  }
-}
-
-function clearStoredFlowStarted() {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  try {
-    window.sessionStorage.removeItem(MIGRATION_FLOW_STARTED_STORAGE_KEY)
-  } catch {
-    // Best-effort cleanup only.
-  }
+  return migrationFlowBucketIds
+    .slice(currentStepIndex + 1)
+    .map((bucketId) => pendingBucketsById.get(bucketId))
+    .filter((bucket) => bucket !== undefined)
+    .map(formatBucketName)
+    .join(', ')
 }

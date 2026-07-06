@@ -57,11 +57,12 @@ export type CompletedBoardState = Omit<ReadyBoardState, 'status'> & {
 }
 
 export type MigrationRequiredBoardState = Omit<ReadyBoardState, 'status'> & {
+  migrationRecap?: MigrationFlowRecap
   pendingMigrationBuckets: Array<BucketDb>
   status: 'migration_required'
 }
 
-type MigrationFlowRecap = {
+export type MigrationFlowRecap = {
   bucketBreakdown: Array<{
     bucket: BucketDb
     completedCount: number
@@ -230,7 +231,13 @@ export async function completeDayForUser({
   })
 
   if (readyState.status === 'migration_required') {
-    return readyState
+    return {
+      ...readyState,
+      migrationRecap: await getMigrationFlowRecap({
+        pendingMigrationBuckets: readyState.pendingMigrationBuckets,
+        repository,
+      }),
+    }
   }
 
   return {

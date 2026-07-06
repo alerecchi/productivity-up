@@ -1,6 +1,6 @@
 # Remove Prototype Routes After Real Implementation
 
-Status: ready-for-agent
+Status: done
 
 ## Parent
 
@@ -12,12 +12,12 @@ Remove the throwaway pre-migration and migration prototype artifacts once the re
 
 ## Acceptance criteria
 
-- [ ] The `/prototype/pre-migration` route and prototype-only state are removed.
-- [ ] The `/prototype/migration` route and prototype-only mock data are removed.
-- [ ] Prototype-only shared helpers are removed if no real code uses them.
-- [ ] Generated route artifacts no longer include removed prototype routes.
-- [ ] Obsolete prototype notes are removed or reduced to useful implementation documentation only.
-- [ ] The real implementation remains covered by the PRD and issue tests rather than prototype routes.
+- [x] The `/prototype/pre-migration` route and prototype-only state are removed.
+- [x] The `/prototype/migration` route and prototype-only mock data are removed.
+- [x] Prototype-only shared helpers are removed if no real code uses them.
+- [x] Generated route artifacts no longer include removed prototype routes.
+- [x] Obsolete prototype notes are removed or reduced to useful implementation documentation only.
+- [x] The real implementation remains covered by the PRD and issue tests rather than prototype routes.
 
 ## Blocked by
 
