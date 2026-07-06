@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 
+import { hasPendingMigrationBuckets } from '@/server/db/buckets'
 import { db } from '@/server/db/client'
 import { tags } from '@/server/db/schema/schema'
 import type { TagDbInsert } from '@/server/db/types'
@@ -96,6 +97,7 @@ const tagRepository: TagRepository = {
       where: and(eq(tags.userId, userId), eq(tags.name, name)),
     })
   },
+  hasPendingMigrationBuckets,
   async updateTag(tagId, userId, updates) {
     const [tag] = await db
       .update(tags)

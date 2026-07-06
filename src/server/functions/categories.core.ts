@@ -2,6 +2,7 @@ import { z } from 'zod'
 
 import { CategoryColorKeySchema } from '@/lib/types/Category'
 import type { CategoryDbInsert, CategoryDbSelect } from '@/server/db/types'
+import { requireNoPendingMigrationBuckets } from '@/server/functions/pending-migration-gate'
 import { errorResponse } from '@/server/utils'
 
 export class CategoryNameConflictError extends Error {
@@ -40,6 +41,7 @@ export type CategoryRepository = {
   createCategory: (category: CategoryDbInsert) => Promise<CategoryDbSelect>
   deleteCategory: (categoryId: number, userId: string) => Promise<DeletedCategory | undefined>
   findCategoryByName: (userId: string, name: string) => Promise<CategoryDbSelect | undefined>
+  hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
   listCategoriesForUser: (userId: string) => Promise<Array<CategoryDbSelect>>
   updateCategory: (
     categoryId: number,
@@ -72,6 +74,7 @@ type DeleteCategoryDependencies = {
 }
 
 export async function createCategoryForUser({ data, repository, userId }: CreateCategoryDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Categories')
   const name = normalizeCategoryName(data.name)
   const categoryWithName = await repository.findCategoryByName(userId, name)
 
@@ -99,6 +102,7 @@ export function listCategoriesForUser({ repository, userId }: ListCategoriesDepe
 }
 
 export async function updateCategoryForUser({ data, repository, userId }: UpdateCategoryDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Categories')
   const name = normalizeCategoryName(data.name)
   const categoryWithName = await repository.findCategoryByName(userId, name)
 
@@ -119,6 +123,7 @@ export async function updateCategoryForUser({ data, repository, userId }: Update
 }
 
 export async function deleteCategoryForUser({ data, repository, userId }: DeleteCategoryDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Categories')
   const deletedCategory = await repository.deleteCategory(data.id, userId)
 
   if (!deletedCategory) {

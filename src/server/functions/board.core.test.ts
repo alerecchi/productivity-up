@@ -678,7 +678,7 @@ describe('confirmMigrationStepForUser', () => {
         repository,
         userId: 'user-1',
       }),
-    ).rejects.toThrow('Migration Step conflict; refresh and retry')
+    ).rejects.toHaveProperty('status', 409)
 
     repository.moveTodoForMigration = originalMoveTodoForMigration
     const result = await confirmMigrationStepForUser({
@@ -705,6 +705,93 @@ describe('confirmMigrationStepForUser', () => {
       archivedAt: confirmedAt,
       status: 'archived',
     })
+  })
+
+  test('rejects submitted Todos that are no longer incomplete in the expected source Bucket', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026-W28', type: 'weekly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07-06', type: 'daily' }),
+        createBucket({ createdAt, id: 4, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+      ],
+      todos: [
+        createTodo({ bucketId: 4, completed: true, id: 12, position: 1024, title: 'Completed in another tab' }),
+        createTodo({ bucketId: 3, completed: false, id: 13, position: 1024, title: 'Moved in another tab' }),
+        createTodo({ bucketId: 4, completed: false, id: 14, position: 2048, title: 'Still pending' }),
+      ],
+      user: {
+        planningDate: '2026-07-06',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    await expect(
+      confirmMigrationStepForUser({
+        data: {
+          decisions: {
+            12: 'carry_forward',
+            13: 'carry_forward',
+            14: 'move_back',
+          },
+          sourceBucketId: 4,
+        },
+        repository,
+        userId: 'user-1',
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    await expect(repository.getTodosByBucket(2)).resolves.toEqual([])
+    await expect(repository.getTodosByBucket(3)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 3, id: 13, position: 1024 }),
+    ])
+    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 4, completed: true, id: 12 }),
+      expect.objectContaining({ bucketId: 4, completed: false, id: 14 }),
+    ])
+  })
+
+  test('returns a refreshable conflict when another tab already resolved the source Bucket', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const archivedAt = new Date('2026-07-06T09:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026-W28', type: 'weekly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07-06', type: 'daily' }),
+        createBucket({
+          archivedAt,
+          createdAt,
+          id: 4,
+          period: '2026-07-03',
+          status: 'archived',
+          type: 'daily',
+        }),
+      ],
+      todos: [createTodo({ bucketId: 3, completed: false, id: 12, position: 1024, title: 'Already carried' })],
+      user: {
+        planningDate: '2026-07-06',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    await expect(
+      confirmMigrationStepForUser({
+        data: {
+          decisions: {
+            12: 'carry_forward',
+          },
+          sourceBucketId: 4,
+        },
+        repository,
+        userId: 'user-1',
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    await expect(repository.getTodosByBucket(3)).resolves.toEqual([
+      expect.objectContaining({ bucketId: 3, id: 12, position: 1024 }),
+    ])
   })
 
   test('moves yearly Todos back to inbox when no broader time-based Bucket exists', async () => {
@@ -1020,12 +1107,14 @@ function createUser(overrides: Partial<UserDb>): UserDb {
 }
 
 function createBucket({
+  archivedAt = null,
   createdAt,
   id,
   period,
   status = 'active',
   type,
 }: {
+  archivedAt?: Date | null
   createdAt: Date
   id: number
   period: string
@@ -1033,7 +1122,7 @@ function createBucket({
   type: BucketType
 }): InMemoryBucket {
   return {
-    archivedAt: null,
+    archivedAt,
     createdAt,
     id,
     period,

@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 
+import { hasPendingMigrationBuckets } from '@/server/db/buckets'
 import { db } from '@/server/db/client'
 import { categories } from '@/server/db/schema/schema'
 import type { CategoryDbInsert } from '@/server/db/types'
@@ -91,6 +92,7 @@ const categoryRepository: CategoryRepository = {
       where: and(eq(categories.userId, userId), eq(categories.name, name)),
     })
   },
+  hasPendingMigrationBuckets,
   listCategoriesForUser(userId: string) {
     return db.query.categories.findMany({
       orderBy: [asc(categories.name)],

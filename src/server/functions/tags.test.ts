@@ -26,6 +26,7 @@ const createRepository = (overrides: Partial<TagRepository> = {}): TagRepository
   createTag: vi.fn((tagToCreate) => Promise.resolve({ id: 8, ...tagToCreate })),
   deleteTag: vi.fn((tagId, userId) => Promise.resolve({ tagId, userId })),
   findTagByName: vi.fn(() => Promise.resolve(undefined)),
+  hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(false)),
   listTagsForUser: vi.fn(() => Promise.resolve([])),
   updateTag: vi.fn((tagId, userId, updates) =>
     Promise.resolve({
@@ -60,6 +61,38 @@ describe('tag server behavior', () => {
       colorKey: 'green',
       name: 'urgent_now',
     })
+  })
+
+  it('rejects Tag management while a Pending Migration Bucket gates the board', async () => {
+    const repository = createRepository({
+      hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(true)),
+    })
+
+    await expect(
+      createTagForUser({
+        data: { colorKey: 'green', name: 'urgent' },
+        repository,
+        userId: existingTag.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      updateTagForUser({
+        data: { colorKey: 'green', id: existingTag.id, name: 'next_up' },
+        repository,
+        userId: existingTag.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      deleteTagForUser({
+        data: { id: existingTag.id },
+        repository,
+        userId: existingTag.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    expect(repository.createTag).not.toHaveBeenCalled()
+    expect(repository.updateTag).not.toHaveBeenCalled()
+    expect(repository.deleteTag).not.toHaveBeenCalled()
   })
 
   it('rejects duplicate Tag creation without selecting the existing Tag', async () => {

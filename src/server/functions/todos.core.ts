@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
 import type { BucketDb, CategoryDbSelect, TagDbSelect, TodoDbInsert, TodoDbSelect } from '@/server/db/types'
+import { requireNoPendingMigrationBuckets } from '@/server/functions/pending-migration-gate'
 import { errorResponse } from '@/server/utils'
 
 const TODO_POSITION_GAP = 1024
@@ -86,6 +87,7 @@ export type TodoRepository = {
   getMaxTodoPosition: (userId: string, bucketId: number) => Promise<number | null>
   // Returns Todos in persisted Todo Position order for the requested Bucket.
   getTodosByBucketForUser: (userId: string, bucketId: number) => Promise<Array<TodoWithCategoryDisplay>>
+  hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
   moveTodo: (
     todoId: number,
     userId: string,
@@ -129,6 +131,7 @@ type DeleteTodoDependencies = OperationDependencies & {
 }
 
 export async function createTodoForUser({ data, now = () => new Date(), repository, userId }: CreateTodoDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
   await requireOwnedActiveBucket(repository, userId, data.bucketId)
   const category = await requireOwnedCategoryIfPresent(repository, userId, data.categoryId)
   const tagIds = getUniqueTagIds(data.tagIds ?? [])
@@ -157,6 +160,7 @@ export async function getTodosForUser({ data, repository, userId }: GetTodosDepe
 }
 
 export async function updateTodoForUser({ data, repository, userId }: UpdateTodoDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
   const existingTodo = await repository.findOwnedTodoWithBucket(userId, data.id)
 
   if (!existingTodo) {
@@ -208,6 +212,7 @@ export async function updateTodoForUser({ data, repository, userId }: UpdateTodo
 }
 
 export async function moveTodoForUser({ data, repository, userId }: MoveTodoDependencies): Promise<MovedTodo> {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
   const existingTodo = await repository.findOwnedTodoWithBucket(userId, data.id)
 
   if (!existingTodo) {
@@ -267,6 +272,17 @@ export async function moveTodoForUser({ data, repository, userId }: MoveTodoDepe
 }
 
 export async function deleteTodoForUser({ data, repository, userId }: DeleteTodoDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
+  const existingTodo = await repository.findOwnedTodoWithBucket(userId, data.id)
+
+  if (!existingTodo) {
+    throw errorResponse(404, 'Todo not found or unauthorized')
+  }
+
+  if (existingTodo.bucket.status !== 'active') {
+    throw errorResponse(409, 'Cannot delete a Todo from an archived or pending migration Bucket')
+  }
+
   const deletedTodo = await repository.deleteTodo(data.id, userId)
 
   if (!deletedTodo) {

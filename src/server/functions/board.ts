@@ -44,7 +44,7 @@ export const getBoard = createServerFn()
     })
   })
 
-export const completeDay = createServerFn()
+export const completeDay = createServerFn({ method: 'POST' })
   .middleware([authRequiredMiddleware])
   .handler(async ({ context }) => {
     return completeDayForUser({

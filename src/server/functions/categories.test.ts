@@ -26,6 +26,7 @@ const createRepository = (overrides: Partial<CategoryRepository> = {}): Category
   createCategory: vi.fn((categoryToCreate) => Promise.resolve({ id: 8, ...categoryToCreate })),
   deleteCategory: vi.fn((categoryId, userId) => Promise.resolve({ categoryId, userId })),
   findCategoryByName: vi.fn(() => Promise.resolve(undefined)),
+  hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(false)),
   updateCategory: vi.fn((categoryId, userId, updates) =>
     Promise.resolve({
       ...existingCategory,
@@ -61,6 +62,38 @@ describe('category server behavior', () => {
       name: 'home admin',
       userId: existingCategory.userId,
     })
+  })
+
+  it('rejects Category management while a Pending Migration Bucket gates the board', async () => {
+    const repository = createRepository({
+      hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(true)),
+    })
+
+    await expect(
+      createCategoryForUser({
+        data: { colorKey: 'green', name: 'home admin' },
+        repository,
+        userId: existingCategory.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      updateCategoryForUser({
+        data: { colorKey: 'green', id: existingCategory.id, name: 'life admin' },
+        repository,
+        userId: existingCategory.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      deleteCategoryForUser({
+        data: { id: existingCategory.id },
+        repository,
+        userId: existingCategory.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    expect(repository.createCategory).not.toHaveBeenCalled()
+    expect(repository.updateCategory).not.toHaveBeenCalled()
+    expect(repository.deleteCategory).not.toHaveBeenCalled()
   })
 
   it('rejects duplicate Category creation without selecting the existing Category', async () => {

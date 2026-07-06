@@ -3,6 +3,7 @@ import type { BucketType } from '@/lib/types/Bucket'
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
 import type { BucketDb, TodoDbSelect, UserDb } from '@/server/db/types'
+import { errorResponse } from '@/server/utils'
 
 const ENABLED_BUCKET_HORIZONS = ['yearly', 'monthly', 'weekly', 'daily'] as const
 const TODO_POSITION_GAP = 1024
@@ -261,8 +262,12 @@ export async function confirmMigrationStepForUser({
 
   const sourceBucket = await repository.findBucketById(userId, data.sourceBucketId)
 
-  if (!sourceBucket || sourceBucket.status !== 'pending_migration' || sourceBucket.type === 'inbox') {
-    throw new Error('Pending Migration Bucket not found')
+  if (!sourceBucket) {
+    throw errorResponse(404, 'Pending Migration Bucket not found')
+  }
+
+  if (sourceBucket.status !== 'pending_migration' || sourceBucket.type === 'inbox') {
+    throw errorResponse(409, 'Migration Step conflict; refresh and retry')
   }
 
   const sourceTodos = (await repository.getTodosByBucket(sourceBucket.id)).toSorted(
@@ -270,7 +275,14 @@ export async function confirmMigrationStepForUser({
   )
   const incompleteTodos = sourceTodos.filter((todo) => !todo.completed)
 
-  assertDecisionMapCoversIncompleteTodos(data.decisions, incompleteTodos)
+  await assertDecisionMapMatchesMigrationState({
+    decisions: data.decisions,
+    incompleteTodos,
+    planningDate: user.planningDate,
+    repository,
+    sourceBucket,
+    userId,
+  })
 
   const migratedTodoPositions: Array<Pick<TodoDbSelect, 'bucketId' | 'id' | 'position'>> = []
   const nextPositionsByBucketId = new Map<number, number>()
@@ -303,7 +315,7 @@ export async function confirmMigrationStepForUser({
     })
 
     if (!movedTodo) {
-      throw new Error('Migration Step conflict; refresh and retry')
+      throw errorResponse(409, 'Migration Step conflict; refresh and retry')
     }
 
     migratedTodoPositions.push({
@@ -440,12 +452,53 @@ async function reconcileExpiredBucketsForBoardLoad({
   }
 }
 
-function assertDecisionMapCoversIncompleteTodos(
-  decisions: Partial<Record<number, MigrationDecision>>,
-  incompleteTodos: Array<TodoDbSelect>,
-) {
-  if (incompleteTodos.some((todo) => decisions[todo.id] === undefined)) {
-    throw new Error('Migration Step requires decisions for all current incomplete Todos')
+async function assertDecisionMapMatchesMigrationState({
+  decisions,
+  incompleteTodos,
+  planningDate,
+  repository,
+  sourceBucket,
+  userId,
+}: {
+  decisions: Partial<Record<number, MigrationDecision>>
+  incompleteTodos: Array<TodoDbSelect>
+  planningDate: string
+  repository: BoardRepository
+  sourceBucket: BucketDb
+  userId: string
+}) {
+  const incompleteTodoIds = new Set(incompleteTodos.map((todo) => todo.id))
+  const submittedTodoIds = Object.keys(decisions).map(Number)
+  const hasMissingDecision = incompleteTodos.some((todo) => decisions[todo.id] === undefined)
+
+  if (hasMissingDecision) {
+    throw errorResponse(409, 'Migration Step requires decisions for all current incomplete Todos')
+  }
+
+  for (const todoId of submittedTodoIds) {
+    if (incompleteTodoIds.has(todoId)) {
+      continue
+    }
+
+    const decision = decisions[todoId]
+
+    if (!decision) {
+      throw errorResponse(409, 'Migration Step conflict; refresh and retry')
+    }
+
+    const destinationBucket = await getMigrationDestinationBucket({
+      decision,
+      planningDate,
+      repository,
+      sourceBucket,
+      userId,
+    })
+    const destinationTodos = await repository.getTodosByBucket(destinationBucket.id)
+    const alreadyAppliedTodo = destinationTodos.find((todo) => todo.id === todoId && !todo.completed)
+
+    if (!alreadyAppliedTodo) {
+      throw errorResponse(409, 'Migration Step conflict; refresh and retry')
+    }
   }
 }
 

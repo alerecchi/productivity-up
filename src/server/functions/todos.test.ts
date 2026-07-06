@@ -50,6 +50,13 @@ const otherActiveBucket = {
   type: 'monthly',
 } as const
 
+const archivedBucket = {
+  ...activeBucket,
+  archivedAt: new Date('2026-06-12T08:00:00.000Z'),
+  id: 4,
+  status: 'archived',
+} as const
+
 const existingTodo = {
   bucket: activeBucket,
   bucketId: activeBucket.id,
@@ -76,6 +83,7 @@ const createRepository = (overrides: Partial<TodoRepository> = {}): TodoReposito
   findOwnedTodoWithBucket: vi.fn(),
   getMaxTodoPosition: vi.fn(() => Promise.resolve(null)),
   getTodosByBucketForUser: vi.fn(() => Promise.resolve([])),
+  hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(false)),
   moveTodo: vi.fn(),
   replaceTodoTags: vi.fn(() => Promise.resolve()),
   updateTodo: vi.fn(),
@@ -117,6 +125,50 @@ describe('todo server behavior', () => {
       title: 'Pay rent',
       userId: activeBucket.userId,
     })
+  })
+
+  it('rejects normal Todo mutations while a Pending Migration Bucket gates the board', async () => {
+    const repository = createRepository({
+      deleteTodo: vi.fn(() => Promise.resolve({ bucketId: activeBucket.id, todoId: existingTodo.id })),
+      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
+      hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(true)),
+      moveTodo: vi.fn(() => Promise.resolve({ status: 'moved' as const, todo: existingTodo })),
+      updateTodo: vi.fn(() => Promise.resolve(existingTodo)),
+    })
+
+    await expect(
+      createTodoForUser({
+        data: { bucketId: activeBucket.id, title: 'Pay rent' },
+        repository,
+        userId: activeBucket.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      updateTodoForUser({
+        data: { completed: true, id: existingTodo.id },
+        repository,
+        userId: activeBucket.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      moveTodoForUser({
+        data: { id: existingTodo.id, targetBucketId: activeBucket.id },
+        repository,
+        userId: activeBucket.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+    await expect(
+      deleteTodoForUser({
+        data: { id: existingTodo.id },
+        repository,
+        userId: activeBucket.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    expect(repository.createTodo).not.toHaveBeenCalled()
+    expect(repository.updateTodo).not.toHaveBeenCalled()
+    expect(repository.moveTodo).not.toHaveBeenCalled()
+    expect(repository.deleteTodo).not.toHaveBeenCalled()
   })
 
   it('stores a whitespace-only description as an empty string', async () => {
@@ -923,6 +975,7 @@ describe('todo server behavior', () => {
     }
     const repository = createRepository({
       deleteTodo: vi.fn(() => Promise.resolve(deletedTodo)),
+      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
     })
 
     await expect(
@@ -933,7 +986,31 @@ describe('todo server behavior', () => {
       }),
     ).resolves.toEqual(deletedTodo)
 
+    expect(repository.findOwnedTodoWithBucket).toHaveBeenCalledWith(activeBucket.userId, existingTodo.id)
     expect(repository.deleteTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId)
+  })
+
+  it('rejects deleting a Todo from an archived Bucket', async () => {
+    const repository = createRepository({
+      deleteTodo: vi.fn(() => Promise.resolve({ bucketId: archivedBucket.id, todoId: existingTodo.id })),
+      findOwnedTodoWithBucket: vi.fn(() =>
+        Promise.resolve({
+          ...existingTodo,
+          bucket: archivedBucket,
+          bucketId: archivedBucket.id,
+        }),
+      ),
+    })
+
+    await expect(
+      deleteTodoForUser({
+        data: { id: existingTodo.id },
+        repository,
+        userId: activeBucket.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    expect(repository.deleteTodo).not.toHaveBeenCalled()
   })
 
   it('rejects deleting a nonexistent Todo', async () => {
@@ -949,7 +1026,8 @@ describe('todo server behavior', () => {
       }),
     ).rejects.toHaveProperty('status', 404)
 
-    expect(repository.deleteTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId)
+    expect(repository.findOwnedTodoWithBucket).toHaveBeenCalledWith(activeBucket.userId, existingTodo.id)
+    expect(repository.deleteTodo).not.toHaveBeenCalled()
   })
 
   it('deletes todos only when the todo belongs to the current user', async () => {
@@ -965,6 +1043,7 @@ describe('todo server behavior', () => {
       }),
     ).rejects.toHaveProperty('status', 404)
 
-    expect(repository.deleteTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId)
+    expect(repository.findOwnedTodoWithBucket).toHaveBeenCalledWith(activeBucket.userId, existingTodo.id)
+    expect(repository.deleteTodo).not.toHaveBeenCalled()
   })
 })

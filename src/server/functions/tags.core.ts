@@ -3,6 +3,7 @@ import { z } from 'zod'
 import type { TagDisplay } from '@/lib/types/Tag'
 import { TagColorKeySchema } from '@/lib/types/Tag'
 import type { TagDbInsert, TagDbSelect } from '@/server/db/types'
+import { requireNoPendingMigrationBuckets } from '@/server/functions/pending-migration-gate'
 import { errorResponse } from '@/server/utils'
 
 export class TagNameConflictError extends Error {
@@ -49,6 +50,7 @@ export type TagRepository = {
   createTag: (tag: TagDbInsert) => Promise<TagDbSelect>
   deleteTag: (tagId: number, userId: string) => Promise<DeletedTag | undefined>
   findTagByName: (userId: string, name: string) => Promise<TagDbSelect | undefined>
+  hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
   listTagsForUser: (userId: string) => Promise<Array<TagDbSelect>>
   updateTag: (
     tagId: number,
@@ -81,6 +83,7 @@ type DeleteTagDependencies = {
 }
 
 export async function createTagForUser({ data, repository, userId }: CreateTagDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Tags')
   const tagWithName = await repository.findTagByName(userId, data.name)
 
   if (tagWithName) {
@@ -111,6 +114,7 @@ export async function listTagsForUser({ repository, userId }: ListTagsDependenci
 }
 
 export async function updateTagForUser({ data, repository, userId }: UpdateTagDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Tags')
   const tagWithName = await repository.findTagByName(userId, data.name)
 
   if (tagWithName && tagWithName.id !== data.id) {
@@ -138,6 +142,7 @@ export async function updateTagForUser({ data, repository, userId }: UpdateTagDe
 }
 
 export async function deleteTagForUser({ data, repository, userId }: DeleteTagDependencies) {
+  await requireNoPendingMigrationBuckets(repository, userId, 'Tags')
   const deletedTag = await repository.deleteTag(data.id, userId)
 
   if (!deletedTag) {

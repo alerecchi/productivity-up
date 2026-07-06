@@ -1,6 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq, inArray, max } from 'drizzle-orm'
 
+import { hasPendingMigrationBuckets } from '@/server/db/buckets'
 import { db } from '@/server/db/client'
 import { buckets, categories, tags, todoTags, todos } from '@/server/db/schema/schema'
 import type { TagDbSelect, TodoDbInsert } from '@/server/db/types'
@@ -153,6 +154,7 @@ const todoRepository: TodoRepository = {
 
     return bucketTodos.map(withTags)
   },
+  hasPendingMigrationBuckets,
   async moveTodo(todoId, userId, move) {
     const sourceBucket = await db.query.buckets.findFirst({
       columns: {
