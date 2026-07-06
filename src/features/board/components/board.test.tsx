@@ -64,6 +64,7 @@ const mockedGetMigrationStep = vi.mocked(getMigrationStep)
 
 describe('Board lifecycle controls', () => {
   beforeEach(() => {
+    window.sessionStorage.clear()
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-07-03T15:30:00.000Z'))
     mockedCompleteDay.mockReset()
@@ -157,6 +158,11 @@ describe('Board lifecycle controls', () => {
     mockedGetMigrationStep.mockResolvedValue({
       carryForwardDestination: tomorrowBuckets[4],
       completedCount: 1,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, incompleteCount: 2 }],
+        completedCount: 1,
+        incompleteCount: 2,
+      },
       incompleteCount: 2,
       moveBackDestination: tomorrowBuckets[3],
       pendingMigrationBuckets: [pendingBucket],
@@ -196,9 +202,13 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    expect(await screen.findByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Completion Recap' })).toBeInTheDocument()
     expect(screen.queryByLabelText('Todo Buckets board')).not.toBeInTheDocument()
-    expect(screen.getByText('2 incomplete and 1 completed in Daily 2026-07-03.')).toBeInTheDocument()
+    expect(screen.getByText('1 completed')).toBeInTheDocument()
+    expect(screen.getByText('2 incomplete')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Start migration' }))
+
+    expect(screen.getByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
     expect(screen.getByText('Move this back')).toBeInTheDocument()
     expect(screen.getByText('Carry this forward')).toBeInTheDocument()
     expect(screen.getByText('Work')).toBeInTheDocument()
@@ -225,6 +235,8 @@ describe('Board lifecycle controls', () => {
       planningDate: '2026-07-04',
       status: 'ready',
     })
+    expect(await screen.findByLabelText('Todo Buckets board')).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /migration complete/i })).not.toBeInTheDocument()
   })
 })
 

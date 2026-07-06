@@ -60,6 +60,16 @@ export type MigrationRequiredBoardState = Omit<ReadyBoardState, 'status'> & {
   status: 'migration_required'
 }
 
+type MigrationFlowRecap = {
+  bucketBreakdown: Array<{
+    bucket: BucketDb
+    completedCount: number
+    incompleteCount: number
+  }>
+  completedCount: number
+  incompleteCount: number
+}
+
 type LoadBoardDependencies = {
   browserTimeZone?: string
   now?: () => Date
@@ -365,11 +375,40 @@ export async function getMigrationStepForUser({ data, repository, userId }: GetM
   return {
     carryForwardDestination,
     completedCount: todos.length - incompleteTodos.length,
+    flowRecap: await getMigrationFlowRecap({ pendingMigrationBuckets, repository }),
     incompleteCount: incompleteTodos.length,
     moveBackDestination,
     pendingMigrationBuckets,
     sourceBucket,
     todos: incompleteTodos,
+  }
+}
+
+async function getMigrationFlowRecap({
+  pendingMigrationBuckets,
+  repository,
+}: {
+  pendingMigrationBuckets: Array<BucketDb>
+  repository: BoardRepository
+}): Promise<MigrationFlowRecap> {
+  const bucketBreakdown = []
+
+  for (const bucket of pendingMigrationBuckets) {
+    const todos = await repository.getTodosByBucket(bucket.id)
+    const completedCount = todos.filter((todo) => todo.completed).length
+    const incompleteCount = todos.length - completedCount
+
+    bucketBreakdown.push({
+      bucket,
+      completedCount,
+      incompleteCount,
+    })
+  }
+
+  return {
+    bucketBreakdown,
+    completedCount: bucketBreakdown.reduce((total, row) => total + row.completedCount, 0),
+    incompleteCount: bucketBreakdown.reduce((total, row) => total + row.incompleteCount, 0),
   }
 }
 
