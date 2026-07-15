@@ -1,4 +1,4 @@
-const MIGRATION_FLOW_STARTED_STORAGE_KEY = 'todo-buckets:migration-flow-started'
+const MIGRATION_FLOW_STARTED_STORAGE_KEY = 'productivity-up:migration-flow-started'
 
 export function clearStoredMigrationFlowStarted() {
   if (typeof window === 'undefined') {

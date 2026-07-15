@@ -19,10 +19,11 @@ import type { Todo } from '@/lib/types/Todo'
 interface BucketProps {
   bucket: Bucket
   buckets: Array<Bucket>
+  isPlanningBucket?: boolean
 }
 
 // TODO order for todos
-export function BucketColumn({ bucket, buckets }: BucketProps) {
+export function BucketColumn({ bucket, buckets, isPlanningBucket = false }: BucketProps) {
   const { data: todoList = [] } = useSuspenseQuery(getTodosQueryOptions(bucket.id))
   const pendingTodoMove = usePendingTodoMove()
   const displayedTodos = applyPendingTodoMove(todoList, bucket.id, pendingTodoMove)
@@ -32,8 +33,15 @@ export function BucketColumn({ bucket, buckets }: BucketProps) {
   const headingId = `bucket-${bucket.id}-heading`
 
   return (
-    <section aria-labelledby={headingId} className='flex h-full min-h-0 w-80 shrink-0 flex-col gap-4'>
-      <header className='sticky top-0 z-10 flex shrink-0 flex-row items-center gap-2 bg-background py-1'>
+    <section
+      aria-labelledby={headingId}
+      className={cn(
+        'flex h-full min-h-0 w-80 shrink-0 flex-col gap-4 rounded-lg p-2 transition-colors',
+        isPlanningBucket && 'bg-primary/5',
+      )}
+      data-planning-bucket={isPlanningBucket}
+    >
+      <header className='sticky top-0 z-10 flex shrink-0 flex-row items-center gap-2 bg-inherit py-1'>
         <div className={cn('rounded-sm p-2', textColor, bgColor)}>
           <Icon className='size-6' />
         </div>

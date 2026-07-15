@@ -15,7 +15,7 @@ import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop
 import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
 import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
 import { Button } from '@/features/shared/components/ui/button'
-import { getTodayLocalDate } from '@/lib/periods'
+import { getTodayLocalDate, isFutureBucket } from '@/lib/periods'
 import type { Bucket } from '@/lib/types/Bucket'
 import { completeDay } from '@/server/functions/board'
 
@@ -112,7 +112,12 @@ export function Board() {
             role='region'
           >
             {sortedBuckets.map((bucket: Bucket) => (
-              <BucketColumn key={bucket.id} bucket={bucket} buckets={sortedBuckets} />
+              <BucketColumn
+                key={bucket.id}
+                bucket={bucket}
+                buckets={sortedBuckets}
+                isPlanningBucket={isFutureBucket({ bucket, planningDate: board.planningDate, today })}
+              />
             ))}
           </div>
         </TodoDragDropProvider>

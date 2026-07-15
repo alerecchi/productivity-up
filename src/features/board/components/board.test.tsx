@@ -10,7 +10,9 @@ import { completeDay, confirmMigrationStep, getMigrationStep } from '@/server/fu
 import { createTestQueryClient, render } from '@/test'
 
 vi.mock('@/features/board/components/bucket-column', () => ({
-  BucketColumn: ({ bucket }: { bucket: Bucket }) => <section aria-label={`${bucket.type} Bucket`} />,
+  BucketColumn: ({ bucket, isPlanningBucket }: { bucket: Bucket; isPlanningBucket?: boolean }) => (
+    <section aria-label={`${bucket.type} Bucket`} data-planning-bucket={isPlanningBucket} />
+  ),
 }))
 
 vi.mock('@/features/board/components/todo-drag-drop-provider', () => ({
@@ -175,6 +177,11 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByText('Planning tomorrow')).toBeInTheDocument()
     expect(screen.getAllByText('Complete day is disabled while planning ahead.').length).toBeGreaterThan(0)
     expect(screen.getByRole('button', { name: 'Complete day' })).toBeDisabled()
+    expect(screen.getByLabelText('inbox Bucket')).toHaveAttribute('data-planning-bucket', 'false')
+    expect(screen.getByLabelText('yearly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
+    expect(screen.getByLabelText('monthly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
+    expect(screen.getByLabelText('weekly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
+    expect(screen.getByLabelText('daily Bucket')).toHaveAttribute('data-planning-bucket', 'true')
   })
 
   it('shows toast feedback when Complete day fails', async () => {

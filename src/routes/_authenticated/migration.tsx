@@ -9,6 +9,6 @@ export const Route = createFileRoute('/_authenticated/migration')({
   beforeLoad: ({ context, location }) => {
     redirectIfNotAuthenticated(context.user, location.href)
   },
-  loader: ({ context }) => context.queryClient.ensureQueryData(getBoardQueryOptions),
+  loader: ({ context }) => context.queryClient.fetchQuery(getBoardQueryOptions),
   component: MigrationRouteContent,
 })
