@@ -62,7 +62,7 @@ When folders contain many elements that are exported for other modules/component
 
 ### Issue tracker
 
-Issues and PRDs are tracked as local markdown files under `.scratch/`. See `docs/agents/issue-tracker.md`.
+Issues and PRDs are tracked as GitHub issues using the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
