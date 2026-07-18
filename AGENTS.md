@@ -2,7 +2,7 @@
 
 ## Project Snapshot
 
-Todo Buckets is an opinionated Todo App that uses time-based buckets (e.g. This Year, This Month, This Week, Today) to manage your todos (Kanban style, todos should flow from bigger sized buckets to smaller ones).
+Productivity Up is an opinionated Todo App that uses time-based buckets (e.g. This Year, This Month, This Week, Today) to manage your todos (Kanban style, todos should flow from bigger sized buckets to smaller ones).
 This repository is a VERY EARLY WIP. Larger maintainability proposals are welcome when justified.
 
 ## Core Priorities

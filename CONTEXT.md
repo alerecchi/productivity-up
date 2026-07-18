@@ -1,6 +1,6 @@
-# Todo Buckets
+# Productivity Up
 
-Todo Buckets is a todo management context organized around moving work from broader time horizons into narrower ones.
+Productivity Up is a todo management context organized around moving work from broader time horizons into narrower ones.
 
 ## Language
 
@@ -63,6 +63,10 @@ _Avoid_: Batch migration, bulk rollover.
 **Migration Step**:
 One bucket migration inside a migration flow. A migration step becomes durable only when the user confirms its choices.
 _Avoid_: Draft migration, partial migration.
+
+**Planning Flow**:
+An optional, finite guided experience for pulling incomplete Todos from broader Buckets into newly created Buckets after Lifecycle Reconciliation and any required Migration Flow have finished. Except during initial board creation, a new Bucket is eligible whenever at least one broader Bucket contains an incomplete Todo, regardless of which lifecycle action created it. Eligible Buckets are planned independently from broader to narrower horizons. Users may also create, inspect, edit, and complete Todos while planning. A Planning Flow can be entered only once; leaving it consumes the opportunity, while dismissing the initial invitation leaves a quieter Bucket callout until the Bucket is self-planned or the flow begins.
+_Avoid_: Planning mode, mandatory planning.
 
 **Completion Recap**:
 A summary shown before a migration flow begins, or after the user manually completes the most granular bucket with nothing left to migrate. It gives feedback on completed and incomplete todos in the buckets that need attention.

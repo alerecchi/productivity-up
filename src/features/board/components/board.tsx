@@ -106,7 +106,7 @@ export function Board() {
         </header>
         <TodoDragDropProvider>
           <div
-            aria-label='Todo Buckets board'
+            aria-label='Productivity Up board'
             className={`flex min-h-0 flex-1 flex-row gap-6 overflow-x-auto overflow-y-hidden px-6 py-6 transition ${isMigrationRequired ? 'pointer-events-none blur-sm select-none' : ''}`}
             data-todo-board
             role='region'

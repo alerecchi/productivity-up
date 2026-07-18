@@ -457,7 +457,7 @@ describe('Bucket column layout', () => {
 
     render(<Board />, { queryClient })
 
-    expect(screen.getByRole('region', { name: 'Todo Buckets board' })).toHaveClass(
+    expect(screen.getByRole('region', { name: 'Productivity Up board' })).toHaveClass(
       'flex-1',
       'min-h-0',
       'overflow-x-auto',
@@ -502,7 +502,7 @@ describe('Bucket column layout', () => {
 
     render(<Board />, { queryClient })
 
-    const board = screen.getByRole('region', { name: 'Todo Buckets board' })
+    const board = screen.getByRole('region', { name: 'Productivity Up board' })
     board.scrollBy = vi.fn()
     board.getBoundingClientRect = () =>
       ({
