@@ -5,12 +5,6 @@
 Productivity Up is an opinionated Todo App that uses time-based buckets (e.g. This Year, This Month, This Week, Today) to manage your todos (Kanban style, todos should flow from bigger sized buckets to smaller ones).
 This repository is a VERY EARLY WIP. Larger maintainability proposals are welcome when justified.
 
-## Core Priorities
-
-1. Performance
-2. Reliability
-3. Maintainability
-
 ## Tech Stack
 
 The current stack is:
@@ -24,7 +18,6 @@ The current stack is:
 - Zod for validation;
 - Drizzle as a DB ORM (using a Neon backend)
 - Tailwind v4 and shadcn/ui for CSS and UI components. Prefer using shadcn's components when available over creating your own. Never use BaseUI components directly, better propose to install the shadcn component.
-- Sonner (via shadcn) for global toast notifications.
 
 For the TanStack libraries, you have access to the TanStack CLI and you can query docs using that:
 `tanstack search-docs <query> [options]`
