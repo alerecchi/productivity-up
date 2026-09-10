@@ -9,55 +9,25 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as AuthPagesRouteRouteImport } from './routes/_auth-pages/route'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as AuthenticatedMigrationRouteImport } from './routes/_authenticated/migration'
-import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
-import { Route as AuthPagesSignupRouteImport } from './routes/_auth-pages/signup'
-import { Route as AuthPagesResetPasswordRouteImport } from './routes/_auth-pages/reset-password'
-import { Route as AuthPagesLoginRouteImport } from './routes/_auth-pages/login'
-import { Route as AuthPagesEmailVerifiedRouteImport } from './routes/_auth-pages/email-verified'
+import { Route as AuthPagesRouteRouteImport } from './routes/_auth-pages/route'
 import { Route as AuthPagesEmailConfirmationRouteImport } from './routes/_auth-pages/email-confirmation'
+import { Route as AuthPagesEmailVerifiedRouteImport } from './routes/_auth-pages/email-verified'
+import { Route as AuthPagesLoginRouteImport } from './routes/_auth-pages/login'
+import { Route as AuthPagesResetPasswordRouteImport } from './routes/_auth-pages/reset-password'
+import { Route as AuthPagesSignupRouteImport } from './routes/_auth-pages/signup'
+import { Route as AuthenticatedBoardRouteImport } from './routes/_authenticated/board'
+import { Route as AuthenticatedMigrationRouteImport } from './routes/_authenticated/migration'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 
-const AuthPagesRouteRoute = AuthPagesRouteRouteImport.update({
-  id: '/_auth-pages',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const AuthenticatedMigrationRoute = AuthenticatedMigrationRouteImport.update({
-  id: '/_authenticated/migration',
-  path: '/migration',
+const AuthPagesRouteRoute = AuthPagesRouteRouteImport.update({
+  id: '/_auth-pages',
   getParentRoute: () => rootRouteImport,
-} as any)
-const AuthenticatedBoardRoute = AuthenticatedBoardRouteImport.update({
-  id: '/_authenticated/board',
-  path: '/board',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthPagesSignupRoute = AuthPagesSignupRouteImport.update({
-  id: '/signup',
-  path: '/signup',
-  getParentRoute: () => AuthPagesRouteRoute,
-} as any)
-const AuthPagesResetPasswordRoute = AuthPagesResetPasswordRouteImport.update({
-  id: '/reset-password',
-  path: '/reset-password',
-  getParentRoute: () => AuthPagesRouteRoute,
-} as any)
-const AuthPagesLoginRoute = AuthPagesLoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => AuthPagesRouteRoute,
-} as any)
-const AuthPagesEmailVerifiedRoute = AuthPagesEmailVerifiedRouteImport.update({
-  id: '/email-verified',
-  path: '/email-verified',
-  getParentRoute: () => AuthPagesRouteRoute,
 } as any)
 const AuthPagesEmailConfirmationRoute =
   AuthPagesEmailConfirmationRouteImport.update({
@@ -65,6 +35,36 @@ const AuthPagesEmailConfirmationRoute =
     path: '/email-confirmation',
     getParentRoute: () => AuthPagesRouteRoute,
   } as any)
+const AuthPagesEmailVerifiedRoute = AuthPagesEmailVerifiedRouteImport.update({
+  id: '/email-verified',
+  path: '/email-verified',
+  getParentRoute: () => AuthPagesRouteRoute,
+} as any)
+const AuthPagesLoginRoute = AuthPagesLoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => AuthPagesRouteRoute,
+} as any)
+const AuthPagesResetPasswordRoute = AuthPagesResetPasswordRouteImport.update({
+  id: '/reset-password',
+  path: '/reset-password',
+  getParentRoute: () => AuthPagesRouteRoute,
+} as any)
+const AuthPagesSignupRoute = AuthPagesSignupRouteImport.update({
+  id: '/signup',
+  path: '/signup',
+  getParentRoute: () => AuthPagesRouteRoute,
+} as any)
+const AuthenticatedBoardRoute = AuthenticatedBoardRouteImport.update({
+  id: '/_authenticated/board',
+  path: '/board',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedMigrationRoute = AuthenticatedMigrationRouteImport.update({
+  id: '/_authenticated/migration',
+  path: '/migration',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -153,13 +153,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/_auth-pages': {
-      id: '/_auth-pages'
-      path: ''
-      fullPath: '/'
-      preLoaderRoute: typeof AuthPagesRouteRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -167,39 +160,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/migration': {
-      id: '/_authenticated/migration'
-      path: '/migration'
-      fullPath: '/migration'
-      preLoaderRoute: typeof AuthenticatedMigrationRouteImport
+    '/_auth-pages': {
+      id: '/_auth-pages'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AuthPagesRouteRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_authenticated/board': {
-      id: '/_authenticated/board'
-      path: '/board'
-      fullPath: '/board'
-      preLoaderRoute: typeof AuthenticatedBoardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/_auth-pages/signup': {
-      id: '/_auth-pages/signup'
-      path: '/signup'
-      fullPath: '/signup'
-      preLoaderRoute: typeof AuthPagesSignupRouteImport
-      parentRoute: typeof AuthPagesRouteRoute
-    }
-    '/_auth-pages/reset-password': {
-      id: '/_auth-pages/reset-password'
-      path: '/reset-password'
-      fullPath: '/reset-password'
-      preLoaderRoute: typeof AuthPagesResetPasswordRouteImport
-      parentRoute: typeof AuthPagesRouteRoute
-    }
-    '/_auth-pages/login': {
-      id: '/_auth-pages/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof AuthPagesLoginRouteImport
+    '/_auth-pages/email-confirmation': {
+      id: '/_auth-pages/email-confirmation'
+      path: '/email-confirmation'
+      fullPath: '/email-confirmation'
+      preLoaderRoute: typeof AuthPagesEmailConfirmationRouteImport
       parentRoute: typeof AuthPagesRouteRoute
     }
     '/_auth-pages/email-verified': {
@@ -209,12 +181,40 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthPagesEmailVerifiedRouteImport
       parentRoute: typeof AuthPagesRouteRoute
     }
-    '/_auth-pages/email-confirmation': {
-      id: '/_auth-pages/email-confirmation'
-      path: '/email-confirmation'
-      fullPath: '/email-confirmation'
-      preLoaderRoute: typeof AuthPagesEmailConfirmationRouteImport
+    '/_auth-pages/login': {
+      id: '/_auth-pages/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof AuthPagesLoginRouteImport
       parentRoute: typeof AuthPagesRouteRoute
+    }
+    '/_auth-pages/reset-password': {
+      id: '/_auth-pages/reset-password'
+      path: '/reset-password'
+      fullPath: '/reset-password'
+      preLoaderRoute: typeof AuthPagesResetPasswordRouteImport
+      parentRoute: typeof AuthPagesRouteRoute
+    }
+    '/_auth-pages/signup': {
+      id: '/_auth-pages/signup'
+      path: '/signup'
+      fullPath: '/signup'
+      preLoaderRoute: typeof AuthPagesSignupRouteImport
+      parentRoute: typeof AuthPagesRouteRoute
+    }
+    '/_authenticated/board': {
+      id: '/_authenticated/board'
+      path: '/board'
+      fullPath: '/board'
+      preLoaderRoute: typeof AuthenticatedBoardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/migration': {
+      id: '/_authenticated/migration'
+      path: '/migration'
+      fullPath: '/migration'
+      preLoaderRoute: typeof AuthenticatedMigrationRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/api/auth/$': {
       id: '/api/auth/$'

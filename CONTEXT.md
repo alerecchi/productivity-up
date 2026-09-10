@@ -81,7 +81,7 @@ The placement of a todo relative to other todos in the same bucket. A todo's pos
 _Avoid_: Ephemeral UI order, sort order.
 
 **User**:
-A person who uses the app. A user may have an authenticated session before completing every account-verification step; verification affects access rules, not whether the person is signed in.
+A person who uses the app. A User may have an authenticated session before verifying their email, but may only check or resend verification, sign out, and recover the account until verification succeeds.
 _Avoid_: Account when referring to the person.
 
 **User Timezone**:
