@@ -1,9 +1,12 @@
 import { createServerFn } from '@tanstack/react-start'
 import { getRequest } from '@tanstack/react-start/server'
 
-import { auth } from '@/server/auth'
+import { createAuth } from '@/server/auth'
+import { databaseMiddleware } from '@/server/middlewares/database-middleware'
 
-export const getUserSession = createServerFn({ method: 'GET' }).handler(async () => {
-  const request = getRequest()
-  return await auth.api.getSession({ headers: request.headers })
-})
+export const getUserSession = createServerFn({ method: 'GET' })
+  .middleware([databaseMiddleware])
+  .handler(async ({ context }) => {
+    const request = getRequest()
+    return await createAuth(context.db).api.getSession({ headers: request.headers })
+  })

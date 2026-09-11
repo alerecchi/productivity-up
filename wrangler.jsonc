@@ -1,0 +1,61 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "productivity-up",
+  "main": "@tanstack/react-start/server-entry",
+  "compatibility_date": "2026-09-10",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true,
+    },
+  },
+  "env": {
+    "staging": {
+      "name": "productivity-up-staging",
+      "workers_dev": true,
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "54f12cc46b24472ebd9e18c282ca2fa5",
+        },
+      ],
+      "vars": {
+        "APP_NAME": "Productivity Up",
+        "BETTER_AUTH_URL": "https://productivity-up-staging.ale-recchi.workers.dev",
+        "EMAIL_FROM": "noreply-staging@productivity-up.com",
+      },
+      "secrets": {
+        "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"],
+      },
+    },
+    "production": {
+      "name": "productivity-up-production",
+      "workers_dev": false,
+      "hyperdrive": [
+        {
+          "binding": "HYPERDRIVE",
+          "id": "5cefb00a2fe4478a880ab163764e5f3b",
+        },
+      ],
+      "routes": [
+        {
+          "pattern": "productivity-up.com",
+          "custom_domain": true,
+        },
+        {
+          "pattern": "www.productivity-up.com",
+          "custom_domain": true,
+        },
+      ],
+      "vars": {
+        "APP_NAME": "Productivity Up",
+        "BETTER_AUTH_URL": "https://productivity-up.com",
+        "EMAIL_FROM": "noreply@productivity-up.com",
+      },
+      "secrets": {
+        "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"],
+      },
+    },
+  },
+}

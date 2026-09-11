@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 
 import { hasPendingMigrationBuckets } from '@/server/db/buckets'
-import { db } from '@/server/db/client'
+import type { Database } from '@/server/db/client'
 import { tags } from '@/server/db/schema/schema'
 import type { TagDbInsert } from '@/server/db/types'
 import type { TagRepository } from '@/server/functions/tags.core'
@@ -24,7 +24,7 @@ export const createTag = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     return createTagForUser({
       data,
-      repository: tagRepository,
+      repository: createTagRepository(context.db),
       userId: context.session.user.id,
     })
   })
@@ -33,7 +33,7 @@ export const listTags = createServerFn()
   .middleware([authRequiredMiddleware])
   .handler(async ({ context }) => {
     return listTagsForUser({
-      repository: tagRepository,
+      repository: createTagRepository(context.db),
       userId: context.session.user.id,
     })
   })
@@ -44,7 +44,7 @@ export const updateTag = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     return updateTagForUser({
       data,
-      repository: tagRepository,
+      repository: createTagRepository(context.db),
       userId: context.session.user.id,
     })
   })
@@ -55,65 +55,69 @@ export const deleteTag = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     return deleteTagForUser({
       data,
-      repository: tagRepository,
+      repository: createTagRepository(context.db),
       userId: context.session.user.id,
     })
   })
 
-const tagRepository: TagRepository = {
-  async createTag(tagToAdd: TagDbInsert) {
-    const [tag] = await db
-      .insert(tags)
-      .values(tagToAdd)
-      .returning()
-      .catch((error: unknown) => {
-        if (isTagNameUniqueViolation(error)) {
-          throw new TagNameConflictError()
-        }
+function createTagRepository(db: Database): TagRepository {
+  return {
+    async createTag(tagToAdd: TagDbInsert) {
+      const [tag] = await db
+        .insert(tags)
+        .values(tagToAdd)
+        .returning()
+        .catch((error: unknown) => {
+          if (isTagNameUniqueViolation(error)) {
+            throw new TagNameConflictError()
+          }
 
-        throw error
+          throw error
+        })
+      return tag
+    },
+    async deleteTag(tagId, userId) {
+      const [tag] = await db
+        .delete(tags)
+        .where(and(eq(tags.id, tagId), eq(tags.userId, userId)))
+        .returning({
+          tagId: tags.id,
+          userId: tags.userId,
+        })
+
+      return tag
+    },
+    listTagsForUser(userId: string) {
+      return db.query.tags.findMany({
+        orderBy: [asc(tags.name)],
+        where: eq(tags.userId, userId),
       })
-    return tag
-  },
-  async deleteTag(tagId, userId) {
-    const [tag] = await db
-      .delete(tags)
-      .where(and(eq(tags.id, tagId), eq(tags.userId, userId)))
-      .returning({
-        tagId: tags.id,
-        userId: tags.userId,
+    },
+    findTagByName(userId: string, name: string) {
+      return db.query.tags.findFirst({
+        where: and(eq(tags.userId, userId), eq(tags.name, name)),
       })
+    },
+    hasPendingMigrationBuckets(userId) {
+      return hasPendingMigrationBuckets(db, userId)
+    },
+    async updateTag(tagId, userId, updates) {
+      const [tag] = await db
+        .update(tags)
+        .set(updates)
+        .where(and(eq(tags.id, tagId), eq(tags.userId, userId)))
+        .returning()
+        .catch((error: unknown) => {
+          if (isTagNameUniqueViolation(error)) {
+            throw new TagNameConflictError()
+          }
 
-    return tag
-  },
-  listTagsForUser(userId: string) {
-    return db.query.tags.findMany({
-      orderBy: [asc(tags.name)],
-      where: eq(tags.userId, userId),
-    })
-  },
-  findTagByName(userId: string, name: string) {
-    return db.query.tags.findFirst({
-      where: and(eq(tags.userId, userId), eq(tags.name, name)),
-    })
-  },
-  hasPendingMigrationBuckets,
-  async updateTag(tagId, userId, updates) {
-    const [tag] = await db
-      .update(tags)
-      .set(updates)
-      .where(and(eq(tags.id, tagId), eq(tags.userId, userId)))
-      .returning()
-      .catch((error: unknown) => {
-        if (isTagNameUniqueViolation(error)) {
-          throw new TagNameConflictError()
-        }
+          throw error
+        })
 
-        throw error
-      })
-
-    return tag
-  },
+      return tag
+    },
+  }
 }
 
 function isTagNameUniqueViolation(error: unknown) {

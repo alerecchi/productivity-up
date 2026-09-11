@@ -2,7 +2,7 @@ import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq } from 'drizzle-orm'
 
 import { hasPendingMigrationBuckets } from '@/server/db/buckets'
-import { db } from '@/server/db/client'
+import type { Database } from '@/server/db/client'
 import { categories } from '@/server/db/schema/schema'
 import type { CategoryDbInsert } from '@/server/db/types'
 import type { CategoryRepository } from '@/server/functions/categories.core'
@@ -24,7 +24,7 @@ export const createCategory = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     return createCategoryForUser({
       data,
-      repository: categoryRepository,
+      repository: createCategoryRepository(context.db),
       userId: context.session.user.id,
     })
   })
@@ -33,7 +33,7 @@ export const listCategories = createServerFn()
   .middleware([authRequiredMiddleware])
   .handler(async ({ context }) => {
     return listCategoriesForUser({
-      repository: categoryRepository,
+      repository: createCategoryRepository(context.db),
       userId: context.session.user.id,
     })
   })
@@ -44,7 +44,7 @@ export const updateCategory = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     return updateCategoryForUser({
       data,
-      repository: categoryRepository,
+      repository: createCategoryRepository(context.db),
       userId: context.session.user.id,
     })
   })
@@ -55,59 +55,63 @@ export const deleteCategory = createServerFn({ method: 'POST' })
   .handler(async ({ data, context }) => {
     return deleteCategoryForUser({
       data,
-      repository: categoryRepository,
+      repository: createCategoryRepository(context.db),
       userId: context.session.user.id,
     })
   })
 
-const categoryRepository: CategoryRepository = {
-  async createCategory(categoryToAdd: CategoryDbInsert) {
-    const [category] = await db
-      .insert(categories)
-      .values(categoryToAdd)
-      .returning()
-      .catch((error: unknown) => {
-        if (isCategoryNameUniqueViolation(error)) {
-          throw new CategoryNameConflictError()
-        }
+function createCategoryRepository(db: Database): CategoryRepository {
+  return {
+    async createCategory(categoryToAdd: CategoryDbInsert) {
+      const [category] = await db
+        .insert(categories)
+        .values(categoryToAdd)
+        .returning()
+        .catch((error: unknown) => {
+          if (isCategoryNameUniqueViolation(error)) {
+            throw new CategoryNameConflictError()
+          }
 
-        throw error
+          throw error
+        })
+
+      return category
+    },
+    async deleteCategory(categoryId, userId) {
+      const [category] = await db
+        .delete(categories)
+        .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
+        .returning({
+          categoryId: categories.id,
+          userId: categories.userId,
+        })
+
+      return category
+    },
+    findCategoryByName(userId: string, name: string) {
+      return db.query.categories.findFirst({
+        where: and(eq(categories.userId, userId), eq(categories.name, name)),
       })
-
-    return category
-  },
-  async deleteCategory(categoryId, userId) {
-    const [category] = await db
-      .delete(categories)
-      .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
-      .returning({
-        categoryId: categories.id,
-        userId: categories.userId,
+    },
+    hasPendingMigrationBuckets(userId) {
+      return hasPendingMigrationBuckets(db, userId)
+    },
+    listCategoriesForUser(userId: string) {
+      return db.query.categories.findMany({
+        orderBy: [asc(categories.name)],
+        where: eq(categories.userId, userId),
       })
+    },
+    async updateCategory(categoryId, userId, updates) {
+      const [category] = await db
+        .update(categories)
+        .set(updates)
+        .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
+        .returning()
 
-    return category
-  },
-  findCategoryByName(userId: string, name: string) {
-    return db.query.categories.findFirst({
-      where: and(eq(categories.userId, userId), eq(categories.name, name)),
-    })
-  },
-  hasPendingMigrationBuckets,
-  listCategoriesForUser(userId: string) {
-    return db.query.categories.findMany({
-      orderBy: [asc(categories.name)],
-      where: eq(categories.userId, userId),
-    })
-  },
-  async updateCategory(categoryId, userId, updates) {
-    const [category] = await db
-      .update(categories)
-      .set(updates)
-      .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
-      .returning()
-
-    return category
-  },
+      return category
+    },
+  }
 }
 
 function isCategoryNameUniqueViolation(error: unknown) {

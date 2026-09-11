@@ -1,9 +1,39 @@
-import { neon } from '@neondatabase/serverless'
 import * as schema from '@server/db/schema'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { env } from 'cloudflare:workers'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { Client } from 'pg'
 
-import { serverEnv } from '@/config/env'
+import { resolveDatabaseConnectionString } from '@/server/db/connection'
 
-const sql = neon(serverEnv.DATABASE_URL)
-export const db = drizzle(sql, { schema }) // TODO: why do I have to add schema? would it work if I have a folder `schema` with an index.ts and remove this?
-// TODO: review what this sentence from better auth means "Additionally, you're required to pass each relation through the drizzle adapter schema object." Code rabbit suggests to add  schema: schema,  // ← Add this (import from '@server/db/schema') to betterauth configuration
+export type Database = ReturnType<typeof createDatabase>
+
+export async function connectDatabase() {
+  const databaseEnvironment = env as Cloudflare.Env & { DATABASE_URL?: string }
+  const client = new Client({
+    connectionString: resolveDatabaseConnectionString({
+      DATABASE_URL: databaseEnvironment.DATABASE_URL,
+      HYPERDRIVE: databaseEnvironment.HYPERDRIVE,
+    }),
+  })
+
+  await client.connect()
+
+  return {
+    close: () => client.end(),
+    db: createDatabase(client),
+  }
+}
+
+export async function withDatabase<TResult>(operation: (db: Database) => Promise<TResult> | TResult) {
+  const connection = await connectDatabase()
+
+  try {
+    return await operation(connection.db)
+  } finally {
+    await connection.close()
+  }
+}
+
+function createDatabase(client: Client) {
+  return drizzle(client, { schema })
+}

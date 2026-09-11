@@ -5,6 +5,15 @@ onlyBuiltDependencies:
   - prisma
 
 minimumReleaseAge: 10080
+minimumReleaseAgeExclude:
+  - '@better-auth/core@1.7.4'
+  - '@better-auth/drizzle-adapter@1.7.4'
+  - '@better-auth/kysely-adapter@1.7.4'
+  - '@better-auth/memory-adapter@1.7.4'
+  - '@better-auth/mongo-adapter@1.7.4'
+  - '@better-auth/prisma-adapter@1.7.4'
+  - '@better-auth/telemetry@1.7.4'
+  - 'better-auth@1.7.4'
 
 allowBuilds:
   '@prisma/engines': true
@@ -12,3 +21,4 @@ allowBuilds:
   msw: true
   prisma: true
   unrs-resolver: true
+  workerd: true
