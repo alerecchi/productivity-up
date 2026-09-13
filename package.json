@@ -8,7 +8,6 @@
     "build:staging": "CLOUDFLARE_ENV=staging CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vite build && tsc --noEmit",
     "build:production": "CLOUDFLARE_ENV=production CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vite build && tsc --noEmit",
     "serve": "vite preview",
-    "preview:staging": "CLOUDFLARE_ENV=staging vite preview",
     "deploy:staging": "node --env-file-if-exists=.env.deploy.local scripts/deploy-staging.mjs",
     "deploy:production": "node --env-file-if-exists=.env.deploy.local scripts/deploy-production.mjs",
     "db:migrate:development": "node --env-file=.env.local --env-file-if-exists=.env.deploy.local scripts/migrate-development.mjs",

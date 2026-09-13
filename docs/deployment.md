@@ -66,6 +66,8 @@ The command uses the staging direct database URL, marks the configured user as v
 
 ## Staging
 
+Staging uses disposable data and is not a production release. Before the first production release, this project accepted breaking changes, destructive staging resets, temporary staging downtime, and no compatibility layer. That exception ended with the first production release. Subsequent schema and application changes must preserve compatibility throughout the rollout.
+
 ```sh
 pnpm deploy:staging
 ```
@@ -90,4 +92,13 @@ The override skips only the staging revision check. Installation, build, migrati
 
 ## Rollback and schema changes
 
-Cloudflare rollback changes Worker code. It does not undo Neon migrations. Keep migrations compatible with the previously deployed Worker. Breaking schema changes need a multi-release migration that expands the schema first, changes the application second, and removes obsolete schema only after old Worker versions are no longer needed.
+Do not use a Worker rollback as the default recovery path. Cloudflare changes only the Worker version; Neon remains on its current schema. If the previous Worker is not compatible with that schema, rolling back the Worker can make the incident worse. Deploy a forward fix instead.
+
+Only roll back after confirming that the selected Worker version supports the current Neon schema. When that condition holds, use the version ID shown by the Worker deployment history:
+
+```sh
+pnpm exec wrangler rollback <VERSION_ID> --name productivity-up-staging --message "Rollback staging"
+pnpm exec wrangler rollback <VERSION_ID> --name productivity-up-production --message "Rollback production"
+```
+
+Keep migrations compatible with the previously deployed Worker. Breaking schema changes need a multi-release migration that expands the schema first, changes the application second, and removes obsolete schema only after old Worker versions are no longer needed.

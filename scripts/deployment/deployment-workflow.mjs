@@ -9,33 +9,8 @@ import {
   isExplicitConfirmation,
   parseLiveDeploymentMetadata,
 } from './deployment-metadata.mjs'
+import { createSafeChildProcessEnvironment } from './environment.mjs'
 
-const directMigrationVariables = [
-  'DATABASE_URL_DIRECT',
-  'STAGING_DATABASE_URL_DIRECT',
-  'PRODUCTION_DATABASE_URL_DIRECT',
-]
-const deploymentOperatorVariables = ['STAGING_PUBLIC_URL', 'STAGING_SMOKE_TEST_EMAIL', 'STAGING_SMOKE_TEST_PASSWORD']
-const cloudflareSetupVariables = [
-  'STAGING_BETTER_AUTH_SECRET',
-  'PRODUCTION_BETTER_AUTH_SECRET',
-  'STAGING_RESEND_API_KEY',
-  'PRODUCTION_RESEND_API_KEY',
-  'STAGING_EMAIL_FROM',
-  'PRODUCTION_EMAIL_FROM',
-]
-const localApplicationVariables = [
-  'APP_NAME',
-  'BETTER_AUTH_SECRET',
-  'BETTER_AUTH_URL',
-  'DATABASE_URL',
-  'EMAIL_FROM',
-  'RESEND_API_KEY',
-  'USER_EMAIL',
-  'USER_PWD',
-  'VITE_APP_NAME',
-  'VITE_SERVER_URL',
-]
 const productionUrl = 'https://productivity-up.com'
 const workerNames = {
   production: 'productivity-up-production',
@@ -220,7 +195,7 @@ function runMigration(environmentName, deploymentDirectory, commandEnvironment) 
 }
 
 export function queryLiveDeploymentMetadata(repositoryDirectory, workerName) {
-  const environment = createSanitizedEnvironment()
+  const environment = createSafeChildProcessEnvironment()
   const deploymentOutput = capture(
     'pnpm',
     ['exec', 'wrangler', 'deployments', 'status', '--name', workerName, '--json'],
@@ -279,7 +254,7 @@ async function runStagingSmokeTest(deploymentUrl) {
 }
 
 export function createCommandEnvironment(environmentName, sourceEnvironment = process.env) {
-  const environment = createSanitizedEnvironment(sourceEnvironment)
+  const environment = createSafeChildProcessEnvironment(sourceEnvironment)
   environment.CLOUDFLARE_ENV = environmentName
   environment.VITE_APP_NAME = sourceEnvironment.VITE_APP_NAME || 'Productivity Up'
   environment.VITE_SERVER_URL = environmentName === 'production' ? productionUrl : stagingPublicUrl(sourceEnvironment)
@@ -292,22 +267,6 @@ export function createMigrationEnvironment(environmentName, commandEnvironment, 
     ...commandEnvironment,
     DATABASE_URL_DIRECT: requiredEnvironmentVariable(sourceVariable, sourceEnvironment),
   }
-}
-
-function createSanitizedEnvironment(sourceEnvironment = process.env) {
-  const environment = { ...sourceEnvironment }
-  const removedVariables = [
-    ...directMigrationVariables,
-    ...deploymentOperatorVariables,
-    ...cloudflareSetupVariables,
-    ...localApplicationVariables,
-  ]
-  for (const variableName of removedVariables) {
-    delete environment[variableName]
-  }
-  environment.CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV = 'false'
-  environment.NO_COLOR = '1'
-  return environment
 }
 
 function getDeploymentUrl(environmentName, deployOutput) {

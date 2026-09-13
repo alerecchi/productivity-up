@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { createCommandEnvironment, createMigrationEnvironment } from './deployment-workflow.mjs'
+import { createSafeChildProcessEnvironment } from './environment.mjs'
+import { requireDirectPostgresUrl, sharePostgresHost } from './postgres-url.mjs'
 
 const stagingDatabaseUrl = 'postgresql://staging.example.test/productivity_up'
 const productionDatabaseUrl = 'postgresql://production.example.test/productivity_up'
@@ -46,4 +48,38 @@ describe('deployment subprocess environments', () => {
       expect(commandEnvironment).not.toHaveProperty('DATABASE_URL')
     },
   )
+
+  it('removes sensitive application, setup, and operator values from child processes', () => {
+    const environment = createSafeChildProcessEnvironment({
+      ...sourceEnvironment(),
+      PRODUCTION_BETTER_AUTH_SECRET: 'production auth secret',
+      STAGING_RESEND_API_KEY: 'staging email secret',
+      UNRELATED_VALUE: 'preserved',
+    })
+
+    expect(environment).not.toHaveProperty('BETTER_AUTH_SECRET')
+    expect(environment).not.toHaveProperty('CLOUDFLARE_ENV')
+    expect(environment).not.toHaveProperty('PRODUCTION_BETTER_AUTH_SECRET')
+    expect(environment).not.toHaveProperty('STAGING_PUBLIC_URL')
+    expect(environment).not.toHaveProperty('STAGING_RESEND_API_KEY')
+    expect(environment).not.toHaveProperty('STAGING_SMOKE_TEST_PASSWORD')
+    expect(environment.UNRELATED_VALUE).toBe('preserved')
+  })
+})
+
+describe('PostgreSQL deployment URLs', () => {
+  it('accepts direct PostgreSQL URLs and compares their hosts', () => {
+    const firstUrl = requireDirectPostgresUrl('postgresql://user:password@database.example.test/app', 'FIRST_URL')
+    const secondUrl = requireDirectPostgresUrl('postgres://other:password@database.example.test/other', 'SECOND_URL')
+
+    expect(sharePostgresHost(firstUrl, secondUrl)).toBe(true)
+  })
+
+  it.each([
+    ['an invalid URL', 'not a URL'],
+    ['a non-PostgreSQL URL', 'https://database.example.test/app'],
+    ['a pooled URL', 'postgresql://user:password@database-pooler.example.test/app'],
+  ])('rejects %s', (_case, value) => {
+    expect(() => requireDirectPostgresUrl(value, 'DATABASE_URL')).toThrow()
+  })
 })

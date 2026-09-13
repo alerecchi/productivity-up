@@ -3,6 +3,8 @@ import { randomUUID } from 'node:crypto'
 import { hashPassword } from 'better-auth/crypto'
 import pg from 'pg'
 
+import { requireDirectPostgresUrl, sharePostgresHost } from './deployment/postgres-url.mjs'
+
 const { Client } = pg
 const databaseUrl = requiredEnvironmentVariable('STAGING_DATABASE_URL_DIRECT')
 const email = requiredEnvironmentVariable('STAGING_SMOKE_TEST_EMAIL').trim().toLowerCase()
@@ -99,14 +101,11 @@ async function ensureBoard(userId, now, planningDate) {
 }
 
 function validateConfiguration() {
-  const stagingUrl = parsePostgresUrl(databaseUrl, 'STAGING_DATABASE_URL_DIRECT')
-  if (stagingUrl.hostname.includes('-pooler')) {
-    throw new Error('STAGING_DATABASE_URL_DIRECT must use a direct, non-pooler host.')
-  }
+  const stagingUrl = requireDirectPostgresUrl(databaseUrl, 'STAGING_DATABASE_URL_DIRECT')
 
   if (productionDatabaseUrl) {
-    const productionUrl = parsePostgresUrl(productionDatabaseUrl, 'PRODUCTION_DATABASE_URL_DIRECT')
-    if (databaseUrl === productionDatabaseUrl || stagingUrl.hostname === productionUrl.hostname) {
+    const productionUrl = requireDirectPostgresUrl(productionDatabaseUrl, 'PRODUCTION_DATABASE_URL_DIRECT')
+    if (sharePostgresHost(stagingUrl, productionUrl)) {
       throw new Error('Refusing to continue because the staging database matches production.')
     }
   }
@@ -117,20 +116,6 @@ function validateConfiguration() {
   if (password.length < 16) {
     throw new Error('STAGING_SMOKE_TEST_PASSWORD must contain at least 16 characters.')
   }
-}
-
-function parsePostgresUrl(value, variableName) {
-  let parsedUrl
-  try {
-    parsedUrl = new URL(value)
-  } catch {
-    throw new Error(`${variableName} is not a valid URL.`)
-  }
-
-  if (!['postgres:', 'postgresql:'].includes(parsedUrl.protocol)) {
-    throw new Error(`${variableName} must use the postgres or postgresql protocol.`)
-  }
-  return parsedUrl
 }
 
 function requiredEnvironmentVariable(name) {
