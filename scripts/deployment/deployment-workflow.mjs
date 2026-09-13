@@ -136,12 +136,16 @@ async function withDeploymentWorkspace({ environmentName, repositoryDirectory, s
     )
     workspaceRegistered = true
 
-    workspaceCommit = capture('jj', ['log', '--no-graph', '--color=never', '-r', '@', '-T', 'commit_id ++ "\\n"'], {
-      cwd: deploymentDirectory,
-    }).trim()
+    workspaceCommit = capture(
+      'jj',
+      ['log', '--ignore-working-copy', '--no-graph', '--color=never', '-r', '@', '-T', 'commit_id ++ "\\n"'],
+      {
+        cwd: deploymentDirectory,
+      },
+    ).trim()
     const workspaceParent = capture(
       'jj',
-      ['log', '--no-graph', '--color=never', '-r', '@-', '-T', 'commit_id ++ "\\n"'],
+      ['log', '--ignore-working-copy', '--no-graph', '--color=never', '-r', '@-', '-T', 'commit_id ++ "\\n"'],
       { cwd: deploymentDirectory },
     ).trim()
     if (workspaceParent !== sourceSha) {
