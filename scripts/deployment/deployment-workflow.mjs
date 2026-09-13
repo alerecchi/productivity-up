@@ -123,7 +123,6 @@ async function withDeploymentWorkspace({ environmentName, repositoryDirectory, s
       [
         'workspace',
         'add',
-        '--ignore-working-copy',
         '--name',
         workspaceName,
         '--revision',
