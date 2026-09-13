@@ -236,9 +236,10 @@ export function queryLiveDeploymentMetadata(repositoryDirectory, workerName) {
 async function runStagingSmokeTest(deploymentUrl) {
   const email = requiredEnvironmentVariable('STAGING_SMOKE_TEST_EMAIL')
   const password = requiredEnvironmentVariable('STAGING_SMOKE_TEST_PASSWORD')
+  const origin = new URL(deploymentUrl).origin
   const signInResponse = await fetch(new URL('/api/auth/sign-in/email', deploymentUrl), {
     body: JSON.stringify({ email, password }),
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', origin },
     method: 'POST',
     redirect: 'manual',
   })
@@ -254,14 +255,27 @@ async function runStagingSmokeTest(deploymentUrl) {
     throw new Error('Staging sign-in did not return a session cookie.')
   }
 
-  const boardResponse = await fetch(new URL('/board', deploymentUrl), {
-    headers: { cookie: cookies },
-    redirect: 'manual',
-  })
-  if (!boardResponse.ok) {
-    throw new Error(`Authenticated staging board load returned HTTP ${boardResponse.status}.`)
+  try {
+    const boardResponse = await fetch(new URL('/board', deploymentUrl), {
+      headers: { cookie: cookies },
+      redirect: 'manual',
+    })
+    if (!boardResponse.ok) {
+      throw new Error(`Authenticated staging board load returned HTTP ${boardResponse.status}.`)
+    }
+    await boardResponse.arrayBuffer()
+  } finally {
+    const signOutResponse = await fetch(new URL('/api/auth/sign-out', deploymentUrl), {
+      body: JSON.stringify({}),
+      headers: { 'content-type': 'application/json', cookie: cookies, origin },
+      method: 'POST',
+      redirect: 'manual',
+    })
+    if (!signOutResponse.ok) {
+      throw new Error(`Staging smoke-test sign-out returned HTTP ${signOutResponse.status}.`)
+    }
+    await signOutResponse.arrayBuffer()
   }
-  await boardResponse.arrayBuffer()
 }
 
 export function createCommandEnvironment(environmentName, sourceEnvironment = process.env) {
