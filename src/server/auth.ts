@@ -40,8 +40,7 @@ export function createAuth(db: Database) {
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
-        console.log('in auth')
-        await sendEmailConfirmation({ to: user.email, userName: user.name, url: url })
+        await sendEmailConfirmation({ to: user.email, userName: user.name, url })
       },
     },
     plugins: [tanstackStartCookies()],
