@@ -1,5 +1,5 @@
-import { relations } from 'drizzle-orm'
-import { boolean, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
+import { relations, sql } from 'drizzle-orm'
+import { boolean, check, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core'
 
 import { CATEGORY_COLOR_KEYS } from '../../../lib/types/Category'
 import { TAG_COLOR_KEYS } from '../../../lib/types/Tag'
@@ -23,7 +23,13 @@ export const buckets = pgTable(
       .references(() => users.id, { onDelete: 'cascade' })
       .notNull(),
   },
-  (table) => [uniqueIndex('buckets_user_id_type_period_unique').on(table.userId, table.type, table.period)],
+  (table) => [
+    check('buckets_inbox_period_check', sql`${table.type} <> 'inbox' OR ${table.period} = 'inbox'`),
+    uniqueIndex('buckets_user_id_type_period_unique').on(table.userId, table.type, table.period),
+    uniqueIndex('buckets_user_id_inbox_unique')
+      .on(table.userId)
+      .where(sql`${table.type} = 'inbox'`),
+  ],
 )
 
 export const categories = pgTable(

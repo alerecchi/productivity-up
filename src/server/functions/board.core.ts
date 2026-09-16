@@ -8,7 +8,19 @@ import { errorResponse } from '@/server/utils'
 const ENABLED_BUCKET_HORIZONS = ['yearly', 'monthly', 'weekly', 'daily'] as const
 const TODO_POSITION_GAP = 1024
 
-export type BoardRepository = {
+export type InitialBoardState = {
+  buckets: Array<Pick<BucketDb, 'period' | 'type'>>
+  createdAt: Date
+  planningDate: string
+  timeZone: string
+  userId: string
+}
+
+export type InitialBoardRepository = {
+  commitInitialBoardState: (state: InitialBoardState) => Promise<void>
+}
+
+export type BoardRepository = InitialBoardRepository & {
   archiveBucket: (bucketId: number, archivedAt: Date) => Promise<BucketDb | undefined>
   createBucket: (bucket: Omit<BucketDb, 'id'>) => Promise<BucketDb>
   findBucketById: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
@@ -79,6 +91,38 @@ type LoadBoardDependencies = {
   userId: string
 }
 
+type ProvisionInitialBoardDependencies = {
+  now?: () => Date
+  repository: InitialBoardRepository
+  timeZone: string
+  userId: string
+}
+
+export async function provisionInitialBoard({
+  now = () => new Date(),
+  repository,
+  timeZone,
+  userId,
+}: ProvisionInitialBoardDependencies) {
+  const createdAt = now()
+  const planningDate = getTodayLocalDate(createdAt, timeZone)
+  const periodKeys = derivePeriodKeys(planningDate)
+  const buckets = getEnabledBucketTypes([...ENABLED_BUCKET_HORIZONS]).map((type) => ({
+    period: periodKeys[type],
+    type,
+  }))
+
+  await repository.commitInitialBoardState({
+    buckets,
+    createdAt,
+    planningDate,
+    timeZone,
+    userId,
+  })
+
+  return { planningDate, timeZone }
+}
+
 export async function loadBoardForUser({
   browserTimeZone,
   now = () => new Date(),
@@ -97,17 +141,20 @@ export async function loadBoardForUser({
     throw new Error('Browser timezone is required for first board visit')
   }
 
-  const today = getTodayLocalDate(now(), timeZone)
+  const loadedAt = now()
+  const today = getTodayLocalDate(loadedAt, timeZone)
   const planningDate = normalizePlanningDate(user.planningDate, today)
 
-  if (user.timeZone === null || user.planningDate !== planningDate) {
+  if (user.planningDate === null) {
+    await provisionInitialBoard({ now: () => loadedAt, repository, timeZone, userId })
+  } else if (user.timeZone === null || user.planningDate !== planningDate) {
     await repository.updateUserPlanning(userId, {
       planningDate,
       timeZone,
     })
   }
 
-  const createdAt = now()
+  const createdAt = loadedAt
 
   await ensureActiveBucketsForPlanningDate({ createdAt, planningDate, repository, userId })
   await reconcileExpiredBucketsForBoardLoad({

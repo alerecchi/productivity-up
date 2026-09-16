@@ -7,8 +7,49 @@ import {
   confirmMigrationStepForUser,
   getMigrationStepForUser,
   loadBoardForUser,
+  provisionInitialBoard,
 } from '@/server/functions/board.core'
 import type { BoardRepository } from '@/server/functions/board.core'
+
+describe('provisionInitialBoard', () => {
+  test('commits the User Planning Date, User Timezone, and canonical active Buckets', async () => {
+    const commits: Array<
+      Parameters<Parameters<typeof provisionInitialBoard>[0]['repository']['commitInitialBoardState']>[0]
+    > = []
+
+    const result = await provisionInitialBoard({
+      now: () => new Date('2026-07-03T21:30:00.000Z'),
+      repository: {
+        commitInitialBoardState(state) {
+          commits.push(state)
+          return Promise.resolve()
+        },
+      },
+      timeZone: 'Europe/Berlin',
+      userId: 'user-1',
+    })
+
+    expect(result).toEqual({
+      planningDate: '2026-07-03',
+      timeZone: 'Europe/Berlin',
+    })
+    expect(commits).toEqual([
+      {
+        buckets: [
+          { period: 'inbox', type: 'inbox' },
+          { period: '2026', type: 'yearly' },
+          { period: '2026-07', type: 'monthly' },
+          { period: '2026-W27', type: 'weekly' },
+          { period: '2026-07-03', type: 'daily' },
+        ],
+        createdAt: new Date('2026-07-03T21:30:00.000Z'),
+        planningDate: '2026-07-03',
+        timeZone: 'Europe/Berlin',
+        userId: 'user-1',
+      },
+    ])
+  })
+})
 
 describe('loadBoardForUser', () => {
   test('first board visit stores User Timezone and Planning Date and creates active Buckets', async () => {
@@ -45,6 +86,31 @@ describe('loadBoardForUser', () => {
       planningDate: '2026-07-03',
       timeZone: 'Europe/Berlin',
     })
+  })
+
+  test('uses one instant when the first board load crosses local midnight', async () => {
+    const repository = createInMemoryBoardRepository({
+      buckets: [],
+      user: {
+        planningDate: null,
+        timeZone: 'Europe/Berlin',
+      },
+    })
+    const instants = [new Date('2026-07-03T21:59:59.999Z'), new Date('2026-07-03T22:00:00.000Z')]
+    let nowCall = 0
+
+    const result = await loadBoardForUser({
+      now: () => instants[Math.min(nowCall++, instants.length - 1)],
+      repository,
+      userId: 'user-1',
+    })
+
+    expect(result).toMatchObject({
+      planningDate: '2026-07-03',
+      status: 'ready',
+    })
+    expect(result.buckets).toHaveLength(5)
+    await expect(repository.getUser('user-1')).resolves.toMatchObject({ planningDate: '2026-07-03' })
   })
 
   test('later board visits keep the stored User Timezone when the browser timezone differs', async () => {
@@ -1061,6 +1127,41 @@ function createInMemoryBoardRepository({
       bucket.archivedAt = archivedAt
 
       return Promise.resolve(bucket)
+    },
+    commitInitialBoardState(state) {
+      if (
+        storedUser.id !== state.userId ||
+        (storedUser.planningDate !== null && storedUser.planningDate !== state.planningDate) ||
+        (storedUser.timeZone !== null && storedUser.timeZone !== state.timeZone)
+      ) {
+        return Promise.resolve()
+      }
+
+      storedUser.planningDate = state.planningDate
+      storedUser.timeZone = state.timeZone
+
+      for (const bucketToCreate of state.buckets) {
+        const existingBucket = storedBuckets.find(
+          (bucket) =>
+            bucket.userId === state.userId &&
+            bucket.type === bucketToCreate.type &&
+            bucket.period === bucketToCreate.period,
+        )
+
+        if (!existingBucket) {
+          storedBuckets.push({
+            ...bucketToCreate,
+            archivedAt: null,
+            createdAt: state.createdAt,
+            id: nextBucketId,
+            status: 'active',
+            userId: state.userId,
+          })
+          nextBucketId += 1
+        }
+      }
+
+      return Promise.resolve()
     },
     createBucket(input) {
       const existingBucket = storedBuckets.find(

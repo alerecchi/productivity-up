@@ -8,6 +8,7 @@ import z from 'zod'
 import { authClient } from '@/features/authentication/auth-client'
 import { userSessionQuery } from '@/features/authentication/queries/user-session'
 import { EMAIL_VERIFICATION_CALLBACK_PATH } from '@/features/authentication/utils/verification'
+import { getBrowserTimeZone } from '@/lib/auth-user-fields'
 
 type RegistrationInput = {
   name: string
@@ -77,6 +78,7 @@ export function SignUpForm() {
       await authClient.signUp.email({
         ...data,
         callbackURL: EMAIL_VERIFICATION_CALLBACK_PATH,
+        timeZone: getBrowserTimeZone(),
       }),
   })
 
