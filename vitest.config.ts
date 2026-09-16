@@ -22,7 +22,7 @@ export default defineConfig({
     },
     environment: 'jsdom',
     exclude: ['**/node_modules/**', '**/dist/**', '**/.{idea,git,cache,output,temp}/**', '**/src/routeTree.gen.ts'],
-    passWithNoTests: true,
+    passWithNoTests: false,
     restoreMocks: true,
     setupFiles: ['./src/test/setup.ts'],
   },

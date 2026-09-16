@@ -4,6 +4,14 @@ The deployment commands always fetch and deploy the pinned `main@origin` revisio
 
 The Cloudflare Vite plugin selects and flattens the Wrangler environment during the build through `CLOUDFLARE_ENV`. Wrangler then deploys the generated `dist/server/wrangler.json`; the deployment command does not select an environment again.
 
+## Local validation and deployment
+
+Run `pnpm validate` before backend work is considered ready. It checks formatting and lint rules, runs tests, typechecks the project, and builds the production Worker bundle. It does not deploy a Worker, run a migration, access a deployment database, or run the staging smoke test.
+
+A clean checkout needs Node.js 24 or newer, the pnpm version pinned in `package.json`, and dependencies installed with `pnpm install --frozen-lockfile`. Local validation does not need Cloudflare credentials, runtime secret values, `.env.deploy.local`, or any of the operator-only variables described below. The production bundle can warn that the secrets declared in `wrangler.jsonc` are missing; Wrangler enforces those secrets when a version is uploaded or deployed.
+
+The current PostgreSQL integration suite runs only when `DATABASE_URL` is present. Without it, Vitest reports that suite as skipped. This is separate from the deployment migrations described below.
+
 ## Cloudflare setup
 
 Create separate runtime secrets for `productivity-up-staging` and `productivity-up-production`:

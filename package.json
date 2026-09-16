@@ -4,9 +4,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev --port 3000",
-    "build": "tsc --noEmit && vite build",
-    "build:staging": "CLOUDFLARE_ENV=staging CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vite build && tsc --noEmit",
-    "build:production": "CLOUDFLARE_ENV=production CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vite build && tsc --noEmit",
+    "build": "pnpm typecheck && vite build",
+    "build:staging": "pnpm typecheck && CLOUDFLARE_ENV=staging CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vite build",
+    "build:production": "pnpm typecheck && CLOUDFLARE_ENV=production CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false vite build",
+    "typecheck": "tsc --noEmit",
     "serve": "vite preview",
     "deploy:staging": "node --env-file-if-exists=.env.deploy.local scripts/deploy-staging.mjs",
     "deploy:production": "node --env-file-if-exists=.env.deploy.local scripts/deploy-production.mjs",
@@ -19,7 +20,8 @@
     "test:watch": "vitest",
     "lint": "eslint",
     "format": "oxfmt && eslint --fix",
-    "check": "oxfmt --check . && eslint"
+    "check": "oxfmt --check . && eslint",
+    "validate": "pnpm check && pnpm test && pnpm build:production"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
