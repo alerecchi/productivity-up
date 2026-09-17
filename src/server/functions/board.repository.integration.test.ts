@@ -1,10 +1,6 @@
-// @vitest-environment node
-
-import { randomUUID } from 'node:crypto'
-
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Client } from 'pg'
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
 
 import { createAuth } from '@/server/auth'
 import * as schema from '@/server/db/schema'
@@ -16,24 +12,16 @@ vi.mock('@/server/email/sender', () => ({
   sendResetPassword: vi.fn(),
 }))
 
-const databaseUrl = process.env.DATABASE_URL
-const describeWithPostgres = databaseUrl ? describe : describe.skip
+const databaseUrl = requireTestDatabaseUrl()
 
-describeWithPostgres('PostgreSQL initial board provisioning', () => {
-  const schemaName = `issue_85_${randomUUID().replaceAll('-', '')}`
+describe('PostgreSQL board repository', () => {
   let client: Client
 
   beforeAll(async () => {
-    client = await connectToTestSchema(databaseUrl!, schemaName, true)
-  })
-
-  beforeEach(async () => {
-    await client.query('TRUNCATE TABLE users CASCADE')
+    client = await connectToTestDatabase(databaseUrl)
   })
 
   afterAll(async () => {
-    await client.query('SET search_path TO public')
-    await client.query(`DROP SCHEMA "${schemaName}" CASCADE`)
     await client.end()
   })
 
@@ -61,6 +49,30 @@ describeWithPostgres('PostgreSQL initial board provisioning', () => {
         expect.objectContaining({ period: '2026-07-03', type: 'daily' }),
       ]),
     )
+  })
+
+  test('keeps production adapter reads scoped to the owning User after a write', async () => {
+    const repository = createBoardRepository(drizzle(client, { schema }))
+    const createdAt = new Date('2026-07-03T21:30:00.000Z')
+
+    await insertUser(client, 'adapter-owner')
+    await insertUser(client, 'adapter-foreigner')
+
+    const bucket = await repository.createBucket({
+      archivedAt: null,
+      createdAt,
+      period: 'inbox',
+      status: 'active',
+      type: 'inbox',
+      userId: 'adapter-owner',
+    })
+
+    await expect(repository.findBucketById('adapter-owner', bucket.id)).resolves.toMatchObject({
+      id: bucket.id,
+      userId: 'adapter-owner',
+    })
+    await expect(repository.findBucketById('adapter-foreigner', bucket.id)).resolves.toBeUndefined()
+    await expect(repository.getActiveBuckets('adapter-foreigner')).resolves.toEqual([])
   })
 
   test('provisions the initial board through Better Auth registration', async () => {
@@ -185,9 +197,7 @@ describeWithPostgres('PostgreSQL initial board provisioning', () => {
   test('concurrent requests converge on one initial board state', async () => {
     await insertUser(client, 'user-concurrent')
 
-    const concurrentClients = await Promise.all(
-      Array.from({ length: 4 }, () => connectToTestSchema(databaseUrl!, schemaName)),
-    )
+    const concurrentClients = await Promise.all(Array.from({ length: 4 }, () => connectToTestDatabase(databaseUrl)))
 
     try {
       await Promise.all(
@@ -212,88 +222,10 @@ describeWithPostgres('PostgreSQL initial board provisioning', () => {
   })
 })
 
-async function connectToTestSchema(connectionString: string, schemaName: string, createSchema = false) {
+async function connectToTestDatabase(connectionString: string) {
   const client = new Client({ connectionString })
   await client.connect()
-
-  if (createSchema) {
-    await client.query(`CREATE SCHEMA "${schemaName}"`)
-    await client.query(`SET search_path TO "${schemaName}"`)
-    await createTables(client)
-  } else {
-    await client.query(`SET search_path TO "${schemaName}"`)
-  }
-
   return client
-}
-
-async function createTables(client: Client) {
-  await client.query(`
-    CREATE TYPE bucket_status AS ENUM ('active', 'pending_migration', 'archived');
-    CREATE TYPE bucket_type AS ENUM ('inbox', 'yearly', 'monthly', 'weekly', 'daily');
-
-    CREATE TABLE users (
-      id text PRIMARY KEY,
-      name text NOT NULL,
-      email text NOT NULL UNIQUE,
-      email_verified boolean DEFAULT false NOT NULL,
-      image text,
-      time_zone text,
-      planning_date date,
-      created_at timestamp DEFAULT now() NOT NULL,
-      updated_at timestamp DEFAULT now() NOT NULL
-    );
-
-    CREATE TABLE buckets (
-      id integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
-      period text NOT NULL,
-      type bucket_type NOT NULL,
-      status bucket_status NOT NULL,
-      created_at timestamp with time zone DEFAULT now() NOT NULL,
-      archived_at timestamp with time zone,
-      user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      CONSTRAINT buckets_inbox_period_check CHECK (type <> 'inbox' OR period = 'inbox')
-    );
-
-    CREATE UNIQUE INDEX buckets_user_id_type_period_unique ON buckets(user_id, type, period);
-    CREATE UNIQUE INDEX buckets_user_id_inbox_unique ON buckets(user_id) WHERE type = 'inbox';
-
-    CREATE TABLE accounts (
-      id text PRIMARY KEY,
-      account_id text NOT NULL,
-      provider_id text NOT NULL,
-      user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      access_token text,
-      refresh_token text,
-      id_token text,
-      access_token_expires_at timestamp,
-      refresh_token_expires_at timestamp,
-      scope text,
-      password text,
-      created_at timestamp DEFAULT now() NOT NULL,
-      updated_at timestamp NOT NULL
-    );
-
-    CREATE TABLE sessions (
-      id text PRIMARY KEY,
-      expires_at timestamp NOT NULL,
-      token text NOT NULL UNIQUE,
-      created_at timestamp DEFAULT now() NOT NULL,
-      updated_at timestamp NOT NULL,
-      ip_address text,
-      user_agent text,
-      user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE
-    );
-
-    CREATE TABLE verifications (
-      id text PRIMARY KEY,
-      identifier text NOT NULL,
-      value text NOT NULL,
-      expires_at timestamp NOT NULL,
-      created_at timestamp DEFAULT now() NOT NULL,
-      updated_at timestamp DEFAULT now() NOT NULL
-    );
-  `)
 }
 
 async function insertUser(client: Client, userId: string) {
@@ -303,4 +235,26 @@ async function insertUser(client: Client, userId: string) {
     `${userId}@example.com`,
     'Europe/Berlin',
   ])
+}
+
+function requireTestDatabaseUrl() {
+  const connectionString = process.env.PRODUCTIVITY_UP_TEST_DATABASE_URL
+
+  if (!connectionString) {
+    throw new Error('Integration tests must run through pnpm test:integration')
+  }
+
+  const url = new URL(connectionString)
+  const hostname = url.hostname.replace(/^\[(.*)\]$/, '$1')
+  const databaseName = decodeURIComponent(url.pathname.slice(1))
+
+  if (!['127.0.0.1', '::1', 'localhost'].includes(hostname)) {
+    throw new Error('Integration tests require a local PostgreSQL server')
+  }
+
+  if (!/^productivity_up_test_[0-9a-f]{32}$/.test(databaseName)) {
+    throw new Error('Integration tests require a disposable productivity_up_test_* database')
+  }
+
+  return connectionString
 }

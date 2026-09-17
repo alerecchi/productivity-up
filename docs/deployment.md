@@ -6,11 +6,11 @@ The Cloudflare Vite plugin selects and flattens the Wrangler environment during 
 
 ## Local validation and deployment
 
-Run `pnpm validate` before backend work is considered ready. It checks formatting and lint rules, runs tests, typechecks the project, and builds the production Worker bundle. It does not deploy a Worker, run a migration, access a deployment database, or run the staging smoke test.
+Run `pnpm validate` before backend work is considered ready. It checks formatting and lint rules, runs unit tests and isolated PostgreSQL integration tests, typechecks the project, and builds the production Worker bundle. It does not deploy a Worker, access a deployment database, or run the staging smoke test.
 
-A clean checkout needs Node.js 24 or newer, the pnpm version pinned in `package.json`, and dependencies installed with `pnpm install --frozen-lockfile`. Local validation does not need Cloudflare credentials, runtime secret values, `.env.deploy.local`, or any of the operator-only variables described below. The production bundle can warn that the secrets declared in `wrangler.jsonc` are missing; Wrangler enforces those secrets when a version is uploaded or deployed.
+A clean checkout needs Node.js 24 or newer, the pnpm version pinned in `package.json`, dependencies installed with `pnpm install --frozen-lockfile`, and the disposable local PostgreSQL setup documented in [Testing](testing.md). Local validation does not need Cloudflare credentials, runtime secret values, `.env.deploy.local`, or any of the operator-only variables described below. The production bundle can warn that the secrets declared in `wrangler.jsonc` are missing; Wrangler enforces those secrets when a version is uploaded or deployed.
 
-The current PostgreSQL integration suite runs only when `DATABASE_URL` is present. Without it, Vitest reports that suite as skipped. This is separate from the deployment migrations described below.
+The integration suite applies the checked-in migrations only to a generated local test database. It rejects development and deployment database URLs. This is separate from the deployment migrations described below.
 
 ## Cloudflare setup
 
