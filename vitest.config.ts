@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url'
+
 import viteReact from '@vitejs/plugin-react'
 import viteTsConfigPaths from 'vite-tsconfig-paths'
 import { defineConfig } from 'vitest/config'
@@ -13,6 +15,11 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: {
+      'cloudflare:workers': fileURLToPath(new URL('./src/test/cloudflare-workers.ts', import.meta.url)),
+    },
+  },
   test: {
     clearMocks: true,
     coverage: {

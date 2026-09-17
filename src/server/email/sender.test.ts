@@ -3,10 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { sendEmailConfirmation, sendResetPassword } from '@/server/email/sender'
 
 const { sendEmailMock } = vi.hoisted(() => {
-  process.env.APP_NAME = 'Productivity Up'
-  process.env.EMAIL_FROM = 'noreply@example.test'
-  process.env.RESEND_API_KEY = 'test-resend-api-key'
-
   return { sendEmailMock: vi.fn() }
 })
 
@@ -17,6 +13,11 @@ vi.mock('resend', () => ({
 }))
 
 const consoleMethods = ['debug', 'error', 'info', 'log', 'warn'] as const
+const emailConfiguration = {
+  apiKey: 'test-resend-api-key',
+  appName: 'Productivity Up',
+  from: 'noreply@example.test',
+}
 
 afterEach(() => {
   sendEmailMock.mockReset()
@@ -29,11 +30,14 @@ describe('authentication email delivery', () => {
     const verificationUrl = 'https://example.test/verify-email?token=verification-secret'
     sendEmailMock.mockResolvedValue({ data: { id: 'email-id' }, error: null, headers: null })
 
-    await sendEmailConfirmation({
-      to: recipient,
-      userName: 'Verification User',
-      url: verificationUrl,
-    })
+    await sendEmailConfirmation(
+      {
+        to: recipient,
+        userName: 'Verification User',
+        url: verificationUrl,
+      },
+      emailConfiguration,
+    )
 
     expect(sendEmailMock).toHaveBeenCalledWith({
       from: 'noreply@example.test',
@@ -51,11 +55,14 @@ describe('authentication email delivery', () => {
     const resetUrl = 'https://example.test/reset-password/reset-secret?callbackURL=%2Flogin'
     sendEmailMock.mockResolvedValue({ data: { id: 'email-id' }, error: null, headers: null })
 
-    await sendResetPassword({
-      to: recipient,
-      userName: 'Password Reset User',
-      url: resetUrl,
-    })
+    await sendResetPassword(
+      {
+        to: recipient,
+        userName: 'Password Reset User',
+        url: resetUrl,
+      },
+      emailConfiguration,
+    )
 
     expect(sendEmailMock).toHaveBeenCalledWith({
       from: 'noreply@example.test',
@@ -81,7 +88,9 @@ describe('authentication email delivery', () => {
       headers: { authorization: 'provider-credential' },
     })
 
-    await expect(sendResetPassword({ to: recipient, url: resetUrl })).rejects.toThrow(/^Email delivery failed$/)
+    await expect(sendResetPassword({ to: recipient, url: resetUrl }, emailConfiguration)).rejects.toThrow(
+      /^Email delivery failed$/,
+    )
 
     expectNoApplicationLogs(consoleSpies)
   })
@@ -92,7 +101,7 @@ describe('authentication email delivery', () => {
     const verificationUrl = 'https://example.test/verify-email?token=network-secret'
     sendEmailMock.mockRejectedValue(new Error(`Provider exposed ${recipient}, ${verificationUrl}, and api-key-secret`))
 
-    await expect(sendEmailConfirmation({ to: recipient, url: verificationUrl })).rejects.toThrow(
+    await expect(sendEmailConfirmation({ to: recipient, url: verificationUrl }, emailConfiguration)).rejects.toThrow(
       /^Email delivery failed$/,
     )
 

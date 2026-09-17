@@ -4,6 +4,8 @@ The deployment commands always fetch and deploy the pinned `main@origin` revisio
 
 The Cloudflare Vite plugin selects and flattens the Wrangler environment during the build through `CLOUDFLARE_ENV`. Wrangler then deploys the generated `dist/server/wrangler.json`; the deployment command does not select an environment again.
 
+The custom Worker entrypoint validates the complete runtime configuration before it handles an HTTP request or Queue batch. Validation errors identify missing or invalid keys without including their values. The authenticated staging smoke test therefore proves that the deployed Worker received every required binding before it signs in and loads the board.
+
 ## Local validation and deployment
 
 Run `pnpm validate` before backend work is considered ready. It checks formatting and lint rules, runs unit tests and isolated PostgreSQL integration tests, typechecks the project, and builds the production Worker bundle. It does not deploy a Worker, access a deployment database, or run the staging smoke test.
@@ -21,6 +23,26 @@ Create separate runtime secrets for `productivity-up-staging` and `productivity-
 
 Wrangler tracks the non-secret `BETTER_AUTH_URL`, `EMAIL_FROM`, and `APP_NAME` values separately for each environment. Runtime database access uses the environment's `HYPERDRIVE` binding, not a Worker secret.
 
+Each environment also has isolated realtime and email-delivery resources:
+
+| Environment | Durable Object binding | Email Queue                             | Dead-letter Queue                           |
+| ----------- | ---------------------- | --------------------------------------- | ------------------------------------------- |
+| Staging     | `USER_REALTIME`        | `productivity-up-staging-auth-email`    | `productivity-up-staging-auth-email-dlq`    |
+| Production  | `USER_REALTIME`        | `productivity-up-production-auth-email` | `productivity-up-production-auth-email-dlq` |
+
+`AUTH_EMAIL_QUEUE` and `AUTH_EMAIL_DEAD_LETTER_QUEUE` expose the two Queues to application code. The email Queue consumer sends exhausted messages to the environment's dead-letter Queue. Until durable email delivery is implemented, the Worker retries every received Queue batch instead of acknowledging and losing unknown work.
+
+Create the Queues once before deploying this configuration:
+
+```sh
+pnpm exec wrangler queues create productivity-up-staging-auth-email
+pnpm exec wrangler queues create productivity-up-staging-auth-email-dlq
+pnpm exec wrangler queues create productivity-up-production-auth-email
+pnpm exec wrangler queues create productivity-up-production-auth-email-dlq
+```
+
+Wrangler provisions the SQLite-backed `UserRealtimeDurableObject` namespace from the declarative `exports` configuration during deployment. Do not create or migrate that namespace by hand.
+
 The Hyperdrive configuration IDs are non-secret resource identifiers and are committed in `wrangler.jsonc`. Cloudflare stores each Hyperdrive origin URL and its database credentials. Keep the same direct origin URLs in the ignored `.env.deploy.local` file for migrations and operator setup commands. Do not add Neon pooler URLs or database credentials to Wrangler variables, Worker secrets, or tracked files.
 
 Set `VITE_APP_NAME` and `VITE_SERVER_URL` in the build environment. `VITE_SERVER_URL` must match the public URL. Production serves both `https://productivity-up.com` and `https://www.productivity-up.com`; use the apex URL as the canonical Better Auth and Vite server URL.
@@ -31,10 +53,15 @@ The initial setup versions are secret carriers only. Do not deploy them manually
 
 ## Local development
 
-Local development connects directly to the Neon development branch. Put its direct, non-pooler URL in the ignored `.env.local` file:
+Local development connects directly to the Neon development branch. Put its direct, non-pooler URL and the local application values in the ignored `.env.local` file:
 
 ```dotenv
 DATABASE_URL=postgresql://...
+APP_NAME=Productivity Up
+BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_SECRET=...
+EMAIL_FROM=...
+RESEND_API_KEY=...
 ```
 
 Do not create `.dev.vars`. Its presence prevents the Cloudflare Vite plugin from loading `.env.local`. Run the application normally with `pnpm dev`; local development does not select a Wrangler environment or use Hyperdrive.
@@ -80,7 +107,7 @@ Staging uses disposable data and is not a production release. Before the first p
 pnpm deploy:staging
 ```
 
-Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
+Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test. Every request crosses the runtime configuration check, so a successful sign-in and board load prove that the Worker received its Hyperdrive, Durable Object, Queue, dead-letter Queue, variables, and secrets. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
 
 ## Production
 
@@ -101,6 +128,8 @@ The override skips only the staging revision check. Installation, build, migrati
 ## Rollback and schema changes
 
 Do not use a Worker rollback as the default recovery path. Cloudflare changes only the Worker version; Neon remains on its current schema. If the previous Worker is not compatible with that schema, rolling back the Worker can make the incident worse. Deploy a forward fix instead.
+
+A Worker rollback also does not remove Queues, Queue messages, or Durable Object namespaces and their stored data. Confirm compatibility with those resources before selecting an older Worker version.
 
 Only roll back after confirming that the selected Worker version supports the current Neon schema. When that condition holds, use the version ID shown by the Worker deployment history:
 

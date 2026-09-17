@@ -13,6 +13,10 @@ vi.mock('@/server/email/sender', () => ({
 }))
 
 const databaseUrl = requireTestDatabaseUrl()
+const authConfiguration = {
+  baseUrl: 'http://localhost:3000',
+  secret: 'integration-test-secret-at-least-32-characters',
+}
 
 describe('PostgreSQL board repository', () => {
   let client: Client
@@ -78,7 +82,7 @@ describe('PostgreSQL board repository', () => {
   test('provisions the initial board through Better Auth registration', async () => {
     const db = drizzle(client, { schema })
 
-    await createAuth(db).api.signUpEmail({
+    await createAuth(db, authConfiguration).api.signUpEmail({
       body: {
         email: 'auth-signup@example.com',
         name: 'Auth Signup',
@@ -123,7 +127,7 @@ describe('PostgreSQL board repository', () => {
     `)
 
     await expect(
-      createAuth(db).api.signUpEmail({
+      createAuth(db, authConfiguration).api.signUpEmail({
         body: {
           email: 'provisioning-failure@example.com',
           name: 'Provisioning Failure',

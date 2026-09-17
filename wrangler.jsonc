@@ -1,30 +1,66 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "productivity-up",
-  "main": "@tanstack/react-start/server-entry",
+  "main": "src/server.ts",
   "compatibility_date": "2026-09-10",
   "compatibility_flags": ["nodejs_compat"],
-  "observability": {
-    "enabled": true,
-    "redact_query_string": true,
-    "traces": {
-      "enabled": true,
+  "exports": {
+    "UserRealtimeDurableObject": {
+      "type": "durable-object",
+      "storage": "sqlite",
     },
   },
   "env": {
     "staging": {
       "name": "productivity-up-staging",
       "workers_dev": true,
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "USER_REALTIME",
+            "class_name": "UserRealtimeDurableObject",
+          },
+        ],
+      },
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
           "id": "54f12cc46b24472ebd9e18c282ca2fa5",
         },
       ],
+      "observability": {
+        "enabled": true,
+        "redact_query_string": true,
+        "logs": {
+          "enabled": true,
+        },
+        "traces": {
+          "enabled": true,
+        },
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUTH_EMAIL_QUEUE",
+            "queue": "productivity-up-staging-auth-email",
+          },
+          {
+            "binding": "AUTH_EMAIL_DEAD_LETTER_QUEUE",
+            "queue": "productivity-up-staging-auth-email-dlq",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "productivity-up-staging-auth-email",
+            "dead_letter_queue": "productivity-up-staging-auth-email-dlq",
+          },
+        ],
+      },
       "vars": {
         "APP_NAME": "Productivity Up",
         "BETTER_AUTH_URL": "https://productivity-up-staging.ale-recchi.workers.dev",
         "EMAIL_FROM": "noreply-staging@productivity-up.com",
+        "ENVIRONMENT": "staging",
       },
       "secrets": {
         "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"],
@@ -33,12 +69,48 @@
     "production": {
       "name": "productivity-up-production",
       "workers_dev": false,
+      "durable_objects": {
+        "bindings": [
+          {
+            "name": "USER_REALTIME",
+            "class_name": "UserRealtimeDurableObject",
+          },
+        ],
+      },
       "hyperdrive": [
         {
           "binding": "HYPERDRIVE",
           "id": "5cefb00a2fe4478a880ab163764e5f3b",
         },
       ],
+      "observability": {
+        "enabled": true,
+        "redact_query_string": true,
+        "logs": {
+          "enabled": true,
+        },
+        "traces": {
+          "enabled": true,
+        },
+      },
+      "queues": {
+        "producers": [
+          {
+            "binding": "AUTH_EMAIL_QUEUE",
+            "queue": "productivity-up-production-auth-email",
+          },
+          {
+            "binding": "AUTH_EMAIL_DEAD_LETTER_QUEUE",
+            "queue": "productivity-up-production-auth-email-dlq",
+          },
+        ],
+        "consumers": [
+          {
+            "queue": "productivity-up-production-auth-email",
+            "dead_letter_queue": "productivity-up-production-auth-email-dlq",
+          },
+        ],
+      },
       "routes": [
         {
           "pattern": "productivity-up.com",
@@ -53,6 +125,7 @@
         "APP_NAME": "Productivity Up",
         "BETTER_AUTH_URL": "https://productivity-up.com",
         "EMAIL_FROM": "noreply@productivity-up.com",
+        "ENVIRONMENT": "production",
       },
       "secrets": {
         "required": ["BETTER_AUTH_SECRET", "RESEND_API_KEY"],

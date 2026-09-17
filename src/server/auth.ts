@@ -2,6 +2,7 @@ import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { betterAuth } from 'better-auth/minimal'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 
+import { getRuntimeEnvironment } from '@/config/runtime-env'
 import { AUTH_USER_FIELDS, UserTimeZoneSchema } from '@/lib/auth-user-fields'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
@@ -9,7 +10,15 @@ import { sendEmailConfirmation, sendResetPassword } from '@/server/email/sender'
 import { provisionInitialBoard } from '@/server/functions/board.core'
 import { createBoardRepository } from '@/server/functions/board.repository'
 
-export function createAuth(db: Database) {
+export type AuthRuntimeConfiguration = {
+  baseUrl: string
+  secret: string
+}
+
+export function createAuth(
+  db: Database,
+  configuration: AuthRuntimeConfiguration = getRuntimeEnvironment().authentication,
+) {
   const provisionBoardForUser = async (user: { id: string } & Record<string, unknown>) => {
     const timeZone = UserTimeZoneSchema.parse(user.timeZone)
 
@@ -21,6 +30,8 @@ export function createAuth(db: Database) {
   }
 
   return betterAuth({
+    baseURL: configuration.baseUrl,
+    secret: configuration.secret,
     advanced: {
       database: {
         joins: true,

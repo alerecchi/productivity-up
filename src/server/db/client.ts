@@ -1,19 +1,15 @@
 import * as schema from '@server/db/schema'
-import { env } from 'cloudflare:workers'
 import { drizzle } from 'drizzle-orm/node-postgres'
 import { Client } from 'pg'
 
-import { resolveDatabaseConnectionString } from '@/server/db/connection'
+import { getRuntimeEnvironment } from '@/config/runtime-env'
 
 export type Database = ReturnType<typeof createDatabase>
 
 export async function connectDatabase() {
-  const databaseEnvironment = env as Cloudflare.Env & { DATABASE_URL?: string }
+  const environment = getRuntimeEnvironment()
   const client = new Client({
-    connectionString: resolveDatabaseConnectionString({
-      DATABASE_URL: databaseEnvironment.DATABASE_URL,
-      HYPERDRIVE: databaseEnvironment.HYPERDRIVE,
-    }),
+    connectionString: environment.database.connectionString,
   })
 
   await client.connect()
