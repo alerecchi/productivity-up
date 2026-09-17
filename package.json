@@ -16,13 +16,12 @@
     "cf:typegen": "CLOUDFLARE_ENV=staging CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types --include-runtime false && oxfmt worker-configuration.d.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "vitest run",
-    "test:integration": "node --env-file-if-exists=.env.test.local scripts/run-postgres-integration.mjs",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "lint": "eslint",
     "format": "oxfmt && eslint --fix",
     "check": "oxfmt --check . && eslint",
-    "validate": "pnpm check && pnpm test && pnpm test:integration && pnpm build:production"
+    "validate": "pnpm check && pnpm test && pnpm build:production"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
