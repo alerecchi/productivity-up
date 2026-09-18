@@ -9,3 +9,7 @@
 1. Performance
 2. Reliability
 3. Maintainability
+
+## Backend changes
+
+ONLY IF performing Backend changes, then follow the [backend standards](BACKEND_STANDARD.md). It defines the required request, authorization, persistence, atomicity, response, cache, telemetry, testing, and review practices for new and changed server code.
