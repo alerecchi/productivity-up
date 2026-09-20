@@ -89,14 +89,12 @@ const bucket = {
   id: 2,
   period: '2026-06-24',
   type: 'daily',
-  userId: 'user-1',
 } satisfies Bucket
 
 const destinationBucket = {
   id: 3,
   period: '2026-06',
   type: 'monthly',
-  userId: 'user-1',
 } satisfies Bucket
 
 const buckets = [bucket, destinationBucket] satisfies Array<Bucket>
@@ -135,7 +133,7 @@ describe('Todo reordering within a Bucket', () => {
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id],
       affectedTodoPositions: [{ bucketId: bucket.id, id: todos[1].id, position: 512 }],
-      todo: { ...todos[1], position: 512, userId: 'user-1' },
+      todo: { ...todos[1], position: 512 },
     })
   })
 
@@ -363,7 +361,7 @@ describe('Todo reordering within a Bucket', () => {
     finishMove?.({
       affectedBucketIds: [bucket.id],
       affectedTodoPositions: [{ bucketId: bucket.id, id: todos[1].id, position: 512 }],
-      todo: { ...todos[1], position: 512, userId: 'user-1' },
+      todo: { ...todos[1], position: 512 },
     })
   })
 
@@ -562,7 +560,7 @@ describe('Todo movement across Buckets', () => {
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id, destinationBucket.id],
       affectedTodoPositions: [{ bucketId: destinationBucket.id, id: todos[1].id, position: 1536 }],
-      todo: { ...todos[1], bucketId: destinationBucket.id, position: 1536, userId: 'user-1' },
+      todo: { ...todos[1], bucketId: destinationBucket.id, position: 1536 },
     })
   })
 

@@ -4,16 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 import { todoTags } from '@/server/db/schema/schema'
 
 import {
-  CreateTagInput,
-  DeleteTagInput,
   TagNameConflictError,
-  UpdateTagInput,
   createTagForUser,
   deleteTagForUser,
   listTagsForUser,
   updateTagForUser,
-} from './tags.core'
-import type { TagRepository } from './tags.core'
+} from './operations'
+import type { TagRepository } from './operations'
+import { CreateTagInput, DeleteTagInput, UpdateTagInput } from './schemas'
 
 const existingTag = {
   colorKey: 'blue',

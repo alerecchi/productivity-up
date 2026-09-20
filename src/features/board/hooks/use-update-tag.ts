@@ -5,17 +5,13 @@ import type { TagDisplay } from '@/lib/types/Tag'
 import type { Todo } from '@/lib/types/Todo'
 import { updateTag } from '@/server/functions/tags'
 
-type TagWithUser = TagDisplay & {
-  userId?: string
-}
-
 export default function useUpdateTag() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: updateTag,
-    onSuccess: (tag: TagWithUser) => {
-      queryClient.setQueryData<Array<TagWithUser>>([TAGS_QUERY_KEY], (old = []) =>
+    onSuccess: (tag: TagDisplay) => {
+      queryClient.setQueryData<Array<TagDisplay>>([TAGS_QUERY_KEY], (old = []) =>
         old
           .map((cachedTag) => (cachedTag.id === tag.id ? tag : cachedTag))
           .toSorted((a, b) => a.name.localeCompare(b.name)),

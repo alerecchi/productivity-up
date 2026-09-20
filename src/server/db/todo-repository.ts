@@ -1,81 +1,12 @@
-import { createServerFn } from '@tanstack/react-start'
 import { and, asc, eq, inArray, max } from 'drizzle-orm'
 
 import { hasPendingMigrationBuckets } from '@/server/db/buckets'
 import type { Database } from '@/server/db/client'
 import { buckets, categories, tags, todoTags, todos } from '@/server/db/schema/schema'
 import type { TagDbSelect, TodoDbInsert } from '@/server/db/types'
-import type { TodoRepository } from '@/server/functions/todos.core'
-import {
-  CreateTodoInput,
-  DeleteTodoInput,
-  GetTodosInput,
-  MoveTodoInput,
-  UpdateTodoInput,
-  createTodoForUser,
-  deleteTodoForUser,
-  getTodosForUser,
-  moveTodoForUser,
-  updateTodoForUser,
-} from '@/server/functions/todos.core'
-import { authRequiredMiddleware } from '@/server/middlewares/auth-middleware'
+import type { TodoRepository } from '@/server/functions/todos/operations'
 
-export const createTodo = createServerFn({ method: 'POST' })
-  .middleware([authRequiredMiddleware])
-  .inputValidator(CreateTodoInput)
-  .handler(async ({ data, context }) => {
-    return createTodoForUser({
-      data,
-      repository: createTodoRepository(context.db),
-      userId: context.session.user.id,
-    })
-  })
-
-export const getTodos = createServerFn()
-  .middleware([authRequiredMiddleware])
-  .inputValidator(GetTodosInput)
-  .handler(async ({ data, context }) => {
-    return getTodosForUser({
-      data,
-      repository: createTodoRepository(context.db),
-      userId: context.session.user.id,
-    })
-  })
-
-export const updateTodo = createServerFn({ method: 'POST' })
-  .middleware([authRequiredMiddleware])
-  .inputValidator(UpdateTodoInput)
-  .handler(async ({ data, context }) => {
-    return updateTodoForUser({
-      data,
-      repository: createTodoRepository(context.db),
-      userId: context.session.user.id,
-    })
-  })
-
-export const moveTodo = createServerFn({ method: 'POST' })
-  .middleware([authRequiredMiddleware])
-  .inputValidator(MoveTodoInput)
-  .handler(async ({ data, context }) => {
-    return moveTodoForUser({
-      data,
-      repository: createTodoRepository(context.db),
-      userId: context.session.user.id,
-    })
-  })
-
-export const deleteTodo = createServerFn({ method: 'POST' })
-  .middleware([authRequiredMiddleware])
-  .inputValidator(DeleteTodoInput)
-  .handler(async ({ data, context }) => {
-    return deleteTodoForUser({
-      data,
-      repository: createTodoRepository(context.db),
-      userId: context.session.user.id,
-    })
-  })
-
-function createTodoRepository(db: Database): TodoRepository {
+export function createTodoRepository(db: Database): TodoRepository {
   return {
     async createTodo(todoToAdd: TodoDbInsert) {
       const [newTodo] = await db.insert(todos).values(todoToAdd).returning()

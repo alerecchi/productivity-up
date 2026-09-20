@@ -1,55 +1,19 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
+import { errorResponse } from '@/server/core/errors'
+import { requireNoPendingMigrationBuckets } from '@/server/core/pending-migration-gate'
 import type { BucketDb, CategoryDbSelect, TagDbSelect, TodoDbInsert, TodoDbSelect } from '@/server/db/types'
-import { requireNoPendingMigrationBuckets } from '@/server/functions/pending-migration-gate'
-import { errorResponse } from '@/server/utils'
+import type {
+  CreateTodoInput,
+  DeleteTodoInput,
+  GetTodosInput,
+  MoveTodoInput,
+  UpdateTodoInput,
+} from '@/server/functions/todos/schemas'
 
 const TODO_POSITION_GAP = 1024
-
-export const CreateTodoInput = z
-  .object({
-    bucketId: z.int(),
-    categoryId: z.int().nullable().optional(),
-    description: z.string().optional(),
-    tagIds: z.array(z.int()).optional(),
-    title: z.string().trim().min(1),
-  })
-  .strict()
-
-export const GetTodosInput = z
-  .object({
-    bucketId: z.int(),
-  })
-  .strict()
-
-export const UpdateTodoInput = z
-  .object({
-    bucketId: z.int().optional(),
-    categoryId: z.int().nullable().optional(),
-    completed: z.boolean().optional(),
-    description: z.string().optional(),
-    id: z.int(),
-    tagIds: z.array(z.int()).optional(),
-    title: z.string().trim().min(1).optional(),
-  })
-  .strict()
-
-export const MoveTodoInput = z
-  .object({
-    afterTodoId: z.int().optional(),
-    beforeTodoId: z.int().optional(),
-    id: z.int(),
-    targetBucketId: z.int(),
-  })
-  .strict()
-
-export const DeleteTodoInput = z
-  .object({
-    id: z.int(),
-  })
-  .strict()
 
 type TodoWithBucket = TodoDbSelect & {
   bucket: BucketDb

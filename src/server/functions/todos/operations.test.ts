@@ -1,16 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import {
-  CreateTodoInput,
-  MoveTodoInput,
-  UpdateTodoInput,
-  createTodoForUser,
-  deleteTodoForUser,
-  getTodosForUser,
-  moveTodoForUser,
-  updateTodoForUser,
-} from './todos.core'
-import type { TodoRepository } from './todos.core'
+import { createTodoForUser, deleteTodoForUser, getTodosForUser, moveTodoForUser, updateTodoForUser } from './operations'
+import type { TodoRepository } from './operations'
+import { CreateTodoInput, MoveTodoInput, UpdateTodoInput } from './schemas'
 
 const ownedCategory = {
   colorKey: 'blue',
