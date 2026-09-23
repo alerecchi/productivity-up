@@ -3,18 +3,18 @@ import { and, eq, max, sql } from 'drizzle-orm'
 import type { Database } from '@/server/db/client'
 import { users } from '@/server/db/schema/auth-schema'
 import { buckets, todos } from '@/server/db/schema/schema'
-import type { BoardRepository } from '@/server/functions/board.core'
+import type { BoardRepository } from '@/server/functions/board/operations'
 
 export function createBoardRepository(db: Database): BoardRepository {
   return {
-    async archiveBucket(bucketId, archivedAt) {
+    async archiveBucket(userId, bucketId, archivedAt) {
       const [bucket] = await db
         .update(buckets)
         .set({
           archivedAt,
           status: 'archived',
         })
-        .where(eq(buckets.id, bucketId))
+        .where(and(eq(buckets.id, bucketId), eq(buckets.userId, userId)))
         .returning()
 
       return bucket
@@ -119,12 +119,15 @@ export function createBoardRepository(db: Database): BoardRepository {
         .from(buckets)
         .where(and(eq(buckets.userId, userId), eq(buckets.status, 'pending_migration')))
     },
-    getTodosByBucket(bucketId) {
-      return db.select().from(todos).where(eq(todos.bucketId, bucketId))
+    getTodosByBucket(userId, bucketId) {
+      return db
+        .select()
+        .from(todos)
+        .where(and(eq(todos.bucketId, bucketId), eq(todos.userId, userId)))
     },
-    async getTodosByBucketWithDisplay(bucketId) {
+    async getTodosByBucketWithDisplay(userId, bucketId) {
       const bucketTodos = await db.query.todos.findMany({
-        where: eq(todos.bucketId, bucketId),
+        where: and(eq(todos.bucketId, bucketId), eq(todos.userId, userId)),
         with: {
           category: {
             columns: {
@@ -157,14 +160,14 @@ export function createBoardRepository(db: Database): BoardRepository {
         where: eq(users.id, userId),
       })
     },
-    async markBucketPendingMigration(bucketId) {
+    async markBucketPendingMigration(userId, bucketId) {
       const [bucket] = await db
         .update(buckets)
         .set({
           archivedAt: null,
           status: 'pending_migration',
         })
-        .where(eq(buckets.id, bucketId))
+        .where(and(eq(buckets.id, bucketId), eq(buckets.userId, userId)))
         .returning()
 
       return bucket

@@ -5,17 +5,13 @@ import type { CategoryDisplay } from '@/lib/types/Category'
 import type { Todo } from '@/lib/types/Todo'
 import { deleteCategory } from '@/server/functions/categories'
 
-type CategoryWithUser = CategoryDisplay & {
-  userId?: string
-}
-
 export default function useDeleteCategory() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: deleteCategory,
     onSuccess: (deletedCategory) => {
-      queryClient.setQueryData<Array<CategoryWithUser>>([CATEGORIES_QUERY_KEY], (old = []) =>
+      queryClient.setQueryData<Array<CategoryDisplay>>([CATEGORIES_QUERY_KEY], (old = []) =>
         old.filter((category) => category.id !== deletedCategory.categoryId),
       )
       queryClient.setQueriesData<Array<Todo>>({ queryKey: [TODOS_QUERY_KEY] }, (old = []) =>

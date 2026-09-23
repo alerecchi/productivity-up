@@ -17,6 +17,7 @@ const commonEnvironment = {
 const authEmailQueue = { send: () => Promise.resolve() }
 const authEmailDeadLetterQueue = { send: () => Promise.resolve() }
 const userRealtime = { getByName: () => ({}) }
+const versionMetadata = { id: 'worker-version-id' }
 
 describe('development runtime configuration', () => {
   it('returns the direct Neon connection and validated application configuration', () => {
@@ -37,6 +38,7 @@ describe('development runtime configuration', () => {
         apiKey: 'test-resend-api-key',
         from: 'noreply@example.test',
       },
+      version: 'development',
     })
   })
 
@@ -68,6 +70,7 @@ describe('Cloudflare runtime configuration', () => {
         ENVIRONMENT: deployment,
         HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
         USER_REALTIME: userRealtime,
+        VERSION_METADATA: versionMetadata,
       }),
     ).toEqual({
       application: { name: 'Productivity Up' },
@@ -86,27 +89,33 @@ describe('Cloudflare runtime configuration', () => {
         apiKey: 'test-resend-api-key',
         from: 'noreply@example.test',
       },
+      version: versionMetadata.id,
     })
   })
 
-  it.each(['AUTH_EMAIL_DEAD_LETTER_QUEUE', 'AUTH_EMAIL_QUEUE', 'ENVIRONMENT', 'HYPERDRIVE', 'USER_REALTIME'])(
-    'rejects a missing %s binding or value',
-    (missingKey) => {
-      const source: Record<string, unknown> = {
-        ...commonEnvironment,
-        AUTH_EMAIL_DEAD_LETTER_QUEUE: authEmailDeadLetterQueue,
-        AUTH_EMAIL_QUEUE: authEmailQueue,
-        ENVIRONMENT: 'staging',
-        HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
-        USER_REALTIME: userRealtime,
-      }
-      delete source[missingKey]
+  it.each([
+    'AUTH_EMAIL_DEAD_LETTER_QUEUE',
+    'AUTH_EMAIL_QUEUE',
+    'ENVIRONMENT',
+    'HYPERDRIVE',
+    'USER_REALTIME',
+    'VERSION_METADATA',
+  ])('rejects a missing %s binding or value', (missingKey) => {
+    const source: Record<string, unknown> = {
+      ...commonEnvironment,
+      AUTH_EMAIL_DEAD_LETTER_QUEUE: authEmailDeadLetterQueue,
+      AUTH_EMAIL_QUEUE: authEmailQueue,
+      ENVIRONMENT: 'staging',
+      HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
+      USER_REALTIME: userRealtime,
+      VERSION_METADATA: versionMetadata,
+    }
+    delete source[missingKey]
 
-      expect(() => parseCloudflareRuntimeEnvironment(source)).toThrow(
-        `Missing or invalid runtime configuration: ${missingKey}.`,
-      )
-    },
-  )
+    expect(() => parseCloudflareRuntimeEnvironment(source)).toThrow(
+      `Missing or invalid runtime configuration: ${missingKey}.`,
+    )
+  })
 
   it('rejects bindings without the required capability', () => {
     expect(() =>
@@ -117,6 +126,7 @@ describe('Cloudflare runtime configuration', () => {
         ENVIRONMENT: 'staging',
         HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
         USER_REALTIME: userRealtime,
+        VERSION_METADATA: versionMetadata,
       }),
     ).toThrow('Missing or invalid runtime configuration: AUTH_EMAIL_QUEUE.')
   })
@@ -132,6 +142,7 @@ describe('Cloudflare runtime configuration', () => {
         ENVIRONMENT: 'preview',
         HYPERDRIVE: { connectionString: 'database-secret-value' },
         USER_REALTIME: {},
+        VERSION_METADATA: {},
       })
     } catch (error) {
       thrownError = error
@@ -139,7 +150,7 @@ describe('Cloudflare runtime configuration', () => {
 
     expect(thrownError).toBeInstanceOf(RuntimeConfigurationError)
     expect(String(thrownError)).toBe(
-      'RuntimeConfigurationError: Missing or invalid runtime configuration: AUTH_EMAIL_DEAD_LETTER_QUEUE, AUTH_EMAIL_QUEUE, ENVIRONMENT, HYPERDRIVE, USER_REALTIME.',
+      'RuntimeConfigurationError: Missing or invalid runtime configuration: AUTH_EMAIL_DEAD_LETTER_QUEUE, AUTH_EMAIL_QUEUE, ENVIRONMENT, HYPERDRIVE, USER_REALTIME, VERSION_METADATA.',
     )
     expect(String(thrownError)).not.toContain('database-secret-value')
   })

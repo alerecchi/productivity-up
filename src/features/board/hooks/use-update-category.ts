@@ -5,17 +5,13 @@ import type { CategoryDisplay } from '@/lib/types/Category'
 import type { Todo } from '@/lib/types/Todo'
 import { updateCategory } from '@/server/functions/categories'
 
-type CategoryWithUser = CategoryDisplay & {
-  userId?: string
-}
-
 export default function useUpdateCategory() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: updateCategory,
-    onSuccess: (category: CategoryWithUser) => {
-      queryClient.setQueryData<Array<CategoryWithUser>>([CATEGORIES_QUERY_KEY], (old = []) =>
+    onSuccess: (category: CategoryDisplay) => {
+      queryClient.setQueryData<Array<CategoryDisplay>>([CATEGORIES_QUERY_KEY], (old = []) =>
         old
           .map((cachedCategory) => (cachedCategory.id === category.id ? category : cachedCategory))
           .toSorted((a, b) => a.name.localeCompare(b.name)),

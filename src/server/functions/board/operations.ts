@@ -2,8 +2,8 @@ import { derivePeriodKeys, getEnabledBucketTypes, getPeriodBoundaries, getTodayL
 import type { BucketType } from '@/lib/types/Bucket'
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
+import { errorResponse } from '@/server/core/errors'
 import type { BucketDb, TodoDbSelect, UserDb } from '@/server/db/types'
-import { errorResponse } from '@/server/utils'
 
 const ENABLED_BUCKET_HORIZONS = ['yearly', 'monthly', 'weekly', 'daily'] as const
 const TODO_POSITION_GAP = 1024
@@ -21,17 +21,17 @@ export type InitialBoardRepository = {
 }
 
 export type BoardRepository = InitialBoardRepository & {
-  archiveBucket: (bucketId: number, archivedAt: Date) => Promise<BucketDb | undefined>
+  archiveBucket: (userId: string, bucketId: number, archivedAt: Date) => Promise<BucketDb | undefined>
   createBucket: (bucket: Omit<BucketDb, 'id'>) => Promise<BucketDb>
   findBucketById: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
   findBucketByUserTypeAndPeriod: (userId: string, type: BucketType, period: string) => Promise<BucketDb | undefined>
   getActiveBuckets: (userId: string) => Promise<Array<BucketDb>>
   getMaxTodoPosition: (userId: string, bucketId: number) => Promise<number | null>
   getPendingMigrationBuckets: (userId: string) => Promise<Array<BucketDb>>
-  getTodosByBucket: (bucketId: number) => Promise<Array<TodoDbSelect>>
-  getTodosByBucketWithDisplay: (bucketId: number) => Promise<Array<MigrationTodo>>
+  getTodosByBucket: (userId: string, bucketId: number) => Promise<Array<TodoDbSelect>>
+  getTodosByBucketWithDisplay: (userId: string, bucketId: number) => Promise<Array<MigrationTodo>>
   getUser: (userId: string) => Promise<UserDb | undefined>
-  markBucketPendingMigration: (bucketId: number) => Promise<BucketDb | undefined>
+  markBucketPendingMigration: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
   moveTodoForMigration: (
     todoId: number,
     userId: string,
@@ -232,13 +232,13 @@ export async function completeDayForUser({
   const pendingMigrationBuckets = await repository.getPendingMigrationBuckets(userId)
 
   if (pendingMigrationBuckets.length > 0) {
-    throw new Error('Migration is required before completing this day')
+    throw errorResponse(409, 'Migration is required before completing this day')
   }
 
   const today = getTodayLocalDate(now(), user.timeZone)
 
   if (user.planningDate > today) {
-    throw new Error('Cannot complete a future Bucket')
+    throw errorResponse(409, 'Cannot complete a future Bucket')
   }
 
   const periodKeys = derivePeriodKeys(user.planningDate)
@@ -248,7 +248,7 @@ export async function completeDayForUser({
     throw new Error('Active daily Bucket not found')
   }
 
-  const dailyTodos = await repository.getTodosByBucket(dailyBucket.id)
+  const dailyTodos = await repository.getTodosByBucket(userId, dailyBucket.id)
   const completedCount = dailyTodos.filter((todo) => todo.completed).length
 
   const completedAt = now()
@@ -283,6 +283,7 @@ export async function completeDayForUser({
       migrationRecap: await getMigrationFlowRecap({
         pendingMigrationBuckets: readyState.pendingMigrationBuckets,
         repository,
+        userId,
       }),
     }
   }
@@ -324,7 +325,7 @@ export async function confirmMigrationStepForUser({
     throw errorResponse(409, 'Migration Step conflict; refresh and retry')
   }
 
-  const sourceTodos = (await repository.getTodosByBucket(sourceBucket.id)).toSorted(
+  const sourceTodos = (await repository.getTodosByBucket(userId, sourceBucket.id)).toSorted(
     (a, b) => a.position - b.position || a.id - b.id,
   )
   const incompleteTodos = sourceTodos.filter((todo) => !todo.completed)
@@ -379,12 +380,12 @@ export async function confirmMigrationStepForUser({
     })
   }
 
-  const remainingIncompleteTodos = (await repository.getTodosByBucket(sourceBucket.id)).filter(
+  const remainingIncompleteTodos = (await repository.getTodosByBucket(userId, sourceBucket.id)).filter(
     (todo) => !todo.completed,
   )
 
   if (remainingIncompleteTodos.length === 0) {
-    await repository.archiveBucket(sourceBucket.id, now())
+    await repository.archiveBucket(userId, sourceBucket.id, now())
   }
 
   return {
@@ -416,10 +417,10 @@ export async function getMigrationStepForUser({ data, repository, userId }: GetM
       : pendingMigrationBuckets.find((bucket) => bucket.id === data.sourceBucketId)
 
   if (!sourceBucket || sourceBucket.type === 'inbox') {
-    throw new Error('Pending Migration Bucket not found')
+    throw errorResponse(404, 'Pending Migration Bucket not found')
   }
 
-  const todos = (await repository.getTodosByBucketWithDisplay(sourceBucket.id)).toSorted(
+  const todos = (await repository.getTodosByBucketWithDisplay(userId, sourceBucket.id)).toSorted(
     (a, b) => a.position - b.position || a.id - b.id,
   )
   const incompleteTodos = todos.filter((todo) => !todo.completed)
@@ -441,7 +442,7 @@ export async function getMigrationStepForUser({ data, repository, userId }: GetM
   return {
     carryForwardDestination,
     completedCount: todos.length - incompleteTodos.length,
-    flowRecap: await getMigrationFlowRecap({ pendingMigrationBuckets, repository }),
+    flowRecap: await getMigrationFlowRecap({ pendingMigrationBuckets, repository, userId }),
     incompleteCount: incompleteTodos.length,
     moveBackDestination,
     pendingMigrationBuckets,
@@ -453,14 +454,16 @@ export async function getMigrationStepForUser({ data, repository, userId }: GetM
 async function getMigrationFlowRecap({
   pendingMigrationBuckets,
   repository,
+  userId,
 }: {
   pendingMigrationBuckets: Array<BucketDb>
   repository: BoardRepository
+  userId: string
 }): Promise<MigrationFlowRecap> {
   const bucketBreakdown = []
 
   for (const bucket of pendingMigrationBuckets) {
-    const todos = await repository.getTodosByBucket(bucket.id)
+    const todos = await repository.getTodosByBucket(userId, bucket.id)
     const completedCount = todos.filter((todo) => todo.completed).length
     const incompleteCount = todos.length - completedCount
 
@@ -494,15 +497,15 @@ async function reconcileExpiredBucketsForBoardLoad({
   const expiredBuckets = await getExpiredActiveBuckets({ now, repository, timeZone, userId })
 
   for (const bucket of expiredBuckets) {
-    const todos = await repository.getTodosByBucket(bucket.id)
+    const todos = await repository.getTodosByBucket(userId, bucket.id)
     const hasIncompleteTodos = todos.some((todo) => !todo.completed)
 
     if (hasIncompleteTodos) {
-      await repository.markBucketPendingMigration(bucket.id)
+      await repository.markBucketPendingMigration(userId, bucket.id)
       continue
     }
 
-    await repository.archiveBucket(bucket.id, archivedAt)
+    await repository.archiveBucket(userId, bucket.id, archivedAt)
   }
 }
 
@@ -547,7 +550,7 @@ async function assertDecisionMapMatchesMigrationState({
       sourceBucket,
       userId,
     })
-    const destinationTodos = await repository.getTodosByBucket(destinationBucket.id)
+    const destinationTodos = await repository.getTodosByBucket(userId, destinationBucket.id)
     const alreadyAppliedTodo = destinationTodos.find((todo) => todo.id === todoId && !todo.completed)
 
     if (!alreadyAppliedTodo) {
@@ -669,15 +672,15 @@ async function reconcileStaleBucketsAfterManualCompletion({
   const staleBuckets = await getStaleActiveBuckets({ planningDate, repository, userId })
 
   for (const bucket of staleBuckets) {
-    const todos = await repository.getTodosByBucket(bucket.id)
+    const todos = await repository.getTodosByBucket(userId, bucket.id)
     const hasIncompleteTodos = todos.some((todo) => !todo.completed)
 
     if (hasIncompleteTodos) {
-      await repository.markBucketPendingMigration(bucket.id)
+      await repository.markBucketPendingMigration(userId, bucket.id)
       continue
     }
 
-    await repository.archiveBucket(bucket.id, archivedAt)
+    await repository.archiveBucket(userId, bucket.id, archivedAt)
   }
 }
 

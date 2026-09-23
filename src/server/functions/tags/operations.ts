@@ -1,45 +1,16 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 
 import type { TagDisplay } from '@/lib/types/Tag'
-import { TagColorKeySchema } from '@/lib/types/Tag'
+import { errorResponse } from '@/server/core/errors'
+import { requireNoPendingMigrationBuckets } from '@/server/core/pending-migration-gate'
 import type { TagDbInsert, TagDbSelect } from '@/server/db/types'
-import { requireNoPendingMigrationBuckets } from '@/server/functions/pending-migration-gate'
-import { errorResponse } from '@/server/utils'
+import type { CreateTagInput, DeleteTagInput, UpdateTagInput } from '@/server/functions/tags/schemas'
 
 export class TagNameConflictError extends Error {
   constructor() {
     super('Tag name already exists')
   }
 }
-
-const tagNameSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(32)
-  .transform((name) => normalizeTagName(name))
-  .pipe(z.string().regex(/^[a-z0-9][a-z0-9_-]*$/))
-
-export const CreateTagInput = z
-  .object({
-    colorKey: TagColorKeySchema,
-    name: tagNameSchema,
-  })
-  .strict()
-
-export const UpdateTagInput = z
-  .object({
-    colorKey: TagColorKeySchema,
-    id: z.number().int(),
-    name: tagNameSchema,
-  })
-  .strict()
-
-export const DeleteTagInput = z
-  .object({
-    id: z.number().int(),
-  })
-  .strict()
 
 export type DeletedTag = {
   tagId: number

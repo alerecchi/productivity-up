@@ -6,7 +6,6 @@ const BucketSchema = z.object({
   id: z.int(),
   period: z.string().min(1),
   type: BucketTypeSchema,
-  userId: z.string(),
 })
 
 export type Bucket = z.infer<typeof BucketSchema>

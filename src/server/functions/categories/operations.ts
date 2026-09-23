@@ -1,36 +1,19 @@
-import { z } from 'zod'
+import type { z } from 'zod'
 
-import { CategoryColorKeySchema } from '@/lib/types/Category'
+import { errorResponse } from '@/server/core/errors'
+import { requireNoPendingMigrationBuckets } from '@/server/core/pending-migration-gate'
 import type { CategoryDbInsert, CategoryDbSelect } from '@/server/db/types'
-import { requireNoPendingMigrationBuckets } from '@/server/functions/pending-migration-gate'
-import { errorResponse } from '@/server/utils'
+import type {
+  CreateCategoryInput,
+  DeleteCategoryInput,
+  UpdateCategoryInput,
+} from '@/server/functions/categories/schemas'
 
 export class CategoryNameConflictError extends Error {
   constructor() {
     super('Category name already exists')
   }
 }
-
-export const CreateCategoryInput = z
-  .object({
-    colorKey: CategoryColorKeySchema,
-    name: z.string().trim().min(1).max(64),
-  })
-  .strict()
-
-export const UpdateCategoryInput = z
-  .object({
-    colorKey: CategoryColorKeySchema,
-    id: z.number().int(),
-    name: z.string().trim().min(1).max(64),
-  })
-  .strict()
-
-export const DeleteCategoryInput = z
-  .object({
-    id: z.number().int(),
-  })
-  .strict()
 
 export type DeletedCategory = {
   categoryId: number
@@ -110,10 +93,18 @@ export async function updateCategoryForUser({ data, repository, userId }: Update
     throw errorResponse(409, 'Category name already exists')
   }
 
-  const category = await repository.updateCategory(data.id, userId, {
-    colorKey: data.colorKey,
-    name,
-  })
+  const category = await repository
+    .updateCategory(data.id, userId, {
+      colorKey: data.colorKey,
+      name,
+    })
+    .catch((error: unknown) => {
+      if (error instanceof CategoryNameConflictError) {
+        throw errorResponse(409, error.message)
+      }
+
+      throw error
+    })
 
   if (!category) {
     throw errorResponse(404, 'Category not found or unauthorized')

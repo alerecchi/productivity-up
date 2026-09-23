@@ -514,7 +514,6 @@ describe('CreateTodoButton', () => {
     mockedListTags.mockResolvedValue([existingTag])
     mockedDeleteTag.mockResolvedValue({
       tagId: existingTag.id,
-      userId: 'user-1',
     })
     mockedCreateTodo.mockResolvedValue(createdTodo)
     const queryClient = createTestQueryClient()
@@ -726,7 +725,6 @@ describe('CreateTodoButton', () => {
     mockedListCategories.mockResolvedValue([createdCategory])
     mockedDeleteCategory.mockResolvedValue({
       categoryId: createdCategory.id,
-      userId: 'user-1',
     })
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([CATEGORIES_QUERY_KEY], [createdCategory])

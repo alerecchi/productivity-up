@@ -23,6 +23,7 @@ export type RuntimeEnvironment = {
     apiKey: string
     from: string
   }
+  version: string
 } & (
   | {
       deployment: 'development'
@@ -62,6 +63,7 @@ const cloudflareSchema = commonSchema.extend({
   ENVIRONMENT: z.enum(['production', 'staging']),
   HYPERDRIVE: z.object({ connectionString: postgresUrl }),
   USER_REALTIME: durableObjectNamespaceSchema,
+  VERSION_METADATA: z.object({ id: z.string().trim().min(1) }),
 })
 
 export class RuntimeConfigurationError extends Error {
@@ -78,6 +80,7 @@ export function parseDevelopmentRuntimeEnvironment(source: unknown): RuntimeEnvi
     ...commonEnvironment(environment),
     database: { connectionString: environment.DATABASE_URL },
     deployment: 'development',
+    version: 'development',
   }
 }
 
@@ -93,6 +96,7 @@ export function parseCloudflareRuntimeEnvironment(source: unknown): RuntimeEnvir
     },
     database: { connectionString: environment.HYPERDRIVE.connectionString },
     deployment: environment.ENVIRONMENT,
+    version: environment.VERSION_METADATA.id,
   }
 }
 

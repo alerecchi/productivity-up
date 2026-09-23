@@ -14,6 +14,9 @@
     "staging": {
       "name": "productivity-up-staging",
       "workers_dev": true,
+      "version_metadata": {
+        "binding": "VERSION_METADATA",
+      },
       "durable_objects": {
         "bindings": [
           {
@@ -69,6 +72,9 @@
     "production": {
       "name": "productivity-up-production",
       "workers_dev": false,
+      "version_metadata": {
+        "binding": "VERSION_METADATA",
+      },
       "durable_objects": {
         "bindings": [
           {

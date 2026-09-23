@@ -4,11 +4,11 @@ import { tanstackStartCookies } from 'better-auth/tanstack-start'
 
 import { getRuntimeEnvironment } from '@/config/runtime-env'
 import { AUTH_USER_FIELDS, UserTimeZoneSchema } from '@/lib/auth-user-fields'
+import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
 import { sendEmailConfirmation, sendResetPassword } from '@/server/email/sender'
-import { provisionInitialBoard } from '@/server/functions/board.core'
-import { createBoardRepository } from '@/server/functions/board.repository'
+import { provisionInitialBoard } from '@/server/functions/board/operations'
 
 export type AuthRuntimeConfiguration = {
   baseUrl: string

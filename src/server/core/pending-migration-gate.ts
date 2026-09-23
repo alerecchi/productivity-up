@@ -1,4 +1,4 @@
-import { errorResponse } from '@/server/utils'
+import { errorResponse } from '@/server/core/errors'
 
 export type PendingMigrationGateRepository = {
   hasPendingMigrationBuckets: (userId: string) => Promise<boolean>

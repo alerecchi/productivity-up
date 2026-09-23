@@ -8,8 +8,8 @@ import {
   getMigrationStepForUser,
   loadBoardForUser,
   provisionInitialBoard,
-} from '@/server/functions/board.core'
-import type { BoardRepository } from '@/server/functions/board.core'
+} from '@/server/functions/board/operations'
+import type { BoardRepository } from '@/server/functions/board/operations'
 
 describe('provisionInitialBoard', () => {
   test('commits the User Planning Date, User Timezone, and canonical active Buckets', async () => {
@@ -302,7 +302,7 @@ describe('loadBoardForUser', () => {
       archivedAt: null,
       status: 'pending_migration',
     })
-    await expect(repository.getTodosByBucket(5)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 5)).resolves.toEqual([
       expect.objectContaining({ completed: false, id: 1, title: 'Planned ahead Todo' }),
     ])
     await expect(getMigrationStepForUser({ repository, userId: 'user-1' })).resolves.toMatchObject({
@@ -603,7 +603,7 @@ describe('completeDayForUser', () => {
         repository,
         userId: 'user-1',
       }),
-    ).rejects.toThrow('Cannot complete a future Bucket')
+    ).rejects.toMatchObject({ code: 'CONFLICT', status: 409 })
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-04')).resolves.toMatchObject({
       archivedAt: null,
       status: 'active',
@@ -634,7 +634,7 @@ describe('completeDayForUser', () => {
         repository,
         userId: 'user-1',
       }),
-    ).rejects.toThrow('Migration is required before completing this day')
+    ).rejects.toMatchObject({ code: 'CONFLICT', status: 409 })
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
       archivedAt: null,
       status: 'active',
@@ -751,15 +751,15 @@ describe('confirmMigrationStepForUser', () => {
       ],
       status: 'confirmed',
     })
-    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 4)).resolves.toEqual([
       expect.objectContaining({ id: 10, position: 1024 }),
       expect.objectContaining({ bucketId: 4, id: 12, position: 2048, title: 'Move back first' }),
     ])
-    await expect(repository.getTodosByBucket(5)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 5)).resolves.toEqual([
       expect.objectContaining({ id: 11, position: 1024 }),
       expect.objectContaining({ bucketId: 5, id: 14, position: 2048, title: 'Carry forward second' }),
     ])
-    await expect(repository.getTodosByBucket(6)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 6)).resolves.toEqual([
       expect.objectContaining({ bucketId: 6, completed: true, id: 13, title: 'Completed stays put' }),
     ])
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
@@ -832,10 +832,10 @@ describe('confirmMigrationStepForUser', () => {
       migratedTodoPositions: [{ bucketId: 5, id: 14, position: 1024 }],
       status: 'confirmed',
     })
-    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 4)).resolves.toEqual([
       expect.objectContaining({ bucketId: 4, id: 12, position: 1024 }),
     ])
-    await expect(repository.getTodosByBucket(5)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 5)).resolves.toEqual([
       expect.objectContaining({ bucketId: 5, id: 14, position: 1024 }),
     ])
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
@@ -879,11 +879,11 @@ describe('confirmMigrationStepForUser', () => {
       }),
     ).rejects.toHaveProperty('status', 409)
 
-    await expect(repository.getTodosByBucket(2)).resolves.toEqual([])
-    await expect(repository.getTodosByBucket(3)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 2)).resolves.toEqual([])
+    await expect(repository.getTodosByBucket('user-1', 3)).resolves.toEqual([
       expect.objectContaining({ bucketId: 3, id: 13, position: 1024 }),
     ])
-    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 4)).resolves.toEqual([
       expect.objectContaining({ bucketId: 4, completed: true, id: 12 }),
       expect.objectContaining({ bucketId: 4, completed: false, id: 14 }),
     ])
@@ -926,7 +926,7 @@ describe('confirmMigrationStepForUser', () => {
       }),
     ).rejects.toHaveProperty('status', 409)
 
-    await expect(repository.getTodosByBucket(3)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 3)).resolves.toEqual([
       expect.objectContaining({ bucketId: 3, id: 12, position: 1024 }),
     ])
   })
@@ -966,7 +966,7 @@ describe('confirmMigrationStepForUser', () => {
       migratedTodoPositions: [{ bucketId: 1, id: 11, position: 2048 }],
       status: 'confirmed',
     })
-    await expect(repository.getTodosByBucket(1)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 1)).resolves.toEqual([
       expect.objectContaining({ id: 10, position: 1024 }),
       expect.objectContaining({ bucketId: 1, id: 11, position: 2048, title: 'Move back to inbox' }),
     ])
@@ -1002,7 +1002,7 @@ describe('confirmMigrationStepForUser', () => {
     })
 
     expect(firstRead.todos).toEqual(secondRead.todos)
-    await expect(repository.getTodosByBucket(4)).resolves.toEqual([
+    await expect(repository.getTodosByBucket('user-1', 4)).resolves.toEqual([
       expect.objectContaining({ bucketId: 4, id: 12, position: 1024 }),
     ])
     await expect(repository.findBucketByUserTypeAndPeriod('user-1', 'daily', '2026-07-03')).resolves.toMatchObject({
@@ -1013,6 +1013,21 @@ describe('confirmMigrationStepForUser', () => {
 })
 
 describe('getMigrationStepForUser', () => {
+  test('returns not found for a stale migration source', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+      ],
+      user: { planningDate: '2026-07-04', timeZone: 'Europe/Berlin' },
+    })
+
+    await expect(
+      getMigrationStepForUser({ data: { sourceBucketId: 999 }, repository, userId: 'user-1' }),
+    ).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', status: 404 })
+  })
+
   test('orders pending source Buckets daily, weekly, monthly, yearly and returns an aggregate flow recap', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const yearlyBucket = createBucket({ createdAt, id: 6, period: '2025', status: 'pending_migration', type: 'yearly' })
@@ -1116,8 +1131,10 @@ function createInMemoryBoardRepository({
   const storedUser = createUser(user)
 
   return {
-    archiveBucket(bucketId, archivedAt) {
-      const bucket = storedBuckets.find((storedBucket) => storedBucket.id === bucketId)
+    archiveBucket(userId, bucketId, archivedAt) {
+      const bucket = storedBuckets.find(
+        (storedBucket) => storedBucket.id === bucketId && storedBucket.userId === userId,
+      )
 
       if (!bucket) {
         return Promise.resolve(undefined)
@@ -1206,19 +1223,23 @@ function createInMemoryBoardRepository({
         storedBuckets.filter((bucket) => bucket.userId === userId && bucket.status === 'pending_migration'),
       )
     },
-    getTodosByBucket(bucketId) {
-      return Promise.resolve(storedTodos.filter((todo) => todo.bucketId === bucketId))
+    getTodosByBucket(userId, bucketId) {
+      return Promise.resolve(storedTodos.filter((todo) => todo.bucketId === bucketId && todo.userId === userId))
     },
-    getTodosByBucketWithDisplay(bucketId) {
+    getTodosByBucketWithDisplay(userId, bucketId) {
       return Promise.resolve(
-        storedTodos.filter((todo) => todo.bucketId === bucketId).map((todo) => ({ ...todo, category: null, tags: [] })),
+        storedTodos
+          .filter((todo) => todo.bucketId === bucketId && todo.userId === userId)
+          .map((todo) => ({ ...todo, category: null, tags: [] })),
       )
     },
     getUser(userId) {
       return Promise.resolve(storedUser.id === userId ? storedUser : undefined)
     },
-    markBucketPendingMigration(bucketId) {
-      const bucket = storedBuckets.find((storedBucket) => storedBucket.id === bucketId)
+    markBucketPendingMigration(userId, bucketId) {
+      const bucket = storedBuckets.find(
+        (storedBucket) => storedBucket.id === bucketId && storedBucket.userId === userId,
+      )
 
       if (!bucket) {
         return Promise.resolve(undefined)

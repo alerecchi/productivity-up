@@ -5,15 +5,13 @@ import { todos } from '@/server/db/schema/schema'
 
 import {
   CategoryNameConflictError,
-  CreateCategoryInput,
-  DeleteCategoryInput,
-  UpdateCategoryInput,
   createCategoryForUser,
   deleteCategoryForUser,
   listCategoriesForUser,
   updateCategoryForUser,
-} from './categories.core'
-import type { CategoryRepository } from './categories.core'
+} from './operations'
+import type { CategoryRepository } from './operations'
+import { CreateCategoryInput, DeleteCategoryInput, UpdateCategoryInput } from './schemas'
 
 const existingCategory = {
   colorKey: 'blue',
@@ -232,6 +230,24 @@ describe('category server behavior', () => {
       colorKey: 'green',
       name: 'life admin',
     })
+  })
+
+  it('maps a raced Category rename conflict to 409', async () => {
+    const repository = createRepository({
+      updateCategory: vi.fn(() => Promise.reject(new CategoryNameConflictError())),
+    })
+
+    await expect(
+      updateCategoryForUser({
+        data: UpdateCategoryInput.parse({
+          colorKey: 'green',
+          id: existingCategory.id,
+          name: 'Next Up',
+        }),
+        repository,
+        userId: existingCategory.userId,
+      }),
+    ).rejects.toHaveProperty('status', 409)
   })
 
   it('rejects renaming a Category to another existing Category name for the same user', async () => {

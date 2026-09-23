@@ -39,13 +39,11 @@ const buckets = [
     id: 1,
     period: '2026',
     type: 'yearly',
-    userId: 'user-1',
   },
   {
     id: 2,
     period: '2026-06-11',
     type: 'daily',
-    userId: 'user-1',
   },
 ] satisfies Array<Bucket>
 

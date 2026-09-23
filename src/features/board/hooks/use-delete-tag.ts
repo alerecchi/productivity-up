@@ -5,17 +5,13 @@ import type { TagDisplay } from '@/lib/types/Tag'
 import type { Todo } from '@/lib/types/Todo'
 import { deleteTag } from '@/server/functions/tags'
 
-type TagWithUser = TagDisplay & {
-  userId?: string
-}
-
 export default function useDeleteTag() {
   const queryClient = useQueryClient()
 
   return useMutation({
     mutationFn: deleteTag,
     onSuccess: (deletedTag) => {
-      queryClient.setQueryData<Array<TagWithUser>>([TAGS_QUERY_KEY], (old = []) =>
+      queryClient.setQueryData<Array<TagDisplay>>([TAGS_QUERY_KEY], (old = []) =>
         old.filter((tag) => tag.id !== deletedTag.tagId),
       )
       queryClient.setQueriesData<Array<Todo>>({ queryKey: [TODOS_QUERY_KEY] }, (old = []) =>
