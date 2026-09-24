@@ -19,7 +19,7 @@ This registry makes the mandatory rules reviewable. The detailed sections below 
 | Database-owned invariants        | Prevents invalid relationships, duplicates, and delete drift           | PostgreSQL schema                       | Constraints, indexes, and foreign keys                          | Migration checks and real PostgreSQL constraint tests                          |
 | Atomic command writes            | Prevents partial lifecycle, migration, Todo, and position state        | Invariant-critical multi-write commands | One SQL statement or proven database atomic operation           | Failure injection at every write boundary, rollback, race, and retry tests     |
 | Safe command conflicts           | Prevents accidental conflict semantics and lost updates                | Mutation error mapping                  | Central error mapper plus authoritative stale predicates        | Last-write-wins and `409` contract tests                                       |
-| Canonical DTOs and consequences  | Prevents persistence leakage and client guesses                        | Server responses and mutation results   | Domain response mapper                                          | Public response-shape tests                                                    |
+| Canonical DTOs and changes       | Prevents persistence leakage and client guesses                        | Server responses and mutation results   | Domain response mapper                                          | Public response-shape tests                                                    |
 | Cache reconciliation             | Prevents optimistic and derived-cache drift                            | TanStack Query state                    | One cache-reconciliation module                                 | Success, rollback, absent-cache, conflict, and resynchronization tests         |
 | Per-User realtime hints          | Prevents cross-User leakage and pre-commit publication                 | Realtime invalidation                   | Authenticated gateway after commit                              | Multi-client isolation and publication-order tests                             |
 | Authentication controls          | Prevents session reuse, enumeration, and abuse                         | Better Auth flows                       | Better Auth configuration, Neon-backed limits, and route policy | Session, reset, rate-limit, and enumeration tests                              |
@@ -36,7 +36,7 @@ This registry makes the mandatory rules reviewable. The detailed sections below 
 - Drizzle is the database interface. Better Auth owns identity and sessions. TanStack Start server functions are the private request boundary. TanStack Query is a derived client cache.
 - Client code may import server behavior only from `server/functions`.
 - Portable domain rules stay separate from request, persistence, and deployment adapters.
-- Server functions return domain response DTOs and domain consequences. They do not expose persistence rows merely because a query returned them.
+- Server functions return domain response DTOs and committed domain changes. They do not expose persistence rows merely because a query returned them.
 
 ## Request boundaries and authorization
 
@@ -123,7 +123,7 @@ Map errors centrally:
 
 The serialized error DTO is `{ error: { code, message?, details? }, requestId }`. Validation details contain only issue code, message, and path. `403` uses `EMAIL_VERIFICATION_REQUIRED`. A `429` response also sends `Retry-After`. Unexpected `500` responses omit the message and details, so only the stable `INTERNAL_ERROR` code and request ID cross the boundary. Every error response and successful private operation carries the same request ID in `X-Request-ID`.
 
-Successful commands return the smallest complete domain result needed by the client. They MUST NOT perform an unconditional final board read when the command result already determines the required consequence.
+Successful commands return the smallest complete domain result needed by the client. They MUST NOT perform an unconditional final board read when the command result already determines the committed change.
 
 Examples:
 
@@ -141,14 +141,14 @@ Query keys and QueryClient operations MUST live behind one cache-reconciliation 
 The cache module exposes three operations:
 
 1. Begin and roll back a deterministic optimistic change.
-2. Apply a domain consequence.
+2. Apply a committed domain change.
 3. Resynchronize a named domain scope.
 
 Optimistic updates are limited to deterministic Todo edits and moves. The client cancels affected queries, snapshots loaded data, applies the optimistic change, restores the snapshot on failure, and replaces every assumption with the server result on success.
 
-If a consequence cannot construct a complete entity absent from a loaded cache, refetch instead of creating partial data. Apply canonical position patches before sorting.
+If a committed change cannot construct a complete entity absent from a loaded cache, refetch instead of creating partial data. Apply canonical position patches before sorting.
 
-After a mutation commits, publish one atomic list of domain consequences. Realtime hints contain no User ID and no TanStack Query key. Notify the User's other active clients. Suppress the originating client only when its successful response reconciles every affected cache.
+After a mutation commits, publish one atomic list of domain changes. Realtime hints contain no User ID and no TanStack Query key. Notify the User's other active clients. Suppress the originating client only when its successful response reconciles every affected cache.
 
 Duplicate hints are harmless. Malformed or unknown hints trigger full resynchronization. Reconnect, focus recovery, session changes, conflicts, and uncertain mutation outcomes trigger canonical refetches.
 
@@ -223,7 +223,7 @@ Every backend change should answer these questions in its pull request or review
 - Where is each invariant enforced, and what test proves it?
 - Is every invariant-critical multi-write atomic and retry-safe?
 - Are `409` responses limited to stale required preconditions and uniqueness conflicts?
-- Does the command return a canonical domain consequence rather than persistence rows or a universal envelope?
+- Does the command return a canonical committed change rather than persistence rows or a universal envelope?
 - Does cache reconciliation handle success, rollback, conflict, uncertainty, inactive caches, and absent entities?
 - Are realtime hints published only after commit and isolated per User?
 - Could logs, traces, errors, or provider calls expose content, credentials, tokens, email data, SQL values, URLs, or environment values?
