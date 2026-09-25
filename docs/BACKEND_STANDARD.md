@@ -91,9 +91,13 @@ Hyperdrive query caching MUST be considered when adding reads. Durable writes re
 
 ### Atomic commands and isolation
 
-Invariant-critical multi-write commands MUST commit in one database transaction. Commands that perform a single write do not need a transaction. Do not combine several writes into one CTE statement for atomicity; a transaction is simpler to read and review.
+Invariant-critical commands MUST commit as one database operation:
 
-The application uses PostgreSQL's default `READ COMMITTED` isolation. It MUST NOT add global version columns, serializable isolation, a general locking framework, or a general idempotency-key framework without a named workflow that demonstrates the need.
+- A command that writes once uses one guarded statement when that statement can re-check ownership and every precondition the result depends on. If the command must coordinate with another workflow through a shared lock, use a transaction to acquire that lock and check its preconditions before writing.
+- A command that writes more than once, or must change several rows all-or-nothing, runs in one `pg` transaction through Hyperdrive. Its first statement locks what the command depends on with `SELECT … FOR UPDATE`, or `FOR SHARE` for rows it only references, so every later statement sees current data. Lock multiple rows in a deterministic order, such as by ID.
+- Do not combine several writes into one CTE statement for atomicity; a transaction is simpler to read and review. Prefer Drizzle's query builder.
+
+The application uses PostgreSQL's default `READ COMMITTED` isolation. Targeted row locks inside a command transaction are allowed. It MUST NOT add global version columns, serializable isolation, a general locking framework, or a general idempotency-key framework without a named workflow that demonstrates the need.
 
 Commands MUST be retry-safe through constraints, authoritative state predicates, and atomicity. The required workflows are:
 

@@ -132,7 +132,8 @@ describe('Todo reordering within a Bucket', () => {
     mockedMoveTodo.mockReset()
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id],
-      affectedTodoPositions: [{ bucketId: bucket.id, id: todos[1].id, position: 512 }],
+      sourceBucketId: bucket.id,
+      positions: [{ bucketId: bucket.id, id: todos[1].id, position: 512 }],
       todo: { ...todos[1], position: 512 },
     })
   })
@@ -360,7 +361,8 @@ describe('Todo reordering within a Bucket', () => {
 
     finishMove?.({
       affectedBucketIds: [bucket.id],
-      affectedTodoPositions: [{ bucketId: bucket.id, id: todos[1].id, position: 512 }],
+      sourceBucketId: bucket.id,
+      positions: [{ bucketId: bucket.id, id: todos[1].id, position: 512 }],
       todo: { ...todos[1], position: 512 },
     })
   })
@@ -559,7 +561,8 @@ describe('Todo movement across Buckets', () => {
     mockedMoveTodo.mockReset()
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id, destinationBucket.id],
-      affectedTodoPositions: [{ bucketId: destinationBucket.id, id: todos[1].id, position: 1536 }],
+      sourceBucketId: bucket.id,
+      positions: [{ bucketId: destinationBucket.id, id: todos[1].id, position: 1536 }],
       todo: { ...todos[1], bucketId: destinationBucket.id, position: 1536 },
     })
   })
@@ -611,7 +614,8 @@ describe('Todo movement across Buckets', () => {
     const movedTodo = { ...todos[1], bucketId: destinationBucket.id, position: 1536, userId: 'user-1' }
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id, destinationBucket.id],
-      affectedTodoPositions: [
+      sourceBucketId: bucket.id,
+      positions: [
         { bucketId: destinationBucket.id, id: destinationTodos[0].id, position: 1024 },
         { bucketId: destinationBucket.id, id: movedTodo.id, position: movedTodo.position },
         { bucketId: destinationBucket.id, id: destinationTodos[1].id, position: 2048 },
@@ -755,9 +759,13 @@ describe('Todo movement across Buckets', () => {
 
   it('refetches affected Bucket caches and shows a refreshed-board toast when stale ordering causes a conflict', async () => {
     mockedMoveTodo.mockRejectedValue(
-      new Response(JSON.stringify({ message: 'Before Todo anchor is stale, invalid, or unauthorized' }), {
-        status: 409,
-      }),
+      new Response(
+        JSON.stringify({
+          error: { code: 'CONFLICT', message: 'Todo positions changed; refresh and try again' },
+          requestId: 'request-1',
+        }),
+        { status: 409 },
+      ),
     )
     mockedGetTodos.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
@@ -889,7 +897,8 @@ describe('Todo movement across Buckets', () => {
     dnd.activeDropTargetId = `bucket-${destinationBucket.id}-insertion-0`
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id, destinationBucket.id],
-      affectedTodoPositions: [{ bucketId: destinationBucket.id, id: movedTodo.id, position: movedTodo.position }],
+      sourceBucketId: bucket.id,
+      positions: [{ bucketId: destinationBucket.id, id: movedTodo.id, position: movedTodo.position }],
       todo: movedTodo,
     })
     const queryClient = createTestQueryClient()

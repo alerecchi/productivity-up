@@ -1,10 +1,12 @@
 import type { z } from 'zod'
 
+import { STALE_TODO_POSITIONS_MESSAGE } from '@/lib/todo-error-messages'
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
+import type { Todo } from '@/lib/types/Todo'
 import { errorResponse } from '@/server/core/errors'
 import { requireNoPendingMigrationBuckets } from '@/server/core/pending-migration-gate'
-import type { BucketDb, CategoryDbSelect, TagDbSelect, TodoDbInsert, TodoDbSelect } from '@/server/db/types'
+import type { BucketDb, TodoDbSelect } from '@/server/db/types'
 import type {
   CreateTodoInput,
   DeleteTodoInput,
@@ -13,59 +15,84 @@ import type {
   UpdateTodoInput,
 } from '@/server/functions/todos/schemas'
 
-const TODO_POSITION_GAP = 1024
+export const TODO_POSITION_GAP = 1024
+export { STALE_TODO_POSITIONS_MESSAGE } from '@/lib/todo-error-messages'
 
-type TodoWithBucket = TodoDbSelect & {
-  bucket: BucketDb
-  category: CategoryDbSelect | null
-  tags: Array<TagDisplay>
-}
+export type TodoPositionPatch = Pick<Todo, 'bucketId' | 'id' | 'position'>
 
-export type DeletedTodo = {
-  bucketId: number
-  todoId: number
-}
-
-export type TodoWithCategoryDisplay = TodoDbSelect & {
+/** An owned Todo with the status of its current Bucket and its display data. */
+export type TodoForCommand = TodoDbSelect & {
+  bucketStatus: BucketDb['status']
   category: CategoryDisplay | null
   tags: Array<TagDisplay>
 }
 
-export type TodoPositionPatch = Pick<TodoDbSelect, 'bucketId' | 'id' | 'position'>
+export type CreateTodoCommand = {
+  bucketId: number
+  categoryId: number | null
+  createdAt: Date
+  description: string
+  tagIds: Array<number>
+  title: string
+  userId: string
+}
+
+export type UpdateTodoCommand = {
+  changes: Partial<Pick<TodoDbSelect, 'categoryId' | 'completed' | 'description' | 'title'>>
+  /** Moves the Todo to the end of another Bucket, guarded by the Bucket it was read from. */
+  destination?: { bucketId: number; expectedBucketId: number }
+  /** Replaces the full Tag set when present. */
+  tagIds?: Array<number>
+  todoId: number
+  userId: string
+}
+
+export type GuardedTodoMove = {
+  expectedTargetTodos: Array<TodoPositionPatch>
+  position: number
+  source: { bucketId: number; position: number }
+  targetBucketId: number
+  todoId: number
+  userId: string
+} & (
+  | { kind: 'insert' }
+  | { expectedTargetTodos: Array<TodoPositionPatch>; kind: 'rebalance'; rebalanced: Array<TodoPositionPatch> }
+)
+
+/**
+ * User-scoped Todo persistence. Reads classify errors and plan commands; every write re-checks the preconditions its
+ * result depends on and returns `undefined` (or `'stale'`) without writing when they no longer hold. Writes that touch
+ * several rows commit atomically.
+ */
+export type TodoRepository = {
+  /** Appends the Todo to the end of an owned active Bucket together with its Todo-Tags. */
+  createTodo: (command: CreateTodoCommand) => Promise<TodoDbSelect | undefined>
+  deleteTodo: (userId: string, todoId: number) => Promise<{ previousBucketId: number; todoId: number } | undefined>
+  findActiveBucket: (userId: string, bucketId: number) => Promise<{ id: number } | undefined>
+  findCategory: (userId: string, categoryId: number) => Promise<CategoryDisplay | undefined>
+  /** Returns only the owned subset of the requested Tags. */
+  findTags: (userId: string, tagIds: Array<number>) => Promise<Array<TagDisplay>>
+  findTodo: (userId: string, todoId: number) => Promise<TodoForCommand | undefined>
+  hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
+  /** Todo positions of a Bucket in canonical position, then Todo ID order. */
+  listPositions: (userId: string, bucketId: number) => Promise<Array<TodoPositionPatch>>
+  /** Canonical Todos of a Bucket in position, then Todo ID order. */
+  listTodos: (userId: string, bucketId: number) => Promise<Array<Todo>>
+  moveTodo: (move: GuardedTodoMove) => Promise<TodoDbSelect | 'stale'>
+  updateTodo: (command: UpdateTodoCommand) => Promise<{ previousBucketId: number; todo: TodoDbSelect } | undefined>
+}
 
 export type MovedTodo = {
   affectedBucketIds: Array<number>
-  affectedTodoPositions: Array<TodoPositionPatch>
-  todo: TodoWithCategoryDisplay
+  /** Every Todo Position the move changed, including the moved Todo's own. */
+  positions: Array<TodoPositionPatch>
+  sourceBucketId: number
+  todo: Todo
 }
 
-export type MoveTodoResult = { status: 'conflict' } | { status: 'moved'; todo: TodoDbSelect } | { status: 'not_found' }
-
-export type TodoRepository = {
-  createTodo: (todo: TodoDbInsert) => Promise<TodoDbSelect>
-  deleteTodo: (todoId: number, userId: string) => Promise<DeletedTodo | undefined>
-  findOwnedActiveBucket: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
-  findOwnedCategory: (userId: string, categoryId: number) => Promise<CategoryDbSelect | undefined>
-  findOwnedTags: (userId: string, tagIds: Array<number>) => Promise<Array<TagDbSelect>>
-  findOwnedTodoWithBucket: (userId: string, todoId: number) => Promise<TodoWithBucket | undefined>
-  getMaxTodoPosition: (userId: string, bucketId: number) => Promise<number | null>
-  // Returns Todos in persisted Todo Position order for the requested Bucket.
-  getTodosByBucketForUser: (userId: string, bucketId: number) => Promise<Array<TodoWithCategoryDisplay>>
-  hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
-  moveTodo: (
-    todoId: number,
-    userId: string,
-    move: {
-      bucketId: number
-      expectedMovedTodoPosition: number
-      expectedSourceBucketId: number
-      expectedTargetTodoPositions: Array<TodoPositionPatch>
-      position: number
-      rebalancedTodoPositions: Array<TodoPositionPatch>
-    },
-  ) => Promise<MoveTodoResult>
-  replaceTodoTags: (todoId: number, userId: string, tagIds: Array<number>) => Promise<void>
-  updateTodo: (todoId: number, userId: string, updates: Partial<TodoDbInsert>) => Promise<TodoDbSelect | undefined>
+export type UpdatedTodo = {
+  previousBucketId: number
+  todo: Todo
 }
 
 type OperationDependencies = {
@@ -73,278 +100,237 @@ type OperationDependencies = {
   userId: string
 }
 
-type CreateTodoDependencies = OperationDependencies & {
-  data: z.output<typeof CreateTodoInput>
-  now?: () => Date
-}
-
-type GetTodosDependencies = OperationDependencies & {
-  data: z.output<typeof GetTodosInput>
-}
-
-type UpdateTodoDependencies = OperationDependencies & {
-  data: z.output<typeof UpdateTodoInput>
-}
-
-type MoveTodoDependencies = OperationDependencies & {
-  data: z.output<typeof MoveTodoInput>
-}
-
-type DeleteTodoDependencies = OperationDependencies & {
-  data: z.output<typeof DeleteTodoInput>
-}
-
-export async function createTodoForUser({ data, now = () => new Date(), repository, userId }: CreateTodoDependencies) {
+export async function createTodoForUser({
+  data,
+  now = () => new Date(),
+  repository,
+  userId,
+}: OperationDependencies & { data: z.output<typeof CreateTodoInput>; now?: () => Date }): Promise<Todo> {
   await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
-  await requireOwnedActiveBucket(repository, userId, data.bucketId)
-  const category = await requireOwnedCategoryIfPresent(repository, userId, data.categoryId)
-  const tagIds = getUniqueTagIds(data.tagIds ?? [])
-  const tags = await requireOwnedTags(repository, userId, tagIds)
-  const maxPosition = await repository.getMaxTodoPosition(userId, data.bucketId)
+  await requireActiveBucket(repository, userId, data.bucketId)
+  await requireCategory(repository, userId, data.categoryId ?? null)
+  const tagIds = data.tagIds ?? []
+  await requireTags(repository, userId, tagIds)
 
   const todo = await repository.createTodo({
     bucketId: data.bucketId,
     categoryId: data.categoryId ?? null,
-    completed: false,
     createdAt: now(),
     description: data.description?.trim() ?? '',
-    position: getNextTodoPosition(maxPosition),
+    tagIds,
     title: data.title,
     userId,
   })
-  await repository.replaceTodoTags(todo.id, userId, tagIds)
 
-  return withDisplayData(todo, category, tags)
+  if (!todo) {
+    throw notFound()
+  }
+
+  const canonicalTodo = await requireTodo(repository, userId, todo.id)
+  return toTodo(canonicalTodo)
 }
 
-export async function getTodosForUser({ data, repository, userId }: GetTodosDependencies) {
-  await requireOwnedActiveBucket(repository, userId, data.bucketId)
+export async function getTodosForUser({
+  data,
+  repository,
+  userId,
+}: OperationDependencies & { data: z.output<typeof GetTodosInput> }): Promise<Array<Todo>> {
+  await requireActiveBucket(repository, userId, data.bucketId)
 
-  return repository.getTodosByBucketForUser(userId, data.bucketId)
+  return repository.listTodos(userId, data.bucketId)
 }
 
-export async function updateTodoForUser({ data, repository, userId }: UpdateTodoDependencies) {
+export async function updateTodoForUser({
+  data,
+  repository,
+  userId,
+}: OperationDependencies & { data: z.output<typeof UpdateTodoInput> }): Promise<UpdatedTodo> {
   await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
-  const existingTodo = await repository.findOwnedTodoWithBucket(userId, data.id)
-
-  if (!existingTodo) {
-    throw errorResponse(404, 'Todo not found or unauthorized')
+  const existingTodo = await requireTodoInActiveBucket(repository, userId, data.id)
+  if (data.categoryId !== undefined) {
+    await requireCategory(repository, userId, data.categoryId)
   }
-
-  if (existingTodo.bucket.status === 'archived') {
-    throw errorResponse(409, 'Cannot update a Todo in an archived Bucket')
-  }
-
-  const destinationBucketId =
-    data.bucketId !== undefined && data.bucketId !== existingTodo.bucketId ? data.bucketId : undefined
-
-  if (destinationBucketId !== undefined) {
-    await requireOwnedActiveBucket(repository, userId, destinationBucketId)
-  }
-  const category =
-    data.categoryId === undefined
-      ? toCategoryDisplay(existingTodo.category)
-      : await requireOwnedCategoryIfPresent(repository, userId, data.categoryId)
-  const tags =
-    data.tagIds === undefined
-      ? existingTodo.tags.map(toTagDisplay)
-      : await requireOwnedTags(repository, userId, getUniqueTagIds(data.tagIds))
-  const position =
-    destinationBucketId === undefined
-      ? undefined
-      : getNextTodoPosition(await repository.getMaxTodoPosition(userId, destinationBucketId))
-
-  const updates = {
-    bucketId: data.bucketId,
-    categoryId: data.categoryId,
-    completed: data.completed,
-    description: data.description?.trim(),
-    position,
-    title: data.title,
-  }
-  const updatedTodo = await repository.updateTodo(data.id, userId, removeUndefinedValues(updates))
-
-  if (!updatedTodo) {
-    throw errorResponse(404, 'Todo not found or unauthorized')
-  }
-
   if (data.tagIds !== undefined) {
-    await repository.replaceTodoTags(data.id, userId, getUniqueTagIds(data.tagIds))
+    await requireTags(repository, userId, data.tagIds)
+  }
+  const destination =
+    data.bucketId === undefined || data.bucketId === existingTodo.bucketId
+      ? undefined
+      : { bucketId: data.bucketId, expectedBucketId: existingTodo.bucketId }
+
+  if (destination) {
+    await requireActiveBucket(repository, userId, destination.bucketId)
   }
 
-  return withDisplayData(updatedTodo, category, tags)
+  const result = await repository.updateTodo({
+    changes: removeUndefinedValues({
+      categoryId: data.categoryId,
+      completed: data.completed,
+      description: data.description?.trim(),
+      title: data.title,
+    }),
+    destination,
+    tagIds: data.tagIds,
+    todoId: data.id,
+    userId,
+  })
+
+  if (!result) {
+    throw destination ? staleTodoPositions() : notFound()
+  }
+
+  const canonicalTodo = await requireTodo(repository, userId, result.todo.id)
+  return {
+    previousBucketId: result.previousBucketId,
+    todo: toTodo(canonicalTodo),
+  }
 }
 
-export async function moveTodoForUser({ data, repository, userId }: MoveTodoDependencies): Promise<MovedTodo> {
+export async function moveTodoForUser({
+  data,
+  repository,
+  userId,
+}: OperationDependencies & { data: z.output<typeof MoveTodoInput> }): Promise<MovedTodo> {
   await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
-  const existingTodo = await repository.findOwnedTodoWithBucket(userId, data.id)
+  const existingTodo = await requireTodoInActiveBucket(repository, userId, data.id)
+  await requireActiveBucket(repository, userId, data.targetBucketId)
 
-  if (!existingTodo) {
-    throw errorResponse(404, 'Todo not found or unauthorized')
-  }
-
-  if (existingTodo.bucket.status === 'archived') {
-    throw errorResponse(409, 'Cannot move a Todo from an archived Bucket')
-  }
-
-  await requireOwnedActiveBucket(repository, userId, data.targetBucketId)
-
-  const targetTodos = (await repository.getTodosByBucketForUser(userId, data.targetBucketId)).filter(
+  const targetTodos = (await repository.listPositions(userId, data.targetBucketId)).filter(
     (todo) => todo.id !== data.id,
   )
-  const { position, rebalancedTodoPositions } = getMovePositionFromAnchors({
+  const plan = planMove({
     afterTodoId: data.afterTodoId,
     beforeTodoId: data.beforeTodoId,
     targetBucketId: data.targetBucketId,
     targetTodos,
   })
-  const moveResult = await repository.moveTodo(data.id, userId, {
-    bucketId: data.targetBucketId,
-    expectedMovedTodoPosition: existingTodo.position,
-    expectedSourceBucketId: existingTodo.bucketId,
-    expectedTargetTodoPositions: targetTodos.map(toTodoPositionPatch),
-    position,
-    rebalancedTodoPositions,
+  const movedTodo = await repository.moveTodo({
+    ...plan,
+    source: { bucketId: existingTodo.bucketId, position: existingTodo.position },
+    targetBucketId: data.targetBucketId,
+    todoId: data.id,
+    userId,
   })
 
-  if (moveResult.status === 'conflict') {
-    throw errorResponse(409, 'Todo move conflict; refresh and retry')
+  if (movedTodo === 'stale') {
+    throw staleTodoPositions()
   }
 
-  if (moveResult.status === 'not_found') {
-    throw errorResponse(404, 'Todo not found or unauthorized')
-  }
-
-  const movedTodo = withDisplayData(
-    moveResult.todo,
-    toCategoryDisplay(existingTodo.category),
-    existingTodo.tags.map(toTagDisplay),
-  )
-
+  const canonicalTodo = await requireTodo(repository, userId, movedTodo.id)
   return {
-    affectedBucketIds: getUniqueBucketIds([existingTodo.bucketId, data.targetBucketId]),
-    affectedTodoPositions: [
-      ...rebalancedTodoPositions,
-      {
-        bucketId: movedTodo.bucketId,
-        id: movedTodo.id,
-        position: movedTodo.position,
-      },
+    affectedBucketIds: [...new Set([existingTodo.bucketId, data.targetBucketId])],
+    positions: [
+      ...(plan.kind === 'rebalance' ? plan.rebalanced : []),
+      { bucketId: movedTodo.bucketId, id: movedTodo.id, position: movedTodo.position },
     ],
-    todo: movedTodo,
+    sourceBucketId: existingTodo.bucketId,
+    todo: toTodo(canonicalTodo),
   }
 }
 
-export async function deleteTodoForUser({ data, repository, userId }: DeleteTodoDependencies) {
+export async function deleteTodoForUser({
+  data,
+  repository,
+  userId,
+}: OperationDependencies & { data: z.output<typeof DeleteTodoInput> }) {
   await requireNoPendingMigrationBuckets(repository, userId, 'Todos')
-  const existingTodo = await repository.findOwnedTodoWithBucket(userId, data.id)
-
-  if (!existingTodo) {
-    throw errorResponse(404, 'Todo not found or unauthorized')
-  }
-
-  if (existingTodo.bucket.status !== 'active') {
-    throw errorResponse(409, 'Cannot delete a Todo from an archived or pending migration Bucket')
-  }
-
-  const deletedTodo = await repository.deleteTodo(data.id, userId)
+  await requireTodoInActiveBucket(repository, userId, data.id)
+  const deletedTodo = await repository.deleteTodo(userId, data.id)
 
   if (!deletedTodo) {
-    throw errorResponse(404, 'Todo not found or unauthorized')
+    throw notFound()
   }
 
   return deletedTodo
 }
 
-async function requireOwnedActiveBucket(repository: TodoRepository, userId: string, bucketId: number) {
-  const bucket = await repository.findOwnedActiveBucket(userId, bucketId)
-
-  if (!bucket) {
-    throw errorResponse(404, 'Bucket not found, archived, or unauthorized')
+async function requireActiveBucket(repository: TodoRepository, userId: string, bucketId: number) {
+  if (!(await repository.findActiveBucket(userId, bucketId))) {
+    throw notFound()
   }
-
-  return bucket
 }
 
-async function requireOwnedCategoryIfPresent(
-  repository: TodoRepository,
-  userId: string,
-  categoryId: number | null | undefined,
-) {
-  if (categoryId === undefined || categoryId === null) {
+async function requireTodo(repository: TodoRepository, userId: string, todoId: number) {
+  const todo = await repository.findTodo(userId, todoId)
+
+  if (!todo) {
+    throw notFound()
+  }
+
+  return todo
+}
+
+async function requireTodoInActiveBucket(repository: TodoRepository, userId: string, todoId: number) {
+  const todo = await requireTodo(repository, userId, todoId)
+
+  if (todo.bucketStatus !== 'active') {
+    throw errorResponse(409, 'Todos in archived Buckets cannot change')
+  }
+
+  return todo
+}
+
+async function requireCategory(repository: TodoRepository, userId: string, categoryId: number | null) {
+  if (categoryId === null) {
     return null
   }
 
-  const category = await repository.findOwnedCategory(userId, categoryId)
+  const category = await repository.findCategory(userId, categoryId)
 
   if (!category) {
-    throw errorResponse(404, 'Category not found or unauthorized')
+    throw notFound()
   }
 
-  return toCategoryDisplay(category)
+  return category
 }
 
-async function requireOwnedTags(repository: TodoRepository, userId: string, tagIds: Array<number>) {
+async function requireTags(repository: TodoRepository, userId: string, tagIds: Array<number>) {
   if (tagIds.length === 0) {
     return []
   }
 
-  const tags = await repository.findOwnedTags(userId, tagIds)
+  const tags = await repository.findTags(userId, tagIds)
 
   if (tags.length !== tagIds.length) {
-    throw errorResponse(404, 'Tag not found or unauthorized')
+    throw notFound()
   }
 
-  const tagsById = new Map(tags.map((tag) => [tag.id, tag]))
-
-  return tagIds.map((tagId) => toTagDisplay(tagsById.get(tagId)!))
+  return sortTags(tags)
 }
 
-function withDisplayData(
-  todo: TodoDbSelect,
-  category: CategoryDisplay | null,
-  tags: Array<TagDisplay>,
-): TodoWithCategoryDisplay {
-  return {
-    ...todo,
-    category,
-    tags,
-  }
+// The single stale-movement conflict; clients refetch the affected Buckets and let the User retry.
+function staleTodoPositions() {
+  return errorResponse(409, STALE_TODO_POSITIONS_MESSAGE)
 }
 
-function toCategoryDisplay(category: CategoryDbSelect | null): CategoryDisplay | null {
-  if (!category) {
-    return null
-  }
-
-  return {
-    colorKey: category.colorKey,
-    id: category.id,
-    name: category.name,
-  }
+// Missing, foreign, and inactive resources share one error so responses never reveal another User's identifiers.
+function notFound() {
+  return errorResponse(404, 'Resource not found')
 }
 
-function toTagDisplay(tag: TagDisplay): TagDisplay {
-  return {
-    colorKey: tag.colorKey,
-    id: tag.id,
-    name: tag.name,
-  }
+function sortTags(tags: Array<TagDisplay>) {
+  return tags.toSorted((left, right) => left.name.localeCompare(right.name) || left.id - right.id)
 }
 
-function removeUndefinedValues<T extends Record<string, unknown>>(values: T) {
-  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)) as Partial<T>
+function toTodo(todo: TodoForCommand): Todo {
+  const { userId: _userId, bucketStatus: _bucketStatus, ...canonicalTodo } = todo
+  return canonicalTodo
 }
 
-function getUniqueTagIds(tagIds: Array<number>) {
-  return [...new Set(tagIds)]
-}
+type MovePlan =
+  | { expectedTargetTodos: Array<TodoPositionPatch>; kind: 'insert'; position: number }
+  | {
+      expectedTargetTodos: Array<TodoPositionPatch>
+      kind: 'rebalance'
+      position: number
+      rebalanced: Array<TodoPositionPatch>
+    }
 
-function getNextTodoPosition(maxPosition: number | null) {
-  return (maxPosition ?? 0) + TODO_POSITION_GAP
-}
-
-function getMovePositionFromAnchors({
+/**
+ * Places the moved Todo between the client's anchors in the target Bucket's canonical order. Uses the sparse midpoint
+ * when a gap exists, otherwise rebalances the whole Bucket. Anchors that are missing or no longer adjacent are stale.
+ */
+function planMove({
   afterTodoId,
   beforeTodoId,
   targetBucketId,
@@ -353,131 +339,57 @@ function getMovePositionFromAnchors({
   afterTodoId: number | undefined
   beforeTodoId: number | undefined
   targetBucketId: number
-  targetTodos: Array<TodoWithCategoryDisplay>
-}) {
-  const beforeTodo = beforeTodoId === undefined ? undefined : targetTodos.find((todo) => todo.id === beforeTodoId)
-  const afterTodo = afterTodoId === undefined ? undefined : targetTodos.find((todo) => todo.id === afterTodoId)
+  targetTodos: Array<TodoPositionPatch>
+}): MovePlan {
+  const beforeIndex = beforeTodoId === undefined ? undefined : targetTodos.findIndex(({ id }) => id === beforeTodoId)
+  const afterIndex = afterTodoId === undefined ? undefined : targetTodos.findIndex(({ id }) => id === afterTodoId)
+  const lastIndex = targetTodos.length - 1
+  const isStale =
+    beforeIndex === -1 ||
+    afterIndex === -1 ||
+    (beforeIndex !== undefined && afterIndex !== undefined && afterIndex !== beforeIndex + 1) ||
+    (beforeIndex !== undefined && afterIndex === undefined && beforeIndex !== lastIndex) ||
+    (beforeIndex === undefined && afterIndex !== undefined && afterIndex !== 0)
 
-  if (beforeTodoId !== undefined && !beforeTodo) {
-    throw errorResponse(409, 'Before Todo anchor is stale, invalid, or unauthorized')
+  if (isStale) {
+    throw staleTodoPositions()
   }
 
-  if (afterTodoId !== undefined && !afterTodo) {
-    throw errorResponse(409, 'After Todo anchor is stale, invalid, or unauthorized')
+  const insertionIndex = beforeIndex === undefined ? (afterIndex ?? targetTodos.length) : beforeIndex + 1
+  const before = insertionIndex > 0 ? targetTodos[insertionIndex - 1] : undefined
+  const after = insertionIndex < targetTodos.length ? targetTodos[insertionIndex] : undefined
+  const lowerBound = before?.position ?? 0
+
+  if (!after) {
+    return { expectedTargetTodos: targetTodos, kind: 'insert', position: lowerBound + TODO_POSITION_GAP }
   }
 
-  if (!beforeTodo && !afterTodo) {
-    return {
-      position: getNextTodoPosition(targetTodos.at(-1)?.position ?? null),
-      rebalancedTodoPositions: [],
-    }
+  const position = Math.floor((lowerBound + after.position) / 2)
+
+  if (position > lowerBound && position < after.position) {
+    return { expectedTargetTodos: targetTodos, kind: 'insert', position }
   }
 
-  if (beforeTodo && afterTodo) {
-    const beforeIndex = targetTodos.findIndex((todo) => todo.id === beforeTodo.id)
-    const afterIndex = targetTodos.findIndex((todo) => todo.id === afterTodo.id)
-
-    if (afterIndex !== beforeIndex + 1) {
-      throw errorResponse(409, 'Todo anchors are not adjacent in the target Bucket')
-    }
-
-    const position = Math.floor((beforeTodo.position + afterTodo.position) / 2)
-
-    if (position > beforeTodo.position && position < afterTodo.position) {
-      return {
-        position,
-        rebalancedTodoPositions: [],
-      }
-    }
-
-    return rebalancePositionsForMove({
-      insertionIndex: beforeIndex + 1,
-      targetBucketId,
-      targetTodos,
-    })
-  }
-
-  if (beforeTodo) {
-    const beforeIndex = targetTodos.findIndex((todo) => todo.id === beforeTodo.id)
-
-    if (beforeIndex !== targetTodos.length - 1) {
-      throw errorResponse(409, 'Before Todo anchor is not the last Todo in the target Bucket')
-    }
-
-    return {
-      position: beforeTodo.position + TODO_POSITION_GAP,
-      rebalancedTodoPositions: [],
-    }
-  }
-
-  const afterIndex = targetTodos.findIndex((todo) => todo.id === afterTodo!.id)
-
-  if (afterIndex !== 0) {
-    throw errorResponse(409, 'After Todo anchor is not the first Todo in the target Bucket')
-  }
-
-  const position = Math.floor(afterTodo!.position / 2)
-
-  if (position > 0 && position < afterTodo!.position) {
-    return {
-      position,
-      rebalancedTodoPositions: [],
-    }
-  }
-
-  return rebalancePositionsForMove({
-    insertionIndex: 0,
-    targetBucketId,
-    targetTodos,
-  })
+  return rebalance(targetTodos, insertionIndex, targetBucketId)
 }
 
-function getUniqueBucketIds(bucketIds: Array<number>) {
-  return [...new Set(bucketIds)]
-}
-
-function toTodoPositionPatch(todo: TodoWithCategoryDisplay): TodoPositionPatch {
-  return {
-    bucketId: todo.bucketId,
-    id: todo.id,
-    position: todo.position,
-  }
-}
-
-function rebalancePositionsForMove({
-  insertionIndex,
-  targetBucketId,
-  targetTodos,
-}: {
-  insertionIndex: number
-  targetBucketId: number
-  targetTodos: Array<TodoWithCategoryDisplay>
-}) {
-  let position = TODO_POSITION_GAP
-  const rebalancedTodoPositions: Array<TodoPositionPatch> = []
-
-  for (let index = 0; index <= targetTodos.length; index += 1) {
-    const nextPosition = (index + 1) * TODO_POSITION_GAP
-
-    if (index === insertionIndex) {
-      position = nextPosition
-      continue
-    }
-
-    const todoIndex = index < insertionIndex ? index : index - 1
-    const todo = targetTodos[todoIndex]
-
-    if (todo.position !== nextPosition) {
-      rebalancedTodoPositions.push({
-        bucketId: targetBucketId,
-        id: todo.id,
-        position: nextPosition,
-      })
-    }
-  }
+function rebalance(targetTodos: Array<TodoPositionPatch>, insertionIndex: number, targetBucketId: number): MovePlan {
+  const rebalanced = targetTodos
+    .map((todo, index) => ({
+      bucketId: targetBucketId,
+      id: todo.id,
+      position: (index < insertionIndex ? index + 1 : index + 2) * TODO_POSITION_GAP,
+    }))
+    .filter((todo, index) => todo.position !== targetTodos[index].position)
 
   return {
-    position,
-    rebalancedTodoPositions,
+    expectedTargetTodos: targetTodos,
+    kind: 'rebalance',
+    position: (insertionIndex + 1) * TODO_POSITION_GAP,
+    rebalanced,
   }
+}
+
+function removeUndefinedValues<T extends Record<string, unknown>>(values: T) {
+  return Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined)) as Partial<T>
 }

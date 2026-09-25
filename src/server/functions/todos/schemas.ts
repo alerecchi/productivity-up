@@ -58,7 +58,8 @@ export const TodoResponse = z.object({
 })
 
 export const TodosResponse = z.array(TodoResponse)
-export const DeleteTodoResponse = z.object({ bucketId: PositiveIdSchema, todoId: PositiveIdSchema })
+export const UpdateTodoResponse = z.object({ previousBucketId: PositiveIdSchema, todo: TodoResponse })
+export const DeleteTodoResponse = z.object({ previousBucketId: PositiveIdSchema, todoId: PositiveIdSchema })
 export const TodoPositionResponse = z.object({
   bucketId: PositiveIdSchema,
   id: PositiveIdSchema,
@@ -66,6 +67,7 @@ export const TodoPositionResponse = z.object({
 })
 export const MoveTodoResponse = z.object({
   affectedBucketIds: z.array(PositiveIdSchema),
-  affectedTodoPositions: z.array(TodoPositionResponse),
+  positions: z.array(TodoPositionResponse),
+  sourceBucketId: PositiveIdSchema,
   todo: TodoResponse,
 })

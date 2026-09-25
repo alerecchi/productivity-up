@@ -20,6 +20,7 @@ import {
   TodoResponse,
   TodosResponse,
   UpdateTodoInput,
+  UpdateTodoResponse,
 } from '@/server/functions/todos/schemas'
 
 export const createTodo = createServerFn({ method: 'POST' })
@@ -37,9 +38,9 @@ export const getTodos = createServerFn({ method: 'GET' })
   })
 
 export const updateTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'todos.update', response: TodoResponse })])
+  .middleware([createPrivateOperation({ operation: 'todos.update', response: UpdateTodoResponse })])
   .validator(validateInput(UpdateTodoInput))
-  .handler(async ({ data, context }): Promise<z.output<typeof TodoResponse>> => {
+  .handler(async ({ data, context }): Promise<z.output<typeof UpdateTodoResponse>> => {
     return updateTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
   })
 

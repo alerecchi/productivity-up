@@ -38,10 +38,13 @@ import {
 import {
   CreateTodoInput,
   DeleteTodoInput,
+  DeleteTodoResponse,
   GetTodosInput,
   MoveTodoInput,
+  MoveTodoResponse,
   TodoResponse,
   UpdateTodoInput,
+  UpdateTodoResponse,
 } from '@/server/functions/todos/schemas'
 
 const schemaCases: Array<[string, z.ZodType, unknown]> = [
@@ -188,6 +191,45 @@ describe('private operation input schemas', () => {
         sourceBucketId: 1,
       }).success,
     ).toBe(false)
+  })
+
+  it('returns Todo command consequences without persistence-only fields', () => {
+    const todo = {
+      bucketId: 2,
+      category: null,
+      categoryId: null,
+      completed: true,
+      createdAt: new Date('2026-07-03T08:00:00.000Z'),
+      description: '',
+      id: 10,
+      position: 3072,
+      tags: [],
+      title: 'Pay rent',
+      userId: 'user-1',
+    }
+    const { userId: _userId, ...canonicalTodo } = todo
+
+    expect(UpdateTodoResponse.parse({ previousBucketId: 1, todo })).toEqual({
+      previousBucketId: 1,
+      todo: canonicalTodo,
+    })
+    expect(
+      MoveTodoResponse.parse({
+        affectedBucketIds: [1, 2],
+        positions: [{ bucketId: 2, id: 10, position: 3072, userId: 'user-1' }],
+        sourceBucketId: 1,
+        todo,
+      }),
+    ).toEqual({
+      affectedBucketIds: [1, 2],
+      positions: [{ bucketId: 2, id: 10, position: 3072 }],
+      sourceBucketId: 1,
+      todo: canonicalTodo,
+    })
+    expect(DeleteTodoResponse.parse({ previousBucketId: 1, todoId: 10, userId: 'user-1' })).toEqual({
+      previousBucketId: 1,
+      todoId: 10,
+    })
   })
 })
 

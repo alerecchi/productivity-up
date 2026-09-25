@@ -102,7 +102,6 @@ export default function TodoDialog({ buckets, defaultBucketId, editingTodo, isOp
                 bucketId: Number(value.bucketId),
                 id: editingTodo.id,
               },
-              oldBucketId: editingTodo.bucketId,
             })
           } else {
             await createTodoMutation.mutateAsync({
