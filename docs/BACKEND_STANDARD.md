@@ -14,10 +14,10 @@ This registry makes the mandatory rules reviewable. The detailed sections below 
 | -------------------------------- | ---------------------------------------------------------------------- | --------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Strict request boundary          | Prevents malformed, oversized, or ambiguous requests                   | Every private server function           | Strict Zod boundary schema and explicit method                  | Public request tests, unknown-field tests, and bound plus one-past-bound tests |
 | Verified session identity        | Prevents signed-out and unverified access to product data              | Every private server function           | Shared authentication and verification middleware               | Signed-out and unverified request tests                                        |
-| Final User ownership predicate   | Prevents cross-User reads and writes                                   | Every User-owned SQL operation          | Drizzle query or command predicate                              | Real PostgreSQL owned, missing, and foreign cases                              |
-| Related-resource ownership       | Prevents cross-User Bucket, Category, Tag, and relationship references | Commands with foreign IDs               | User-scoped persistence adapter                                 | Foreign-related identifier integration tests                                   |
-| Database-owned invariants        | Prevents invalid relationships, duplicates, and delete drift           | PostgreSQL schema                       | Constraints, indexes, and foreign keys                          | Migration checks and real PostgreSQL constraint tests                          |
-| Atomic command writes            | Prevents partial lifecycle, migration, Todo, and position state        | Invariant-critical multi-write commands | One SQL statement or proven database atomic operation           | Failure injection at every write boundary, rollback, race, and retry tests     |
+| Final User ownership predicate   | Prevents cross-User reads and writes                                   | Every User-owned SQL operation          | Drizzle query or command predicate                              | Owned, missing, and foreign command tests plus predicate review                |
+| Related-resource ownership       | Prevents cross-User Bucket, Category, Tag, and relationship references | Commands with foreign IDs               | User-scoped persistence adapter                                 | Foreign-related identifier command tests                                       |
+| Database-owned invariants        | Prevents invalid relationships, duplicates, and delete drift           | PostgreSQL schema                       | Constraints, indexes, and foreign keys                          | Migration review of constraints and indexes                                    |
+| Atomic command writes            | Prevents partial lifecycle, migration, Todo, and position state        | Invariant-critical multi-write commands | One database transaction                                        | Transaction review plus retry, race, and stale-state command tests             |
 | Safe command conflicts           | Prevents accidental conflict semantics and lost updates                | Mutation error mapping                  | Central error mapper plus authoritative stale predicates        | Last-write-wins and `409` contract tests                                       |
 | Canonical DTOs and changes       | Prevents persistence leakage and client guesses                        | Server responses and mutation results   | Domain response mapper                                          | Public response-shape tests                                                    |
 | Cache reconciliation             | Prevents optimistic and derived-cache drift                            | TanStack Query state                    | One cache-reconciliation module                                 | Success, rollback, absent-cache, conflict, and resynchronization tests         |
@@ -25,7 +25,6 @@ This registry makes the mandatory rules reviewable. The detailed sections below 
 | Authentication controls          | Prevents session reuse, enumeration, and abuse                         | Better Auth flows                       | Better Auth configuration, Neon-backed limits, and route policy | Session, reset, rate-limit, and enumeration tests                              |
 | Durable email delivery           | Prevents lost verification and reset messages                          | Authentication email                    | Queue with retries and dead-letter handling                     | Provider failure, retry, and dead-letter tests                                 |
 | Telemetry allow-list             | Prevents sensitive-data leakage while preserving diagnosis             | Completion records and logs             | Typed completion record and Cloudflare redaction config         | Required-field and forbidden-field tests plus staging inspection               |
-| Production-shaped testing        | Prevents fake-only confidence in SQL and concurrency behavior          | Persistence and integration behavior    | Production Drizzle adapter against isolated PostgreSQL          | Ownership, atomicity, concurrency, and cleanup tests                           |
 | Local validation gate            | Prevents formatting, test, type, and build regressions                 | Every backend change                    | `pnpm validate`                                                 | Clean-checkout validation run; zero-tests failure test                         |
 | Evidence-based performance       | Prevents speculative budgets and infrastructure                        | First-release performance policy        | Production-shaped telemetry and issue #80 triggers              | Recorded measurements before numeric budgets or new infrastructure             |
 | Dependency and exception control | Prevents unreviewed libraries and permanent shortcuts                  | Repository changes and exceptions       | Maintainer approval, issue owner, and removal condition         | Review checklist and tracked issue verification                                |
@@ -73,7 +72,7 @@ Cloudflare's guidance supports this path:
 - [Hyperdrive connection lifecycle](https://developers.cloudflare.com/hyperdrive/concepts/connection-lifecycle/)
 - [Cloudflare's node-postgres example](https://developers.cloudflare.com/hyperdrive/examples/connect-to-postgres/postgres-drivers-and-libraries/node-postgres/)
 
-Direct Neon URLs are reserved for local development, schema migrations, deployment setup, and isolated integration tests. They MUST NOT be exposed as Worker secrets or used to create an application-managed pool. Neon pooler URLs, PgBouncer, a persistent PostgreSQL client, and a second application pool are not part of this architecture.
+Direct Neon URLs are reserved for local development, schema migrations, and deployment setup. They MUST NOT be exposed as Worker secrets or used to create an application-managed pool. Neon pooler URLs, PgBouncer, a persistent PostgreSQL client, and a second application pool are not part of this architecture.
 
 Hyperdrive query caching MUST be considered when adding reads. Durable writes remain authoritative, and a write does not automatically invalidate cached reads. Do not enable query caching for reads whose freshness or correctness requirements have not been established.
 
@@ -92,7 +91,7 @@ Hyperdrive query caching MUST be considered when adding reads. Durable writes re
 
 ### Atomic commands and isolation
 
-Invariant-critical multi-write commands MUST commit as one database operation. Prefer one SQL statement, usually a CTE, when it can express the whole command. Use a database-supported atomic transaction or batch only when the selected Hyperdrive-compatible adapter can prove the required behavior.
+Invariant-critical multi-write commands MUST commit in one database transaction. Commands that perform a single write do not need a transaction. Do not combine several writes into one CTE statement for atomicity; a transaction is simpler to read and review.
 
 The application uses PostgreSQL's default `READ COMMITTED` isolation. It MUST NOT add global version columns, serializable isolation, a general locking framework, or a general idempotency-key framework without a named workflow that demonstrates the need.
 
@@ -194,12 +193,11 @@ Test behavior at the highest seam that proves it:
 
 - Public server-function tests prove authentication, verification, strict input validation, status mapping, DTOs, and safe request IDs.
 - Domain-command tests prove deterministic product rules with injected dependencies.
-- Production Drizzle adapters against isolated real PostgreSQL prove ownership predicates, constraints, atomicity, and concurrency.
 - Cache tests use a real in-memory QueryClient through the cache module's public interface.
 - Realtime tests use the authenticated invalidation gateway and cache interface.
 - Component tests cover user-visible interaction and mock public server or cache seams, not private implementation details.
 
-Every ID-bearing operation needs owned, missing, foreign, and foreign-related cases. Every atomic workflow needs rollback, retry, stale-state, race, and failure-injection coverage at each invariant-critical write boundary.
+Every ID-bearing operation needs owned, missing, foreign, and foreign-related cases. Every atomic workflow needs retry, stale-state, and race coverage through its domain command. Review confirms that its writes commit in one database transaction.
 
 `pnpm validate` is the local no-regression gate. It MUST fail on formatting, lint, tests, typechecking, production Worker build failures, and zero discovered tests. Aggregate coverage is informational and is not a release gate.
 
