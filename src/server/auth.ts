@@ -8,7 +8,7 @@ import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
 import { sendEmailConfirmation, sendResetPassword } from '@/server/email/sender'
-import { provisionInitialBoard } from '@/server/functions/board/operations'
+import { provisionInitialBoard } from '@/server/functions/board/lifecycle'
 
 export type AuthRuntimeConfiguration = {
   baseUrl: string

@@ -11,12 +11,14 @@ import {
   UserTimeZoneSchema,
 } from '@/server/core/validation'
 import {
+  BoardResponse,
   CompleteDayInput,
   ConfirmMigrationStepInput,
   GetBoardInput,
   GetBucketsInput,
   GetMigrationStepInput,
   MigrationStepResponse,
+  ReconcileLifecycleInput,
 } from '@/server/functions/board/schemas'
 import {
   CATEGORY_NAME_MAX_LENGTH,
@@ -43,8 +45,9 @@ import {
 } from '@/server/functions/todos/schemas'
 
 const schemaCases: Array<[string, z.ZodType, unknown]> = [
-  ['board.get', GetBoardInput, { browserTimeZone: 'Europe/Berlin' }],
-  ['board.completeDay', CompleteDayInput, undefined],
+  ['board.get', GetBoardInput, undefined],
+  ['board.reconcileLifecycle', ReconcileLifecycleInput, undefined],
+  ['board.completeDay', CompleteDayInput, { planningDate: '2026-07-03' }],
   ['board.getMigrationStep', GetMigrationStepInput, { sourceBucketId: 1 }],
   ['board.confirmMigrationStep', ConfirmMigrationStepInput, { decisions: { 1: 'carry_forward' }, sourceBucketId: 1 }],
   ['board.getBuckets', GetBucketsInput, undefined],
@@ -71,6 +74,45 @@ describe('private operation input schemas', () => {
       expect(schema.safeParse(input).success).toBe(true)
       expect(schema.safeParse({ ...(input ?? {}), unexpected: true }).success).toBe(false)
     }
+  })
+
+  it('requires Complete Day to name a valid Planning Date', () => {
+    expect(CompleteDayInput.safeParse(undefined).success).toBe(false)
+    expect(CompleteDayInput.safeParse({ planningDate: '2026-02-30' }).success).toBe(false)
+    expect(CompleteDayInput.safeParse({ planningDate: '2026-07-03T00:00:00Z' }).success).toBe(false)
+  })
+
+  it('accepts an optional valid timezone for Lifecycle Reconciliation', () => {
+    expect(ReconcileLifecycleInput.safeParse(undefined).success).toBe(true)
+    expect(ReconcileLifecycleInput.safeParse({ timeZone: 'Europe/Berlin' }).success).toBe(true)
+    expect(ReconcileLifecycleInput.safeParse({ timeZone: 'Mars/Olympus_Mons' }).success).toBe(false)
+    expect(ReconcileLifecycleInput.safeParse({ timeZone: null }).success).toBe(false)
+  })
+
+  it('returns board Buckets without persistence-only or foreign-User fields', () => {
+    const board = BoardResponse.parse({
+      buckets: [
+        {
+          archivedAt: null,
+          createdAt: new Date('2026-07-03T08:00:00.000Z'),
+          id: 1,
+          period: 'inbox',
+          status: 'active',
+          type: 'inbox',
+          userId: 'user-2',
+        },
+      ],
+      planningDate: '2026-07-03',
+      status: 'ready',
+      timeZone: 'Europe/Berlin',
+    })
+
+    expect(board).toEqual({
+      buckets: [{ id: 1, period: 'inbox', type: 'inbox' }],
+      planningDate: '2026-07-03',
+      status: 'ready',
+      timeZone: 'Europe/Berlin',
+    })
   })
 
   it('accepts positive PostgreSQL identifiers at both bounds and rejects either side', () => {

@@ -185,7 +185,7 @@ describe('private operation public request contract', () => {
   })
 
   it('keeps every declared server function on the shared contract with an explicit method', () => {
-    const areas = { board: 5, categories: 4, tags: 4, todos: 5 } as const
+    const areas = { board: 6, categories: 4, tags: 4, todos: 5 } as const
     const operationNames: Array<string> = []
 
     for (const [area, expectedCount] of Object.entries(areas)) {

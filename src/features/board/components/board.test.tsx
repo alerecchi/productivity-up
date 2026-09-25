@@ -6,7 +6,13 @@ import { Board } from '@/features/board/components/board'
 import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Bucket } from '@/lib/types/Bucket'
 import type { BucketDb } from '@/server/db/types'
-import { completeDay, confirmMigrationStep, getMigrationStep } from '@/server/functions/board'
+import {
+  completeDay,
+  confirmMigrationStep,
+  getBoard,
+  getMigrationStep,
+  reconcileLifecycle,
+} from '@/server/functions/board'
 import { createTestQueryClient, render } from '@/test'
 
 vi.mock('@/features/board/components/bucket-column', () => ({
@@ -31,6 +37,7 @@ vi.mock('@/server/functions/board', () => ({
   getBoard: vi.fn(),
   getBuckets: vi.fn(),
   getMigrationStep: vi.fn(),
+  reconcileLifecycle: vi.fn(),
 }))
 
 vi.mock('@/server/functions/todos', () => ({
@@ -68,7 +75,9 @@ const tomorrowBuckets = [
 
 const mockedCompleteDay = vi.mocked(completeDay)
 const mockedConfirmMigrationStep = vi.mocked(confirmMigrationStep)
+const mockedGetBoard = vi.mocked(getBoard)
 const mockedGetMigrationStep = vi.mocked(getMigrationStep)
+const mockedReconcileLifecycle = vi.mocked(reconcileLifecycle)
 
 describe('Board lifecycle controls', () => {
   beforeEach(() => {
@@ -77,7 +86,9 @@ describe('Board lifecycle controls', () => {
     vi.setSystemTime(new Date('2026-07-03T15:30:00.000Z'))
     mockedCompleteDay.mockReset()
     mockedConfirmMigrationStep.mockReset()
+    mockedGetBoard.mockReset()
     mockedGetMigrationStep.mockReset()
+    mockedReconcileLifecycle.mockReset()
     navigate.mockReset()
     toast.error.mockReset()
   })
@@ -121,7 +132,7 @@ describe('Board lifecycle controls', () => {
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: '2026-07-03 is wrapped' })).not.toBeInTheDocument()
     })
-    expect(mockedCompleteDay).toHaveBeenCalledWith()
+    expect(mockedCompleteDay).toHaveBeenCalledWith({ data: { planningDate: '2026-07-03' } })
   })
 
   it('shows the Migration Recap immediately from the Complete day response when migration is required', async () => {
@@ -182,6 +193,44 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByLabelText('monthly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
     expect(screen.getByLabelText('weekly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
     expect(screen.getByLabelText('daily Bucket')).toHaveAttribute('data-planning-bucket', 'true')
+  })
+
+  it('runs Lifecycle Reconciliation when the board asks for it and shows the reconciled board', async () => {
+    const reconciledBoard = {
+      buckets: todayBuckets,
+      planningDate: '2026-07-03',
+      status: 'ready' as const,
+      timeZone: 'Europe/Berlin',
+    }
+    mockedReconcileLifecycle.mockResolvedValue(reconciledBoard)
+    mockedGetBoard.mockResolvedValue(reconciledBoard)
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData([BOARD_QUERY_KEY], { status: 'reconciliation_required' })
+
+    render(<Board />, { queryClient })
+
+    expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
+    expect(screen.getByText('Planning today')).toBeInTheDocument()
+    expect(mockedReconcileLifecycle).toHaveBeenCalledTimes(1)
+  })
+
+  it('offers a retry when Lifecycle Reconciliation fails', async () => {
+    const reconciledBoard = {
+      buckets: todayBuckets,
+      planningDate: '2026-07-03',
+      status: 'ready' as const,
+      timeZone: 'Europe/Berlin',
+    }
+    mockedReconcileLifecycle.mockRejectedValueOnce(new Error('Network down')).mockResolvedValue(reconciledBoard)
+    mockedGetBoard.mockResolvedValue(reconciledBoard)
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData([BOARD_QUERY_KEY], { status: 'reconciliation_required' })
+
+    render(<Board />, { queryClient })
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }))
+
+    expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
   })
 
   it('shows toast feedback when Complete day fails', async () => {

@@ -10,8 +10,11 @@ import {
   strictInput,
 } from '@/server/core/validation'
 
-export const GetBoardInput = strictInput({ browserTimeZone: UserTimeZoneSchema.optional() })
-export const CompleteDayInput = EmptyInputSchema
+export const PlanningDateSchema = z.iso.date()
+
+export const GetBoardInput = EmptyInputSchema
+export const ReconcileLifecycleInput = strictInput({ timeZone: UserTimeZoneSchema.optional() }).default({})
+export const CompleteDayInput = strictInput({ planningDate: PlanningDateSchema })
 export const GetBucketsInput = EmptyInputSchema
 export const GetMigrationStepInput = strictInput({ sourceBucketId: PositiveIdSchema.optional() })
 export const ConfirmMigrationStepInput = strictInput({
@@ -24,11 +27,8 @@ export const ConfirmMigrationStepInput = strictInput({
 })
 
 export const BucketResponse = z.object({
-  archivedAt: z.date().nullable(),
-  createdAt: z.date(),
   id: PositiveIdSchema,
   period: z.string().min(1),
-  status: z.enum(['active', 'pending_migration', 'archived']),
   type: z.enum(['inbox', 'yearly', 'monthly', 'weekly', 'daily']),
 })
 
@@ -48,25 +48,35 @@ const MigrationRecapResponse = z.object({
 
 const ReadyBoardResponse = z.object({
   buckets: BucketsResponse,
-  planningDate: z.string(),
+  planningDate: PlanningDateSchema,
   status: z.literal('ready'),
   timeZone: UserTimeZoneSchema,
 })
 
 const MigrationRequiredBoardResponse = z.object({
   buckets: BucketsResponse,
-  migrationRecap: MigrationRecapResponse.optional(),
   pendingMigrationBuckets: BucketsResponse,
-  planningDate: z.string(),
+  planningDate: PlanningDateSchema,
   status: z.literal('migration_required'),
   timeZone: UserTimeZoneSchema,
 })
 
-export const BoardResponse = z.discriminatedUnion('status', [ReadyBoardResponse, MigrationRequiredBoardResponse])
+const ReconciliationRequiredBoardResponse = z.object({ status: z.literal('reconciliation_required') })
+
+export const BoardResponse = z.discriminatedUnion('status', [
+  ReadyBoardResponse,
+  MigrationRequiredBoardResponse,
+  ReconciliationRequiredBoardResponse,
+])
+
+export const ReconcileLifecycleResponse = z.discriminatedUnion('status', [
+  ReadyBoardResponse,
+  MigrationRequiredBoardResponse,
+])
 
 const CompletedBoardResponse = z.object({
   buckets: BucketsResponse,
-  planningDate: z.string(),
+  planningDate: PlanningDateSchema,
   recap: z.object({
     completedCount: z.int().nonnegative(),
     incompleteCount: z.literal(0),
@@ -78,7 +88,7 @@ const CompletedBoardResponse = z.object({
 
 export const CompleteDayResponse = z.discriminatedUnion('status', [
   CompletedBoardResponse,
-  MigrationRequiredBoardResponse,
+  MigrationRequiredBoardResponse.extend({ migrationRecap: MigrationRecapResponse }),
 ])
 
 const MigrationTodoResponse = z.object({

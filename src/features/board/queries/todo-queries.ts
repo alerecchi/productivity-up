@@ -6,12 +6,7 @@ import { getTodos } from '@/server/functions/todos'
 
 export const getBoardQueryOptions = queryOptions({
   queryKey: [BOARD_QUERY_KEY],
-  queryFn: () =>
-    getBoard({
-      data: {
-        browserTimeZone: getBrowserTimeZone(),
-      },
-    }),
+  queryFn: () => getBoard(),
 })
 
 export const getBucketsQueryOptions = queryOptions({
@@ -24,7 +19,3 @@ export const getTodosQueryOptions = (bucketId: number) =>
     queryKey: [TODOS_QUERY_KEY, bucketId],
     queryFn: () => getTodos({ data: { bucketId: bucketId } }),
   })
-
-function getBrowserTimeZone() {
-  return typeof Intl === 'undefined' ? undefined : Intl.DateTimeFormat().resolvedOptions().timeZone
-}

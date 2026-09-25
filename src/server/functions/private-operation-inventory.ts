@@ -1,5 +1,6 @@
 export const PRIVATE_OPERATION_NAMES = [
   'board.get',
+  'board.reconcileLifecycle',
   'board.completeDay',
   'board.getMigrationStep',
   'board.confirmMigrationStep',

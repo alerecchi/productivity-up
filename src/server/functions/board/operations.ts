@@ -1,28 +1,17 @@
-import { derivePeriodKeys, getEnabledBucketTypes, getPeriodBoundaries, getTodayLocalDate } from '@/lib/periods'
+import { derivePeriodKeys } from '@/lib/periods'
 import type { BucketType } from '@/lib/types/Bucket'
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
 import { errorResponse } from '@/server/core/errors'
 import type { BucketDb, TodoDbSelect, UserDb } from '@/server/db/types'
+import { getBoardForUser } from '@/server/functions/board/lifecycle'
+import type { LifecycleRepository } from '@/server/functions/board/lifecycle'
 
 const ENABLED_BUCKET_HORIZONS = ['yearly', 'monthly', 'weekly', 'daily'] as const
 const TODO_POSITION_GAP = 1024
 
-export type InitialBoardState = {
-  buckets: Array<Pick<BucketDb, 'period' | 'type'>>
-  createdAt: Date
-  planningDate: string
-  timeZone: string
-  userId: string
-}
-
-export type InitialBoardRepository = {
-  commitInitialBoardState: (state: InitialBoardState) => Promise<void>
-}
-
-export type BoardRepository = InitialBoardRepository & {
+export type BoardRepository = LifecycleRepository & {
   archiveBucket: (userId: string, bucketId: number, archivedAt: Date) => Promise<BucketDb | undefined>
-  createBucket: (bucket: Omit<BucketDb, 'id'>) => Promise<BucketDb>
   findBucketById: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
   findBucketByUserTypeAndPeriod: (userId: string, type: BucketType, period: string) => Promise<BucketDb | undefined>
   getActiveBuckets: (userId: string) => Promise<Array<BucketDb>>
@@ -31,7 +20,6 @@ export type BoardRepository = InitialBoardRepository & {
   getTodosByBucket: (userId: string, bucketId: number) => Promise<Array<TodoDbSelect>>
   getTodosByBucketWithDisplay: (userId: string, bucketId: number) => Promise<Array<MigrationTodo>>
   getUser: (userId: string) => Promise<UserDb | undefined>
-  markBucketPendingMigration: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
   moveTodoForMigration: (
     todoId: number,
     userId: string,
@@ -41,37 +29,11 @@ export type BoardRepository = InitialBoardRepository & {
       position: number
     },
   ) => Promise<TodoDbSelect | undefined>
-  updateUserPlanning: (
-    userId: string,
-    updates: Pick<UserDb, 'planningDate' | 'timeZone'>,
-  ) => Promise<UserDb | undefined>
 }
 
 export type MigrationTodo = TodoDbSelect & {
   category: CategoryDisplay | null
   tags: Array<TagDisplay>
-}
-
-export type ReadyBoardState = {
-  buckets: Array<BucketDb>
-  planningDate: string
-  status: 'ready'
-  timeZone: string
-}
-
-export type CompletedBoardState = Omit<ReadyBoardState, 'status'> & {
-  recap: {
-    completedCount: number
-    incompleteCount: 0
-    kind: 'all_complete'
-  }
-  status: 'completed'
-}
-
-export type MigrationRequiredBoardState = Omit<ReadyBoardState, 'status'> & {
-  migrationRecap?: MigrationFlowRecap
-  pendingMigrationBuckets: Array<BucketDb>
-  status: 'migration_required'
 }
 
 export type MigrationFlowRecap = {
@@ -82,114 +44,6 @@ export type MigrationFlowRecap = {
   }>
   completedCount: number
   incompleteCount: number
-}
-
-type LoadBoardDependencies = {
-  browserTimeZone?: string
-  now?: () => Date
-  repository: BoardRepository
-  userId: string
-}
-
-type ProvisionInitialBoardDependencies = {
-  now?: () => Date
-  repository: InitialBoardRepository
-  timeZone: string
-  userId: string
-}
-
-export async function provisionInitialBoard({
-  now = () => new Date(),
-  repository,
-  timeZone,
-  userId,
-}: ProvisionInitialBoardDependencies) {
-  const createdAt = now()
-  const planningDate = getTodayLocalDate(createdAt, timeZone)
-  const periodKeys = derivePeriodKeys(planningDate)
-  const buckets = getEnabledBucketTypes([...ENABLED_BUCKET_HORIZONS]).map((type) => ({
-    period: periodKeys[type],
-    type,
-  }))
-
-  await repository.commitInitialBoardState({
-    buckets,
-    createdAt,
-    planningDate,
-    timeZone,
-    userId,
-  })
-
-  return { planningDate, timeZone }
-}
-
-export async function loadBoardForUser({
-  browserTimeZone,
-  now = () => new Date(),
-  repository,
-  userId,
-}: LoadBoardDependencies): Promise<MigrationRequiredBoardState | ReadyBoardState> {
-  const user = await repository.getUser(userId)
-
-  if (!user) {
-    throw new Error('User not found')
-  }
-
-  const timeZone = user.timeZone ?? browserTimeZone
-
-  if (!timeZone) {
-    throw new Error('Browser timezone is required for first board visit')
-  }
-
-  const loadedAt = now()
-  const today = getTodayLocalDate(loadedAt, timeZone)
-  const planningDate = normalizePlanningDate(user.planningDate, today)
-
-  if (user.planningDate === null) {
-    await provisionInitialBoard({ now: () => loadedAt, repository, timeZone, userId })
-  } else if (user.timeZone === null || user.planningDate !== planningDate) {
-    await repository.updateUserPlanning(userId, {
-      planningDate,
-      timeZone,
-    })
-  }
-
-  const createdAt = loadedAt
-
-  await ensureActiveBucketsForPlanningDate({ createdAt, planningDate, repository, userId })
-  await reconcileExpiredBucketsForBoardLoad({
-    archivedAt: createdAt,
-    now: createdAt,
-    repository,
-    timeZone,
-    userId,
-  })
-
-  const buckets = await repository.getActiveBuckets(userId)
-  const pendingMigrationBuckets = await repository.getPendingMigrationBuckets(userId)
-
-  if (pendingMigrationBuckets.length > 0) {
-    return {
-      buckets,
-      pendingMigrationBuckets,
-      planningDate,
-      status: 'migration_required',
-      timeZone,
-    }
-  }
-
-  return {
-    buckets,
-    planningDate,
-    status: 'ready',
-    timeZone,
-  }
-}
-
-type CompleteDayDependencies = {
-  now?: () => Date
-  repository: BoardRepository
-  userId: string
 }
 
 type MigrationDecision = 'carry_forward' | 'move_back'
@@ -212,91 +66,6 @@ type GetMigrationStepDependencies = {
   }
   repository: BoardRepository
   userId: string
-}
-
-export async function completeDayForUser({
-  now = () => new Date(),
-  repository,
-  userId,
-}: CompleteDayDependencies): Promise<CompletedBoardState | MigrationRequiredBoardState> {
-  const user = await repository.getUser(userId)
-
-  if (!user) {
-    throw new Error('User not found')
-  }
-
-  if (!user.timeZone || !user.planningDate) {
-    throw new Error('Board lifecycle has not been initialized')
-  }
-
-  const pendingMigrationBuckets = await repository.getPendingMigrationBuckets(userId)
-
-  if (pendingMigrationBuckets.length > 0) {
-    throw errorResponse(409, 'Migration is required before completing this day')
-  }
-
-  const today = getTodayLocalDate(now(), user.timeZone)
-
-  if (user.planningDate > today) {
-    throw errorResponse(409, 'Cannot complete a future Bucket')
-  }
-
-  const periodKeys = derivePeriodKeys(user.planningDate)
-  const dailyBucket = await repository.findBucketByUserTypeAndPeriod(userId, 'daily', periodKeys.daily)
-
-  if (!dailyBucket || dailyBucket.status !== 'active') {
-    throw new Error('Active daily Bucket not found')
-  }
-
-  const dailyTodos = await repository.getTodosByBucket(userId, dailyBucket.id)
-  const completedCount = dailyTodos.filter((todo) => todo.completed).length
-
-  const completedAt = now()
-  const nextPlanningDate = addDaysToDateKey(user.planningDate, 1)
-
-  await ensureActiveBucketsForPlanningDate({
-    createdAt: completedAt,
-    planningDate: nextPlanningDate,
-    repository,
-    userId,
-  })
-  await repository.updateUserPlanning(userId, {
-    planningDate: nextPlanningDate,
-    timeZone: user.timeZone,
-  })
-  await reconcileStaleBucketsAfterManualCompletion({
-    archivedAt: completedAt,
-    planningDate: nextPlanningDate,
-    repository,
-    userId,
-  })
-
-  const readyState = await loadBoardForUser({
-    now,
-    repository,
-    userId,
-  })
-
-  if (readyState.status === 'migration_required') {
-    return {
-      ...readyState,
-      migrationRecap: await getMigrationFlowRecap({
-        pendingMigrationBuckets: readyState.pendingMigrationBuckets,
-        repository,
-        userId,
-      }),
-    }
-  }
-
-  return {
-    ...readyState,
-    recap: {
-      completedCount,
-      incompleteCount: 0,
-      kind: 'all_complete',
-    },
-    status: 'completed',
-  }
 }
 
 export async function confirmMigrationStepForUser({
@@ -389,7 +158,7 @@ export async function confirmMigrationStepForUser({
   }
 
   return {
-    board: await loadBoardForUser({
+    board: await getBoardForUser({
       now,
       repository,
       userId,
@@ -478,34 +247,6 @@ async function getMigrationFlowRecap({
     bucketBreakdown,
     completedCount: bucketBreakdown.reduce((total, row) => total + row.completedCount, 0),
     incompleteCount: bucketBreakdown.reduce((total, row) => total + row.incompleteCount, 0),
-  }
-}
-
-async function reconcileExpiredBucketsForBoardLoad({
-  archivedAt,
-  now,
-  repository,
-  timeZone,
-  userId,
-}: {
-  archivedAt: Date
-  now: Date
-  repository: BoardRepository
-  timeZone: string
-  userId: string
-}) {
-  const expiredBuckets = await getExpiredActiveBuckets({ now, repository, timeZone, userId })
-
-  for (const bucket of expiredBuckets) {
-    const todos = await repository.getTodosByBucket(userId, bucket.id)
-    const hasIncompleteTodos = todos.some((todo) => !todo.completed)
-
-    if (hasIncompleteTodos) {
-      await repository.markBucketPendingMigration(userId, bucket.id)
-      continue
-    }
-
-    await repository.archiveBucket(userId, bucket.id, archivedAt)
   }
 }
 
@@ -604,117 +345,4 @@ function sortMigrationBuckets(buckets: Array<BucketDb>) {
   }
 
   return buckets.toSorted((a, b) => priority[a.type] - priority[b.type] || a.id - b.id)
-}
-
-async function ensureActiveBucketsForPlanningDate({
-  createdAt,
-  planningDate,
-  repository,
-  userId,
-}: {
-  createdAt: Date
-  planningDate: string
-  repository: BoardRepository
-  userId: string
-}) {
-  const periodKeys = derivePeriodKeys(planningDate)
-
-  for (const type of getEnabledBucketTypes([...ENABLED_BUCKET_HORIZONS])) {
-    const period = periodKeys[type]
-    const existingBucket = await repository.findBucketByUserTypeAndPeriod(userId, type, period)
-
-    if (!existingBucket) {
-      await repository.createBucket({
-        archivedAt: null,
-        createdAt,
-        period,
-        status: 'active',
-        type,
-        userId,
-      })
-    }
-  }
-}
-
-async function getExpiredActiveBuckets({
-  now,
-  repository,
-  timeZone,
-  userId,
-}: {
-  now: Date
-  repository: BoardRepository
-  timeZone: string
-  userId: string
-}) {
-  const activeBuckets = await repository.getActiveBuckets(userId)
-
-  return activeBuckets.filter((bucket) => {
-    if (bucket.type === 'inbox') {
-      return false
-    }
-
-    return getPeriodBoundaries({ periodKey: bucket.period, timeZone, type: bucket.type }).end <= now
-  })
-}
-
-async function reconcileStaleBucketsAfterManualCompletion({
-  archivedAt,
-  planningDate,
-  repository,
-  userId,
-}: {
-  archivedAt: Date
-  planningDate: string
-  repository: BoardRepository
-  userId: string
-}) {
-  const staleBuckets = await getStaleActiveBuckets({ planningDate, repository, userId })
-
-  for (const bucket of staleBuckets) {
-    const todos = await repository.getTodosByBucket(userId, bucket.id)
-    const hasIncompleteTodos = todos.some((todo) => !todo.completed)
-
-    if (hasIncompleteTodos) {
-      await repository.markBucketPendingMigration(userId, bucket.id)
-      continue
-    }
-
-    await repository.archiveBucket(userId, bucket.id, archivedAt)
-  }
-}
-
-async function getStaleActiveBuckets({
-  planningDate,
-  repository,
-  userId,
-}: {
-  planningDate: string
-  repository: BoardRepository
-  userId: string
-}) {
-  const periodKeys = derivePeriodKeys(planningDate)
-  const activeBuckets = await repository.getActiveBuckets(userId)
-
-  return activeBuckets.filter((bucket) => bucket.type !== 'inbox' && bucket.period !== periodKeys[bucket.type])
-}
-
-function normalizePlanningDate(planningDate: string | null, today: string): string {
-  if (!planningDate || planningDate < today) {
-    return today
-  }
-
-  return planningDate
-}
-
-function addDaysToDateKey(dateKey: string, days: number): string {
-  const [year, month, day] = dateKey.split('-').map(Number)
-  const date = new Date(Date.UTC(year, month - 1, day))
-  date.setUTCDate(date.getUTCDate() + days)
-
-  return [
-    date.getUTCFullYear(),
-    String(date.getUTCMonth() + 1).padStart(2, '0'),
-    String(date.getUTCDate()).padStart(2, '0'),
-  ].join('-')
 }
