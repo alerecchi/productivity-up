@@ -1,7 +1,14 @@
 import handler from '@tanstack/react-start/server-entry'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { completeDay, confirmMigrationStep, getBoard, getBuckets, getMigrationStep } from '@/server/functions/board'
+import {
+  completeDay,
+  confirmMigrationStep,
+  getBoard,
+  getBuckets,
+  getMigrationStep,
+  reconcileLifecycle,
+} from '@/server/functions/board'
 import { createCategory, deleteCategory, listCategories, updateCategory } from '@/server/functions/categories'
 import { PRIVATE_OPERATION_NAMES } from '@/server/functions/private-operation-inventory'
 import { createTag, deleteTag, listTags, updateTag } from '@/server/functions/tags'
@@ -41,6 +48,7 @@ vi.mock('@/server/auth', () => ({
 
 const privateFunctions = [
   ['board.get', getBoard],
+  ['board.reconcileLifecycle', reconcileLifecycle],
   ['board.completeDay', completeDay],
   ['board.getMigrationStep', getMigrationStep],
   ['board.confirmMigrationStep', confirmMigrationStep],

@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { CheckCircle2 } from 'lucide-react'
 import { useState } from 'react'
@@ -6,14 +6,16 @@ import { toast } from 'sonner'
 
 import { BucketColumn } from '@/features/board/components/bucket-column'
 import { BucketLifecycleRecapDialog } from '@/features/board/components/bucket-lifecycle-recap-dialog'
+import { LifecycleReconciliationStatus } from '@/features/board/components/lifecycle-reconciliation-status'
 import {
   MigrationRecapDialog,
   PendingMigrationRecapDialog,
 } from '@/features/board/components/pending-migration-recap-dialog'
 import type { MigrationRecap } from '@/features/board/components/pending-migration-recap-dialog'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
+import { useReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
+import type { ReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
 import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
-import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
 import { Button } from '@/features/shared/components/ui/button'
 import { getTodayLocalDate, isFutureBucket } from '@/lib/periods'
 import type { Bucket } from '@/lib/types/Bucket'
@@ -27,25 +29,32 @@ const bucketPriority: Record<string, number> = BUCKET_TYPE_ORDER.reduce(
 )
 
 export function Board() {
+  const { board, reconciliation } = useReconciledBoard()
+
+  if (!board) {
+    return <LifecycleReconciliationStatus {...reconciliation} />
+  }
+
+  return <ReconciledBoardView board={board} />
+}
+
+function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { data: board } = useSuspenseQuery(getBoardQueryOptions)
   const [completionRecap, setCompletionRecap] = useState<CompletionRecap | null>(null)
   const [migrationRecap, setMigrationRecap] = useState<ManualMigrationRecap | null>(null)
   const completeDayMutation = useMutation({
-    mutationFn: () => completeDay(),
+    mutationFn: () => completeDay({ data: { planningDate: board.planningDate } }),
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not complete day')
     },
     onSuccess: (result) => {
       if (result.status === 'migration_required') {
         queryClient.setQueryData([BOARD_QUERY_KEY], result)
-        if (result.migrationRecap) {
-          setMigrationRecap({
-            pendingMigrationBuckets: result.pendingMigrationBuckets,
-            recap: result.migrationRecap,
-          })
-        }
+        setMigrationRecap({
+          pendingMigrationBuckets: result.pendingMigrationBuckets,
+          recap: result.migrationRecap,
+        })
         return
       }
 

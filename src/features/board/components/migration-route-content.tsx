@@ -1,12 +1,16 @@
-import { useSuspenseQuery } from '@tanstack/react-query'
 import { ArrowLeft, Route as RouteIcon } from 'lucide-react'
 
+import { LifecycleReconciliationStatus } from '@/features/board/components/lifecycle-reconciliation-status'
 import { MigrationFlow } from '@/features/board/components/migration-flow'
-import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
+import { useReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
 import { buttonVariants } from '@/features/shared/components/ui/button'
 
 export function MigrationRouteContent() {
-  const { data: board } = useSuspenseQuery(getBoardQueryOptions)
+  const { board, reconciliation } = useReconciledBoard()
+
+  if (!board) {
+    return <LifecycleReconciliationStatus {...reconciliation} />
+  }
 
   if (board.status === 'migration_required') {
     return <MigrationFlow />

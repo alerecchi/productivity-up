@@ -1,23 +1,46 @@
 import { and, asc, eq, inArray, max } from 'drizzle-orm'
+import { TransactionRollbackError } from 'drizzle-orm/errors'
 
+import { errorResponse } from '@/server/core/errors'
 import { hasPendingMigrationBuckets } from '@/server/db/buckets'
 import type { Database } from '@/server/db/client'
+import { users } from '@/server/db/schema/auth-schema'
 import { buckets, categories, tags, todoTags, todos } from '@/server/db/schema/schema'
 import type { TagDbSelect, TodoDbInsert } from '@/server/db/types'
 import type { TodoRepository } from '@/server/functions/todos/operations'
 
+type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0]
+
 export function createTodoRepository(db: Database): TodoRepository {
   return {
     async createTodo(todoToAdd: TodoDbInsert) {
-      const [newTodo] = await db.insert(todos).values(todoToAdd).returning()
-      return newTodo
+      return db.transaction(async (tx) => {
+        await guardTodoWrite(tx, todoToAdd.userId)
+        await requireActiveBucket(tx, todoToAdd.userId, todoToAdd.bucketId)
+
+        const [newTodo] = await tx.insert(todos).values(todoToAdd).returning()
+        return newTodo
+      })
     },
     async deleteTodo(todoId: number, userId: string) {
-      const [deletedTodo] = await db
-        .delete(todos)
-        .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
-        .returning({ bucketId: todos.bucketId, todoId: todos.id })
-      return deletedTodo
+      return db.transaction(async (tx) => {
+        await guardTodoWrite(tx, userId)
+        const source = await findTodoBucket(tx, userId, todoId)
+
+        if (!source) {
+          return undefined
+        }
+
+        if (source.status !== 'active') {
+          throw errorResponse(409, 'Cannot delete a Todo from an archived or pending migration Bucket')
+        }
+
+        const [deletedTodo] = await tx
+          .delete(todos)
+          .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
+          .returning({ bucketId: todos.bucketId, todoId: todos.id })
+        return deletedTodo
+      })
     },
     findOwnedActiveBucket(userId: string, bucketId: number) {
       return db.query.buckets.findFirst({
@@ -90,96 +113,108 @@ export function createTodoRepository(db: Database): TodoRepository {
       return hasPendingMigrationBuckets(db, userId)
     },
     async moveTodo(todoId, userId, move) {
-      const sourceBucket = await db.query.buckets.findFirst({
-        columns: {
-          id: true,
-        },
-        where: and(
-          eq(buckets.id, move.expectedSourceBucketId),
-          eq(buckets.userId, userId),
-          eq(buckets.status, 'active'),
-        ),
-      })
+      try {
+        return await db.transaction(async (tx) => {
+          await guardTodoWrite(tx, userId)
 
-      if (!sourceBucket) {
-        return { status: 'conflict' }
-      }
-
-      const targetBucket = await db.query.buckets.findFirst({
-        columns: {
-          id: true,
-        },
-        where: and(eq(buckets.id, move.bucketId), eq(buckets.userId, userId), eq(buckets.status, 'active')),
-      })
-
-      if (!targetBucket) {
-        return { status: 'conflict' }
-      }
-
-      const currentTargetTodoPositions = (
-        await db.query.todos.findMany({
-          columns: {
-            bucketId: true,
-            id: true,
-            position: true,
-          },
-          orderBy: [asc(todos.position), asc(todos.id)],
-          where: and(eq(todos.bucketId, move.bucketId), eq(todos.userId, userId)),
-        })
-      ).filter((todo) => todo.id !== todoId)
-
-      if (!areTodoPositionsEqual(currentTargetTodoPositions, move.expectedTargetTodoPositions)) {
-        return { status: 'conflict' }
-      }
-
-      for (const todoPosition of move.rebalancedTodoPositions) {
-        const expectedTodoPosition = move.expectedTargetTodoPositions.find((todo) => todo.id === todoPosition.id)
-
-        if (!expectedTodoPosition) {
-          return { status: 'conflict' }
-        }
-
-        const updatedTodoPositions = await db
-          .update(todos)
-          .set({ position: todoPosition.position })
-          .where(
-            and(
-              eq(todos.id, todoPosition.id),
-              eq(todos.userId, userId),
-              eq(todos.bucketId, todoPosition.bucketId),
-              eq(todos.position, expectedTodoPosition.position),
+          const sourceBucket = await tx.query.buckets.findFirst({
+            columns: {
+              id: true,
+            },
+            where: and(
+              eq(buckets.id, move.expectedSourceBucketId),
+              eq(buckets.userId, userId),
+              eq(buckets.status, 'active'),
             ),
-          )
-          .returning({ id: todos.id })
+          })
 
-        if (updatedTodoPositions.length === 0) {
+          if (!sourceBucket) {
+            return { status: 'conflict' } as const
+          }
+
+          const targetBucket = await tx.query.buckets.findFirst({
+            columns: {
+              id: true,
+            },
+            where: and(eq(buckets.id, move.bucketId), eq(buckets.userId, userId), eq(buckets.status, 'active')),
+          })
+
+          if (!targetBucket) {
+            return { status: 'conflict' } as const
+          }
+
+          const currentTargetTodoPositions = (
+            await tx.query.todos.findMany({
+              columns: {
+                bucketId: true,
+                id: true,
+                position: true,
+              },
+              orderBy: [asc(todos.position), asc(todos.id)],
+              where: and(eq(todos.bucketId, move.bucketId), eq(todos.userId, userId)),
+            })
+          ).filter((todo) => todo.id !== todoId)
+
+          if (!areTodoPositionsEqual(currentTargetTodoPositions, move.expectedTargetTodoPositions)) {
+            return { status: 'conflict' } as const
+          }
+
+          for (const todoPosition of move.rebalancedTodoPositions) {
+            const expectedTodoPosition = move.expectedTargetTodoPositions.find((todo) => todo.id === todoPosition.id)
+
+            if (!expectedTodoPosition) {
+              throw new TransactionRollbackError()
+            }
+
+            const updatedTodoPositions = await tx
+              .update(todos)
+              .set({ position: todoPosition.position })
+              .where(
+                and(
+                  eq(todos.id, todoPosition.id),
+                  eq(todos.userId, userId),
+                  eq(todos.bucketId, todoPosition.bucketId),
+                  eq(todos.position, expectedTodoPosition.position),
+                ),
+              )
+              .returning({ id: todos.id })
+
+            if (updatedTodoPositions.length === 0) {
+              throw new TransactionRollbackError()
+            }
+          }
+
+          const updatedTodos = await tx
+            .update(todos)
+            .set({
+              bucketId: move.bucketId,
+              position: move.position,
+            })
+            .where(
+              and(
+                eq(todos.id, todoId),
+                eq(todos.userId, userId),
+                eq(todos.bucketId, move.expectedSourceBucketId),
+                eq(todos.position, move.expectedMovedTodoPosition),
+              ),
+            )
+            .returning()
+
+          if (updatedTodos.length === 0) {
+            throw new TransactionRollbackError()
+          }
+
+          return {
+            status: 'moved' as const,
+            todo: updatedTodos[0],
+          }
+        })
+      } catch (error) {
+        if (error instanceof TransactionRollbackError) {
           return { status: 'conflict' }
         }
-      }
 
-      const updatedTodos = await db
-        .update(todos)
-        .set({
-          bucketId: move.bucketId,
-          position: move.position,
-        })
-        .where(
-          and(
-            eq(todos.id, todoId),
-            eq(todos.userId, userId),
-            eq(todos.bucketId, move.expectedSourceBucketId),
-            eq(todos.position, move.expectedMovedTodoPosition),
-          ),
-        )
-        .returning()
-
-      if (updatedTodos.length === 0) {
-        return { status: 'conflict' }
-      }
-
-      return {
-        status: 'moved',
-        todo: updatedTodos[0],
+        throw error
       }
     },
     async replaceTodoTags(todoId: number, userId: string, tagIds: Array<number>) {
@@ -203,14 +238,75 @@ export function createTodoRepository(db: Database): TodoRepository {
       await db.insert(todoTags).values(tagIds.map((tagId) => ({ tagId, todoId })))
     },
     async updateTodo(todoId: number, userId: string, updates: Partial<TodoDbInsert>) {
-      const [updatedTodo] = await db
-        .update(todos)
-        .set(updates)
-        .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
-        .returning()
-      return updatedTodo
+      return db.transaction(async (tx) => {
+        await guardTodoWrite(tx, userId)
+        const source = await findTodoBucket(tx, userId, todoId)
+
+        if (!source) {
+          return undefined
+        }
+
+        if (source.status !== 'active') {
+          throw errorResponse(409, 'Cannot update a Todo in an archived or pending migration Bucket')
+        }
+
+        if (updates.bucketId !== undefined && updates.bucketId !== source.bucketId) {
+          await requireActiveBucket(tx, userId, updates.bucketId)
+        }
+
+        const [updatedTodo] = await tx
+          .update(todos)
+          .set(updates)
+          .where(and(eq(todos.id, todoId), eq(todos.userId, userId)))
+          .returning()
+        return updatedTodo
+      })
     },
   }
+}
+
+async function guardTodoWrite(tx: Transaction, userId: string) {
+  // Lifecycle locks the User row before it reads and retires Buckets.
+  const user = (await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).for('update')).at(0)
+
+  if (!user) {
+    throw errorResponse(404, 'User not found')
+  }
+
+  const pendingBuckets = await tx
+    .select({ id: buckets.id })
+    .from(buckets)
+    .where(and(eq(buckets.userId, userId), eq(buckets.status, 'pending_migration')))
+    .limit(1)
+
+  if (pendingBuckets.length > 0) {
+    throw errorResponse(409, 'Migration is required before changing Todos')
+  }
+}
+
+async function requireActiveBucket(tx: Transaction, userId: string, bucketId: number) {
+  const bucket = (
+    await tx
+      .select({ id: buckets.id })
+      .from(buckets)
+      .where(and(eq(buckets.id, bucketId), eq(buckets.userId, userId), eq(buckets.status, 'active')))
+  ).at(0)
+
+  if (!bucket) {
+    throw errorResponse(404, 'Bucket not found, archived, or unauthorized')
+  }
+}
+
+async function findTodoBucket(tx: Transaction, userId: string, todoId: number) {
+  const todo = (
+    await tx
+      .select({ bucketId: todos.bucketId, status: buckets.status })
+      .from(todos)
+      .innerJoin(buckets, eq(todos.bucketId, buckets.id))
+      .where(and(eq(todos.id, todoId), eq(todos.userId, userId), eq(buckets.userId, userId)))
+  ).at(0)
+
+  return todo
 }
 
 function areTodoPositionsEqual(

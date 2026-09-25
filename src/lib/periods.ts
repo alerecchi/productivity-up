@@ -8,7 +8,12 @@ type BucketReference = {
   type: BucketType
 }
 
-const TIME_BASED_BUCKET_TYPES = ['yearly', 'monthly', 'weekly', 'daily'] as const satisfies Array<TimeBasedBucketType>
+export const TIME_BASED_BUCKET_TYPES = [
+  'yearly',
+  'monthly',
+  'weekly',
+  'daily',
+] as const satisfies Array<TimeBasedBucketType>
 const BUCKET_TYPE_ORDER = ['inbox', ...TIME_BASED_BUCKET_TYPES] as const satisfies Array<BucketType>
 const MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'long', timeZone: 'UTC' })
 const SHORT_MONTH_FORMATTER = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' })
