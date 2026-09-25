@@ -1,11 +1,15 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
 import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth/minimal'
+import type { BetterAuthOptions } from 'better-auth/minimal'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
+import { waitUntil } from 'cloudflare:workers'
 
 import { getRuntimeEnvironment } from '@/config/runtime-env'
 import { AUTH_USER_FIELDS, UserTimeZoneSchema } from '@/lib/auth-user-fields'
 import { authorizeAccountOperation } from '@/server/auth-operation-access'
+import { AUTH_RATE_LIMIT_RULES, createAuthRateLimitStorage, createNeonRateLimitCounter } from '@/server/auth/rate-limit'
+import type { AuthRateLimitStorage } from '@/server/auth/rate-limit'
 import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
@@ -17,20 +21,44 @@ export type AuthRuntimeConfiguration = {
   secret: string
 }
 
+export type AuthDependencies = {
+  /** Better Auth persistence; production uses Drizzle over the invocation's database connection. */
+  database: NonNullable<BetterAuthOptions['database']>
+  /** Creates the initial board state for a newly created User. */
+  provisionInitialBoard: (user: { id: string; timeZone: string }) => Promise<void>
+  /** Rate-limit state shared by every Worker isolate. */
+  rateLimitStorage: AuthRateLimitStorage
+}
+
+export type Auth = ReturnType<typeof buildAuth>
+
+/** Creates the production Better Auth instance for one invocation's database connection. */
 export function createAuth(
   db: Database,
   configuration: AuthRuntimeConfiguration = getRuntimeEnvironment().authentication,
 ) {
-  const provisionBoardForUser = async (user: { id: string } & Record<string, unknown>) => {
-    const timeZone = UserTimeZoneSchema.parse(user.timeZone)
+  return buildAuth(
+    {
+      database: drizzleAdapter(db, {
+        provider: 'pg',
+        schema,
+        usePlural: true,
+      }),
+      provisionInitialBoard: async ({ id, timeZone }) => {
+        await provisionInitialBoard({
+          repository: createBoardRepository(db),
+          timeZone,
+          userId: id,
+        })
+      },
+      rateLimitStorage: createAuthRateLimitStorage(createNeonRateLimitCounter(db)),
+    },
+    configuration,
+  )
+}
 
-    await provisionInitialBoard({
-      repository: createBoardRepository(db),
-      timeZone,
-      userId: user.id,
-    })
-  }
-
+/** Creates a Better Auth instance from explicit dependencies. */
+export function buildAuth(dependencies: AuthDependencies, configuration: AuthRuntimeConfiguration) {
   return betterAuth({
     baseURL: configuration.baseUrl,
     secret: configuration.secret,
@@ -41,18 +69,20 @@ export function createAuth(
       // Explicit so Better Auth never relaxes origin and CSRF checks based on the runtime environment.
       disableCSRFCheck: false,
       disableOriginCheck: false,
+      ipAddress: {
+        ipAddressHeaders: ['cf-connecting-ip'],
+      },
     },
-    database: drizzleAdapter(db, {
-      provider: 'pg',
-      schema,
-      usePlural: true,
-    }),
+    database: dependencies.database,
     databaseHooks: {
       user: {
         create: {
           after: async (user, context) => {
             try {
-              await provisionBoardForUser(user)
+              await dependencies.provisionInitialBoard({
+                id: user.id,
+                timeZone: UserTimeZoneSchema.parse(user.timeZone),
+              })
             } catch (error) {
               context?.context.logger.error('Failed to provision initial board after User creation', error)
             }
@@ -64,12 +94,9 @@ export function createAuth(
       enabled: true,
       requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: async ({ user, url }) => {
-        await sendResetPassword({
-          to: user.email,
-          userName: user.name,
-          url,
-        })
+      sendResetPassword: ({ user, url }) => {
+        deliverAfterResponse(sendResetPassword({ to: user.email, userName: user.name, url }))
+        return Promise.resolve()
       },
     },
     session: {
@@ -92,8 +119,9 @@ export function createAuth(
       sendOnSignUp: true,
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
-      sendVerificationEmail: async ({ user, url }) => {
-        await sendEmailConfirmation({ to: user.email, userName: user.name, url })
+      sendVerificationEmail: ({ user, url }) => {
+        deliverAfterResponse(sendEmailConfirmation({ to: user.email, userName: user.name, url }))
+        return Promise.resolve()
       },
     },
     hooks: {
@@ -118,6 +146,22 @@ export function createAuth(
       }),
     },
     plugins: [tanstackStartCookies()],
+    rateLimit: {
+      customRules: AUTH_RATE_LIMIT_RULES,
+      customStorage: dependencies.rateLimitStorage,
+      enabled: true,
+    },
   })
 }
-// TODO: from better auth docs: Avoid awaiting the email sending to prevent timing attacks. On serverless platforms, use waitUntil or similar to ensure the email is sent.
+
+/**
+ * Keeps authentication email delivery running after the response, so its latency and failures cannot reveal
+ * whether an account exists.
+ */
+function deliverAfterResponse(delivery: Promise<void>) {
+  waitUntil(
+    delivery.catch(() => {
+      console.error('Authentication email delivery failed')
+    }),
+  )
+}

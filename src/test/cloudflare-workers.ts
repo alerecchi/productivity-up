@@ -9,3 +9,8 @@ export abstract class DurableObject<TEnvironment = unknown> {
     this.env = runtimeEnv
   }
 }
+
+/** Test stand-in for the Worker runtime: background work keeps running but is not awaited. */
+export function waitUntil(promise: Promise<unknown>) {
+  void promise
+}
