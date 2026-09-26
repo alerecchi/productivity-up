@@ -131,6 +131,8 @@
           "pattern": "productivity-up.com",
           "custom_domain": true,
         },
+        // Only provides the proxied DNS record for www; a Cloudflare Redirect
+        // Rule 301s every www request to the apex before the Worker runs.
         {
           "pattern": "www.productivity-up.com",
           "custom_domain": true,
