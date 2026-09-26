@@ -39,6 +39,7 @@ describe('authentication email queue consumer', () => {
   it('retries messages after provider delivery fails', async () => {
     const ack = vi.fn()
     const retry = vi.fn()
+    const logFailure = vi.spyOn(console, 'error').mockImplementation(() => {})
     sendResetPassword.mockRejectedValueOnce(new Error('provider unavailable'))
 
     await handleAuthEmailBatch({
@@ -53,5 +54,10 @@ describe('authentication email queue consumer', () => {
 
     expect(ack).not.toHaveBeenCalled()
     expect(retry).toHaveBeenCalledOnce()
+    expect(logFailure).toHaveBeenCalledWith('Authentication email delivery failed', {
+      errorType: 'Error',
+      messageType: 'password-reset',
+    })
+    logFailure.mockRestore()
   })
 })

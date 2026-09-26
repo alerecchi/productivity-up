@@ -33,7 +33,11 @@ export async function handleAuthEmailBatch(batch: AuthEmailBatch) {
       try {
         await deliverAuthEmail(message.body)
         message.ack()
-      } catch {
+      } catch (error) {
+        console.error('Authentication email delivery failed', {
+          errorType: error instanceof Error ? error.name : 'unknown',
+          messageType: message.body.type,
+        })
         message.retry()
       }
     }),
