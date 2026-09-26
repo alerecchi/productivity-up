@@ -13,6 +13,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import {
   clearStoredMigrationFlowStarted,
   getStoredMigrationFlowBucketIds,
@@ -65,6 +66,17 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
       toast.error(error instanceof Error ? error.message : 'Could not confirm migration')
     },
     onSuccess: async (result) => {
+      const affectedBucketIds = [...new Set([result.sourceBucketId, ...result.destinationBucketIds])]
+
+      await Promise.all(
+        affectedBucketIds.map((bucketId) =>
+          queryClient.invalidateQueries({
+            exact: true,
+            queryKey: boardCacheKeys.todos(bucketId),
+          }),
+        ),
+      )
+
       if (result.board.status === 'ready') {
         clearStoredMigrationFlowStarted()
         queryClient.setQueryData([BOARD_QUERY_KEY], result.board)

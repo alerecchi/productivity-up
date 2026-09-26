@@ -14,7 +14,7 @@ export type InMemoryBucket = {
   userId: string
 }
 
-/** In-memory stand-in for the production board repository, modelling its guarded lifecycle transaction. */
+/** In-memory stand-in for the production board repository, modelling its guarded lifecycle and migration transactions. */
 export function createInMemoryBoardRepository({
   buckets,
   todos = [],
@@ -48,20 +48,6 @@ export function createInMemoryBoardRepository({
   }
 
   return {
-    archiveBucket(userId, bucketId, archivedAt) {
-      const bucket = storedBuckets.find(
-        (storedBucket) => storedBucket.id === bucketId && storedBucket.userId === userId,
-      )
-
-      if (!bucket) {
-        return Promise.resolve(undefined)
-      }
-
-      bucket.status = 'archived'
-      bucket.archivedAt = archivedAt
-
-      return Promise.resolve(bucket)
-    },
     commitInitialBoardState(state) {
       if (
         storedUser.id !== state.userId ||
@@ -166,8 +152,56 @@ export function createInMemoryBoardRepository({
 
       return Promise.resolve({ board: readSnapshot(), retiredBuckets })
     },
-    findBucketById(userId, bucketId) {
-      return Promise.resolve(storedBuckets.find((bucket) => bucket.userId === userId && bucket.id === bucketId))
+    commitMigrationStep(step, plan) {
+      if (storedUser.id !== step.userId) {
+        return Promise.reject(new Error('User not found'))
+      }
+
+      const userBuckets = storedBuckets
+        .filter(
+          (bucket) =>
+            bucket.userId === step.userId && (bucket.status !== 'archived' || bucket.id === step.sourceBucketId),
+        )
+        .toSorted((a, b) => a.id - b.id)
+      const userTodos = storedTodos.filter((todo) => todo.userId === step.userId)
+      const lastPositions = new Map<number, number>()
+
+      for (const todo of userTodos) {
+        if (userBuckets.some((bucket) => bucket.id === todo.bucketId && bucket.status === 'active')) {
+          lastPositions.set(todo.bucketId, Math.max(lastPositions.get(todo.bucketId) ?? todo.position, todo.position))
+        }
+      }
+
+      const result = plan({
+        buckets: userBuckets.map(({ id, period, status, type }) => ({ id, period, status, type })),
+        lastPositions,
+        planningDate: storedUser.planningDate,
+        sourceTodoIds: userTodos
+          .filter((todo) => todo.bucketId === step.sourceBucketId && !todo.completed)
+          .toSorted((a, b) => a.position - b.position || a.id - b.id)
+          .map((todo) => todo.id),
+        timeZone: storedUser.timeZone,
+      })
+
+      if (result.kind === 'commit') {
+        for (const move of result.moves) {
+          const todo = userTodos.find((storedTodo) => storedTodo.id === move.id)
+
+          if (todo) {
+            todo.bucketId = move.bucketId
+            todo.position = move.position
+          }
+        }
+
+        const sourceBucket = userBuckets.find((bucket) => bucket.id === step.sourceBucketId)
+
+        if (sourceBucket) {
+          sourceBucket.status = 'archived'
+          sourceBucket.archivedAt = step.at
+        }
+      }
+
+      return Promise.resolve(result)
     },
     findBucketByUserTypeAndPeriod(userId, type, period) {
       return Promise.resolve(
@@ -176,15 +210,6 @@ export function createInMemoryBoardRepository({
     },
     getActiveBuckets(userId) {
       return Promise.resolve(storedBuckets.filter((bucket) => bucket.userId === userId && bucket.status === 'active'))
-    },
-    getMaxTodoPosition(userId, bucketId) {
-      const bucketTodos = storedTodos.filter((todo) => todo.userId === userId && todo.bucketId === bucketId)
-
-      if (bucketTodos.length === 0) {
-        return Promise.resolve(null)
-      }
-
-      return Promise.resolve(Math.max(...bucketTodos.map((todo) => todo.position)))
     },
     getPendingMigrationBuckets(userId) {
       return Promise.resolve(
@@ -203,23 +228,6 @@ export function createInMemoryBoardRepository({
     },
     getUser(userId) {
       return Promise.resolve(storedUser.id === userId ? storedUser : undefined)
-    },
-    moveTodoForMigration(todoId, userId, move) {
-      const todo = storedTodos.find(
-        (storedTodo) =>
-          storedTodo.id === todoId &&
-          storedTodo.userId === userId &&
-          storedTodo.bucketId === move.expectedSourceBucketId,
-      )
-
-      if (!todo) {
-        return Promise.resolve(undefined)
-      }
-
-      todo.bucketId = move.bucketId
-      todo.position = move.position
-
-      return Promise.resolve(todo)
     },
     readBoard(userId) {
       return Promise.resolve(storedUser.id === userId ? readSnapshot() : undefined)
