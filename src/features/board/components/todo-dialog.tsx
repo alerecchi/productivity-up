@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { Field, FieldError, FieldLabel } from '@shared/components/ui/field'
 import { Input } from '@shared/components/ui/input'
 import { Textarea } from '@shared/components/ui/textarea'
+import { getOperationErrorMessage } from '@shared/utils/operation-error'
 import { useQuery } from '@tanstack/react-query'
 import { Check, Edit2, Plus } from 'lucide-react'
 import { useEffect, useState } from 'react'
@@ -13,7 +14,6 @@ import {
   filterNamedItems,
   formatBucketName,
   getDefaultFormValues,
-  getOperationErrorMessage,
   hasDuplicateName,
   removeRecordKey,
   titleValidator,

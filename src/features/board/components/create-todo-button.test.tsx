@@ -6,7 +6,7 @@ import { CATEGORIES_QUERY_KEY, TAGS_QUERY_KEY, TODOS_QUERY_KEY } from '@/feature
 import { createCategory, deleteCategory, listCategories, updateCategory } from '@/server/functions/categories'
 import { createTag, deleteTag, listTags, updateTag } from '@/server/functions/tags'
 import { createTodo, updateTodo } from '@/server/functions/todos'
-import { createTestQueryClient, render } from '@/test'
+import { createTestQueryClient, operationErrorResponse, render } from '@/test'
 
 vi.mock('@/server/functions/categories', () => ({
   createCategory: vi.fn(),
@@ -492,7 +492,7 @@ describe('CreateTodoButton', () => {
 
   it('keeps Tag edit errors local to the picker', async () => {
     mockedListTags.mockResolvedValue([existingTag])
-    mockedUpdateTag.mockRejectedValue(new Error('Tag name already exists'))
+    mockedUpdateTag.mockRejectedValue(operationErrorResponse(409, 'CONFLICT', 'Tag name already exists'))
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
@@ -580,7 +580,7 @@ describe('CreateTodoButton', () => {
 
   it('keeps Tag delete errors local to the picker', async () => {
     mockedListTags.mockResolvedValue([existingTag])
-    mockedDeleteTag.mockRejectedValue(new Error('Could not delete the tag.'))
+    mockedDeleteTag.mockRejectedValue(operationErrorResponse(500, 'INTERNAL_ERROR'))
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
@@ -600,7 +600,7 @@ describe('CreateTodoButton', () => {
   })
 
   it('keeps the dialog open and shows feedback when Category creation fails', async () => {
-    mockedCreateCategory.mockRejectedValue(new Error('Could not create the category.'))
+    mockedCreateCategory.mockRejectedValue(new TypeError('Failed to fetch'))
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
@@ -703,7 +703,7 @@ describe('CreateTodoButton', () => {
 
   it('keeps Category edit errors local to the picker', async () => {
     mockedListCategories.mockResolvedValue([createdCategory])
-    mockedUpdateCategory.mockRejectedValue(new Error('Category name already exists'))
+    mockedUpdateCategory.mockRejectedValue(operationErrorResponse(409, 'CONFLICT', 'Category name already exists'))
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
@@ -776,7 +776,7 @@ describe('CreateTodoButton', () => {
 
   it('keeps Category delete errors local to the picker', async () => {
     mockedListCategories.mockResolvedValue([createdCategory])
-    mockedDeleteCategory.mockRejectedValue(new Error('Could not delete the category.'))
+    mockedDeleteCategory.mockRejectedValue(operationErrorResponse(404, 'RESOURCE_NOT_FOUND', 'Resource not found'))
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
@@ -789,7 +789,7 @@ describe('CreateTodoButton', () => {
     expect(screen.getByText('Click Delete again to permanently delete this category.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }))
 
-    expect(await screen.findByText('Could not delete the category.')).toBeInTheDocument()
+    expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Back' }))
     closeTopDialog()
     expect(screen.getByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
@@ -814,14 +814,16 @@ describe('CreateTodoButton', () => {
   })
 
   it('keeps the dialog open and shows feedback when saving fails', async () => {
-    mockedCreateTodo.mockRejectedValue(new Error('Could not save the todo.'))
+    mockedCreateTodo.mockRejectedValue(
+      operationErrorResponse(409, 'CONFLICT', 'Migration is required before changing Todos'),
+    )
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
-    expect(await screen.findByText('Could not save the todo.')).toBeInTheDocument()
+    expect(await screen.findByText('Migration is required before changing Todos')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
   })
 })

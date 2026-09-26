@@ -39,7 +39,6 @@ export type DialogResourceMode =
 
 export const titleValidator = z.string().trim().min(1, 'Title is required.')
 export const bucketValidator = z.string().min(1, 'Bucket is required.')
-const operationErrorBodySchema = z.object({ message: z.string() }).partial()
 
 const bucketTypeLabels = {
   daily: 'Daily',
@@ -93,18 +92,4 @@ export function getDefaultFormValues(defaultBucketId: number, editingTodo?: Todo
 export function removeRecordKey<T>(record: Record<string, T>, key: string) {
   const { [key]: _removed, ...remaining } = record
   return remaining
-}
-
-export async function getOperationErrorMessage(error: unknown, fallbackMessage: string) {
-  if (error instanceof Response) {
-    const json = await error.json().catch(() => undefined)
-    const body = operationErrorBodySchema.safeParse(json)
-    return body.success ? (body.data.message ?? fallbackMessage) : fallbackMessage
-  }
-
-  if (error instanceof Error) {
-    return error.message
-  }
-
-  return fallbackMessage
 }

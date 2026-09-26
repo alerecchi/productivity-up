@@ -1,3 +1,4 @@
+import { readOperationError } from '@/features/shared/utils/operation-error'
 import { STALE_TODO_POSITIONS_MESSAGE } from '@/lib/todo-error-messages'
 
 export async function isStaleMoveConflict(error: unknown) {
@@ -5,21 +6,5 @@ export async function isStaleMoveConflict(error: unknown) {
     return false
   }
 
-  try {
-    const body: unknown = await error.clone().json()
-
-    if (typeof body !== 'object' || body === null || !('error' in body)) {
-      return false
-    }
-
-    const errorBody = body.error
-    return (
-      typeof errorBody === 'object' &&
-      errorBody !== null &&
-      'message' in errorBody &&
-      errorBody.message === STALE_TODO_POSITIONS_MESSAGE
-    )
-  } catch {
-    return false
-  }
+  return (await readOperationError(error))?.message === STALE_TODO_POSITIONS_MESSAGE
 }

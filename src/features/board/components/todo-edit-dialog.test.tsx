@@ -7,7 +7,7 @@ import type { Bucket } from '@/lib/types/Bucket'
 import { listCategories } from '@/server/functions/categories'
 import { listTags } from '@/server/functions/tags'
 import { deleteTodo, getTodos, updateTodo } from '@/server/functions/todos'
-import { createTestQueryClient, render } from '@/test'
+import { createTestQueryClient, operationErrorResponse, render } from '@/test'
 
 vi.mock('@/server/functions/categories', () => ({
   createCategory: vi.fn(),
@@ -280,7 +280,7 @@ describe('Todo card edit dialog', () => {
 
   it('keeps edit mode open and shows feedback when saving Todo edits fails', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
-    mockedUpdateTodo.mockRejectedValue(new Error('Could not save changes.'))
+    mockedUpdateTodo.mockRejectedValue(operationErrorResponse(500, 'INTERNAL_ERROR'))
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
 
@@ -291,14 +291,14 @@ describe('Todo card edit dialog', () => {
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan async review' } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    expect(await screen.findByText('Could not save changes.')).toBeInTheDocument()
+    expect(await screen.findByText('Could not save the todo.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
     expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
   })
 
   it('keeps edit mode open and leaves caches unchanged when a Bucket move fails', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
-    mockedUpdateTodo.mockRejectedValue(new Error('Bucket not found, archived, or unauthorized'))
+    mockedUpdateTodo.mockRejectedValue(operationErrorResponse(404, 'RESOURCE_NOT_FOUND', 'Resource not found'))
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
     queryClient.setQueryData([TODOS_QUERY_KEY, buckets[0].id], [])
@@ -310,7 +310,7 @@ describe('Todo card edit dialog', () => {
     fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: String(buckets[0].id) } })
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }))
 
-    expect(await screen.findByText('Bucket not found, archived, or unauthorized')).toBeInTheDocument()
+    expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
     expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
     expect(queryClient.getQueryData([TODOS_QUERY_KEY, buckets[0].id])).toEqual([])
@@ -389,7 +389,7 @@ describe('Todo card edit dialog', () => {
 
   it('keeps edit mode open and shows feedback when deleting a Todo fails', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
-    mockedDeleteTodo.mockRejectedValue(new Error('Todo not found or unauthorized'))
+    mockedDeleteTodo.mockRejectedValue(operationErrorResponse(404, 'RESOURCE_NOT_FOUND', 'Resource not found'))
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
 
@@ -401,7 +401,7 @@ describe('Todo card edit dialog', () => {
     expect(screen.getByText('Click Delete todo again to permanently delete it.')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Delete todo' }))
 
-    expect(await screen.findByText('Todo not found or unauthorized')).toBeInTheDocument()
+    expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
     expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
   })
