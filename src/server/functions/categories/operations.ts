@@ -1,8 +1,9 @@
 import type { z } from 'zod'
 
+import type { CategoryDisplay } from '@/lib/types/Category'
 import { errorResponse } from '@/server/core/errors'
 import { requireNoPendingMigrationBuckets } from '@/server/core/pending-migration-gate'
-import type { CategoryDbInsert, CategoryDbSelect } from '@/server/db/types'
+import type { CategoryDbInsert } from '@/server/db/types'
 import type {
   CreateCategoryInput,
   DeleteCategoryInput,
@@ -17,20 +18,22 @@ export class CategoryNameConflictError extends Error {
 
 export type DeletedCategory = {
   categoryId: number
-  userId: string
 }
 
+/**
+ * User-scoped Category persistence. Updates and deletes resolve `undefined` for missing and foreign Categories alike;
+ * creates and updates reject with `CategoryNameConflictError` when the (User, name) uniqueness constraint fails.
+ */
 export type CategoryRepository = {
-  createCategory: (category: CategoryDbInsert) => Promise<CategoryDbSelect>
+  createCategory: (category: CategoryDbInsert) => Promise<CategoryDisplay>
   deleteCategory: (categoryId: number, userId: string) => Promise<DeletedCategory | undefined>
-  findCategoryByName: (userId: string, name: string) => Promise<CategoryDbSelect | undefined>
   hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
-  listCategoriesForUser: (userId: string) => Promise<Array<CategoryDbSelect>>
+  listCategoriesForUser: (userId: string) => Promise<Array<CategoryDisplay>>
   updateCategory: (
     categoryId: number,
     userId: string,
     updates: Pick<CategoryDbInsert, 'colorKey' | 'name'>,
-  ) => Promise<CategoryDbSelect | undefined>
+  ) => Promise<CategoryDisplay | undefined>
 }
 
 type CreateCategoryDependencies = {
@@ -58,26 +61,13 @@ type DeleteCategoryDependencies = {
 
 export async function createCategoryForUser({ data, repository, userId }: CreateCategoryDependencies) {
   await requireNoPendingMigrationBuckets(repository, userId, 'Categories')
-  const name = normalizeCategoryName(data.name)
-  const categoryWithName = await repository.findCategoryByName(userId, name)
-
-  if (categoryWithName) {
-    throw errorResponse(409, 'Category name already exists')
-  }
-
   return repository
     .createCategory({
       colorKey: data.colorKey,
-      name,
+      name: normalizeCategoryName(data.name),
       userId,
     })
-    .catch((error: unknown) => {
-      if (error instanceof CategoryNameConflictError) {
-        throw errorResponse(409, error.message)
-      }
-
-      throw error
-    })
+    .catch(mapCategoryNameConflict)
 }
 
 export function listCategoriesForUser({ repository, userId }: ListCategoriesDependencies) {
@@ -86,25 +76,12 @@ export function listCategoriesForUser({ repository, userId }: ListCategoriesDepe
 
 export async function updateCategoryForUser({ data, repository, userId }: UpdateCategoryDependencies) {
   await requireNoPendingMigrationBuckets(repository, userId, 'Categories')
-  const name = normalizeCategoryName(data.name)
-  const categoryWithName = await repository.findCategoryByName(userId, name)
-
-  if (categoryWithName && categoryWithName.id !== data.id) {
-    throw errorResponse(409, 'Category name already exists')
-  }
-
   const category = await repository
     .updateCategory(data.id, userId, {
       colorKey: data.colorKey,
-      name,
+      name: normalizeCategoryName(data.name),
     })
-    .catch((error: unknown) => {
-      if (error instanceof CategoryNameConflictError) {
-        throw errorResponse(409, error.message)
-      }
-
-      throw error
-    })
+    .catch(mapCategoryNameConflict)
 
   if (!category) {
     throw errorResponse(404, 'Category not found or unauthorized')
@@ -126,4 +103,12 @@ export async function deleteCategoryForUser({ data, repository, userId }: Delete
 
 export function normalizeCategoryName(name: string) {
   return name.trim().replace(/\s+/g, ' ').toLowerCase()
+}
+
+function mapCategoryNameConflict(error: unknown): never {
+  if (error instanceof CategoryNameConflictError) {
+    throw errorResponse(409, error.message)
+  }
+
+  throw error
 }

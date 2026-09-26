@@ -1,6 +1,8 @@
 import { getTableConfig } from 'drizzle-orm/pg-core'
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
+import type { CategoryDisplay } from '@/lib/types/Category'
+import { TodoSchema } from '@/lib/types/Todo'
 import { todos } from '@/server/db/schema/schema'
 
 import {
@@ -11,329 +13,213 @@ import {
   updateCategoryForUser,
 } from './operations'
 import type { CategoryRepository } from './operations'
-import { CreateCategoryInput, DeleteCategoryInput, UpdateCategoryInput } from './schemas'
+import { CategoryResponse, CreateCategoryInput, UpdateCategoryInput } from './schemas'
 
-const existingCategory = {
-  colorKey: 'blue',
-  id: 4,
-  name: 'home admin',
-  userId: 'user-1',
-} as const
+type StoredCategory = CategoryDisplay & { userId: string }
 
-const createRepository = (overrides: Partial<CategoryRepository> = {}): CategoryRepository => ({
-  createCategory: vi.fn((categoryToCreate) => Promise.resolve({ id: 8, ...categoryToCreate })),
-  deleteCategory: vi.fn((categoryId, userId) => Promise.resolve({ categoryId, userId })),
-  findCategoryByName: vi.fn(() => Promise.resolve(undefined)),
-  hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(false)),
-  updateCategory: vi.fn((categoryId, userId, updates) =>
-    Promise.resolve({
-      ...existingCategory,
-      ...updates,
-      id: categoryId,
-      userId,
-    }),
-  ),
-  listCategoriesForUser: vi.fn(() => Promise.resolve([])),
-  ...overrides,
-})
+const USER_ID = 'user-1'
+const OTHER_USER_ID = 'user-2'
+const homeAdmin: StoredCategory = { colorKey: 'blue', id: 4, name: 'home admin', userId: USER_ID }
+const foreignWork: StoredCategory = { colorKey: 'teal', id: 9, name: 'work', userId: OTHER_USER_ID }
+const conflict = { code: 'CONFLICT', message: 'Category name already exists', status: 409 }
+const notFound = { code: 'RESOURCE_NOT_FOUND', status: 404 }
 
-describe('category server behavior', () => {
-  it('creates a user-owned Category with a normalized reusable name', async () => {
-    const repository = createRepository()
+/** Runs a fake repository write so that thrown errors reject, like the production repository's statements. */
+function settle<T>(write: () => T) {
+  return new Promise<T>((resolve) => resolve(write()))
+}
+
+/** Models the owner-scoped SQL predicates and the (user_id, name) unique index of the production repository. */
+function createCategoryStore(initialCategories: Array<StoredCategory> = [], { pendingMigration = false } = {}) {
+  const categories = initialCategories.map((category) => ({ ...category }))
+  let nextId = Math.max(0, ...categories.map((category) => category.id)) + 1
+
+  const assertUniqueName = (userId: string, name: string, exceptId?: number) => {
+    if (
+      categories.some((category) => category.userId === userId && category.name === name && category.id !== exceptId)
+    ) {
+      throw new CategoryNameConflictError()
+    }
+  }
+  const toDisplay = ({ colorKey, id, name }: StoredCategory): CategoryDisplay => ({ colorKey, id, name })
+
+  const repository: CategoryRepository = {
+    createCategory: (category) =>
+      settle(() => {
+        assertUniqueName(category.userId, category.name)
+        const created = { ...category, id: nextId++ }
+        categories.push(created)
+        return toDisplay(created)
+      }),
+    deleteCategory: (categoryId, userId) =>
+      settle(() => {
+        const index = categories.findIndex((category) => category.id === categoryId && category.userId === userId)
+        if (index === -1) {
+          return undefined
+        }
+        categories.splice(index, 1)
+        return { categoryId }
+      }),
+    hasPendingMigrationBuckets: () => Promise.resolve(pendingMigration),
+    listCategoriesForUser: (userId) =>
+      Promise.resolve(
+        categories
+          .filter((category) => category.userId === userId)
+          .toSorted((left, right) => left.name.localeCompare(right.name))
+          .map(toDisplay),
+      ),
+    updateCategory: (categoryId, userId, updates) =>
+      settle(() => {
+        const category = categories.find((stored) => stored.id === categoryId && stored.userId === userId)
+        if (!category) {
+          return undefined
+        }
+        assertUniqueName(userId, updates.name, categoryId)
+        Object.assign(category, updates)
+        return toDisplay(category)
+      }),
+  }
+
+  return { categories, repository }
+}
+
+describe('Category commands', () => {
+  it('creates a Category with a normalized name and returns only its display data', async () => {
+    const { repository } = createCategoryStore([foreignWork])
 
     const category = await createCategoryForUser({
-      data: CreateCategoryInput.parse({
-        colorKey: 'green',
-        name: '  Home   Admin  ',
-      }),
+      data: CreateCategoryInput.parse({ colorKey: 'green', name: '  Work   Life  ' }),
       repository,
-      userId: existingCategory.userId,
+      userId: USER_ID,
     })
 
-    expect(repository.createCategory).toHaveBeenCalledWith({
-      colorKey: 'green',
-      name: 'home admin',
-      userId: existingCategory.userId,
-    })
-    expect(category).toMatchObject({
-      colorKey: 'green',
-      name: 'home admin',
-      userId: existingCategory.userId,
-    })
+    expect(category).toEqual({ colorKey: 'green', id: 10, name: 'work life' })
   })
 
-  it('rejects Category management while a Pending Migration Bucket gates the board', async () => {
-    const repository = createRepository({
-      hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(true)),
-    })
+  it('allows a Category name that another User already uses', async () => {
+    const { repository } = createCategoryStore([foreignWork])
+
+    await expect(
+      createCategoryForUser({ data: { colorKey: 'rose', name: 'Work' }, repository, userId: USER_ID }),
+    ).resolves.toMatchObject({ name: 'work' })
+  })
+
+  it('rejects a duplicate Category name with the uniqueness conflict contract', async () => {
+    const { repository } = createCategoryStore([homeAdmin])
 
     await expect(
       createCategoryForUser({
-        data: { colorKey: 'green', name: 'home admin' },
+        data: CreateCategoryInput.parse({ colorKey: 'rose', name: 'HOME  Admin' }),
         repository,
-        userId: existingCategory.userId,
+        userId: USER_ID,
       }),
-    ).rejects.toHaveProperty('status', 409)
-    await expect(
-      updateCategoryForUser({
-        data: { colorKey: 'green', id: existingCategory.id, name: 'life admin' },
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-    await expect(
-      deleteCategoryForUser({
-        data: { id: existingCategory.id },
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.createCategory).not.toHaveBeenCalled()
-    expect(repository.updateCategory).not.toHaveBeenCalled()
-    expect(repository.deleteCategory).not.toHaveBeenCalled()
+    ).rejects.toMatchObject(conflict)
   })
 
-  it('rejects duplicate Category creation without selecting the existing Category', async () => {
-    const repository = createRepository({
-      findCategoryByName: vi.fn(() => Promise.resolve(existingCategory)),
-    })
-
-    await expect(
-      createCategoryForUser({
-        data: CreateCategoryInput.parse({
-          colorKey: 'rose',
-          name: 'HOME ADMIN',
-        }),
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.findCategoryByName).toHaveBeenCalledWith(existingCategory.userId, existingCategory.name)
-    expect(repository.createCategory).not.toHaveBeenCalled()
-  })
-
-  it('rejects a raced Category create conflict that reaches the repository insert', async () => {
-    const repository = createRepository({
-      createCategory: vi.fn(() => Promise.reject(new CategoryNameConflictError())),
-    })
-
-    await expect(
-      createCategoryForUser({
-        data: CreateCategoryInput.parse({
-          colorKey: 'rose',
-          name: 'HOME ADMIN',
-        }),
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.findCategoryByName).toHaveBeenCalledWith(existingCategory.userId, existingCategory.name)
-    expect(repository.createCategory).toHaveBeenCalledWith({
-      colorKey: 'rose',
-      name: existingCategory.name,
-      userId: existingCategory.userId,
-    })
-  })
-
-  it('rejects invalid Category create input at the validation boundary', () => {
-    expect(
-      CreateCategoryInput.safeParse({
-        colorKey: 'legacy-color',
-        name: 'Home admin',
-      }).success,
-    ).toBe(false)
-    expect(
-      CreateCategoryInput.safeParse({
-        colorKey: 'blue',
-        name: '',
-      }).success,
-    ).toBe(false)
-  })
-
-  it('rejects invalid Category update input at the validation boundary', () => {
-    expect(
-      UpdateCategoryInput.safeParse({
-        colorKey: 'legacy-color',
-        id: existingCategory.id,
-        name: 'Home admin',
-      }).success,
-    ).toBe(false)
-    expect(
-      UpdateCategoryInput.safeParse({
-        colorKey: 'blue',
-        id: existingCategory.id,
-        name: '   ',
-      }).success,
-    ).toBe(false)
-  })
-
-  it('lists Categories for the current user only', async () => {
-    const repository = createRepository({
-      listCategoriesForUser: vi.fn(() => Promise.resolve([existingCategory])),
-    })
-
-    const categories = await listCategoriesForUser({
-      repository,
-      userId: existingCategory.userId,
-    })
-
-    expect(repository.listCategoriesForUser).toHaveBeenCalledWith(existingCategory.userId)
-    expect(categories).toEqual([existingCategory])
-  })
-
-  it('updates an owned Category with a normalized reusable name and curated color', async () => {
-    const repository = createRepository()
+  it('updates an owned Category and returns only its display data', async () => {
+    const { repository } = createCategoryStore([homeAdmin])
 
     const category = await updateCategoryForUser({
-      data: UpdateCategoryInput.parse({
-        colorKey: 'green',
-        id: existingCategory.id,
-        name: '  Life   Admin  ',
-      }),
+      data: UpdateCategoryInput.parse({ colorKey: 'green', id: homeAdmin.id, name: '  Life   Admin ' }),
       repository,
-      userId: existingCategory.userId,
+      userId: USER_ID,
     })
 
-    expect(repository.updateCategory).toHaveBeenCalledWith(existingCategory.id, existingCategory.userId, {
-      colorKey: 'green',
-      name: 'life admin',
-    })
-    expect(category).toMatchObject({
-      colorKey: 'green',
-      id: existingCategory.id,
-      name: 'life admin',
-      userId: existingCategory.userId,
-    })
+    expect(category).toEqual({ colorKey: 'green', id: homeAdmin.id, name: 'life admin' })
   })
 
-  it("rejects updating another user's Category", async () => {
-    const repository = createRepository({
-      updateCategory: vi.fn(() => Promise.resolve(undefined)),
-    })
-
-    await expect(
-      updateCategoryForUser({
-        data: {
-          colorKey: 'green',
-          id: existingCategory.id,
-          name: 'life admin',
-        },
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.updateCategory).toHaveBeenCalledWith(existingCategory.id, existingCategory.userId, {
-      colorKey: 'green',
-      name: 'life admin',
-    })
-  })
-
-  it('maps a raced Category rename conflict to 409', async () => {
-    const repository = createRepository({
-      updateCategory: vi.fn(() => Promise.reject(new CategoryNameConflictError())),
-    })
-
-    await expect(
-      updateCategoryForUser({
-        data: UpdateCategoryInput.parse({
-          colorKey: 'green',
-          id: existingCategory.id,
-          name: 'Next Up',
-        }),
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-  })
-
-  it('rejects renaming a Category to another existing Category name for the same user', async () => {
-    const repository = createRepository({
-      findCategoryByName: vi.fn(() =>
-        Promise.resolve({
-          colorKey: 'rose',
-          id: 9,
-          name: 'life admin',
-          userId: existingCategory.userId,
-        } as const),
-      ),
-    })
-
-    await expect(
-      updateCategoryForUser({
-        data: {
-          colorKey: 'green',
-          id: existingCategory.id,
-          name: '  Life   Admin  ',
-        },
-        repository,
-        userId: existingCategory.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.findCategoryByName).toHaveBeenCalledWith(existingCategory.userId, 'life admin')
-    expect(repository.updateCategory).not.toHaveBeenCalled()
-  })
-
-  it('allows casing-only Category edits to keep the normalized lowercase name', async () => {
-    const repository = createRepository({
-      findCategoryByName: vi.fn(() => Promise.resolve(existingCategory)),
-    })
+  it.each([
+    ['casing-only', { colorKey: 'blue', name: 'HOME ADMIN' }],
+    ['color-only', { colorKey: 'violet', name: 'home admin' }],
+  ] as const)('keeps %s Category edits free of conflicts', async (_edit, changes) => {
+    const { repository } = createCategoryStore([homeAdmin])
 
     const category = await updateCategoryForUser({
-      data: {
-        colorKey: 'blue',
-        id: existingCategory.id,
-        name: 'HOME ADMIN',
-      },
+      data: { ...changes, id: homeAdmin.id },
       repository,
-      userId: existingCategory.userId,
+      userId: USER_ID,
     })
 
-    expect(repository.updateCategory).toHaveBeenCalledWith(existingCategory.id, existingCategory.userId, {
-      colorKey: 'blue',
-      name: 'home admin',
-    })
-    expect(category.name).toBe('home admin')
+    expect(category).toEqual({ colorKey: changes.colorKey, id: homeAdmin.id, name: 'home admin' })
   })
 
-  it('deletes an owned Category', async () => {
-    const repository = createRepository()
-
-    const deletedCategory = await deleteCategoryForUser({
-      data: DeleteCategoryInput.parse({
-        id: existingCategory.id,
-      }),
-      repository,
-      userId: existingCategory.userId,
-    })
-
-    expect(repository.deleteCategory).toHaveBeenCalledWith(existingCategory.id, existingCategory.userId)
-    expect(deletedCategory).toEqual({
-      categoryId: existingCategory.id,
-      userId: existingCategory.userId,
-    })
-  })
-
-  it("rejects deleting another user's Category", async () => {
-    const repository = createRepository({
-      deleteCategory: vi.fn(() => Promise.resolve(undefined)),
-    })
+  it('rejects renaming a Category to another owned Category name with the uniqueness conflict contract', async () => {
+    const { categories, repository } = createCategoryStore([
+      homeAdmin,
+      { colorKey: 'rose', id: 5, name: 'life admin', userId: USER_ID },
+    ])
 
     await expect(
-      deleteCategoryForUser({
-        data: {
-          id: existingCategory.id,
-        },
+      updateCategoryForUser({
+        data: { colorKey: 'green', id: homeAdmin.id, name: 'Life Admin' },
         repository,
-        userId: existingCategory.userId,
+        userId: USER_ID,
       }),
-    ).rejects.toHaveProperty('status', 404)
+    ).rejects.toMatchObject(conflict)
+    expect(categories.find((category) => category.id === homeAdmin.id)).toEqual(homeAdmin)
+  })
 
-    expect(repository.deleteCategory).toHaveBeenCalledWith(existingCategory.id, existingCategory.userId)
+  it.each([
+    ['missing', 99],
+    ['foreign', foreignWork.id],
+  ])('rejects updating a %s Category as not found', async (_case, id) => {
+    const { categories, repository } = createCategoryStore([homeAdmin, foreignWork])
+
+    await expect(
+      updateCategoryForUser({ data: { colorKey: 'green', id, name: 'renamed' }, repository, userId: USER_ID }),
+    ).rejects.toMatchObject(notFound)
+    expect(categories).toEqual([homeAdmin, foreignWork])
+  })
+
+  it('deletes an owned Category and returns only its ID', async () => {
+    const { categories, repository } = createCategoryStore([homeAdmin, foreignWork])
+
+    const deleted = await deleteCategoryForUser({ data: { id: homeAdmin.id }, repository, userId: USER_ID })
+
+    expect(deleted).toEqual({ categoryId: homeAdmin.id })
+    expect(categories).toEqual([foreignWork])
+  })
+
+  it.each([
+    ['missing', 99],
+    ['foreign', foreignWork.id],
+  ])('rejects deleting a %s Category as not found', async (_case, id) => {
+    const { categories, repository } = createCategoryStore([homeAdmin, foreignWork])
+
+    await expect(deleteCategoryForUser({ data: { id }, repository, userId: USER_ID })).rejects.toMatchObject(notFound)
+    expect(categories).toEqual([homeAdmin, foreignWork])
+  })
+
+  it("lists only the User's Categories as display data", async () => {
+    const { repository } = createCategoryStore([homeAdmin, foreignWork])
+
+    await expect(listCategoriesForUser({ repository, userId: USER_ID })).resolves.toEqual([
+      { colorKey: 'blue', id: homeAdmin.id, name: 'home admin' },
+    ])
+  })
+
+  it('rejects Category changes while a Pending Migration Bucket gates the board', async () => {
+    const { categories, repository } = createCategoryStore([homeAdmin], { pendingMigration: true })
+    const gated = { status: 409 }
+
+    await expect(
+      createCategoryForUser({ data: { colorKey: 'green', name: 'work' }, repository, userId: USER_ID }),
+    ).rejects.toMatchObject(gated)
+    await expect(
+      updateCategoryForUser({
+        data: { colorKey: 'green', id: homeAdmin.id, name: 'work' },
+        repository,
+        userId: USER_ID,
+      }),
+    ).rejects.toMatchObject(gated)
+    await expect(
+      deleteCategoryForUser({ data: { id: homeAdmin.id }, repository, userId: USER_ID }),
+    ).rejects.toMatchObject(gated)
+    expect(categories).toEqual([homeAdmin])
+  })
+
+  it('returns the same Category display shape that Todos embed', () => {
+    expect(CategoryResponse).toBe(TodoSchema.shape.category.unwrap())
   })
 
   it('clears Todo Category references when a Category is deleted', () => {
@@ -342,5 +228,11 @@ describe('category server behavior', () => {
     )
 
     expect(categoryForeignKey?.onDelete).toBe('set null')
+  })
+
+  it('rejects invalid Category input at the validation boundary', () => {
+    expect(CreateCategoryInput.safeParse({ colorKey: 'legacy-color', name: 'Home admin' }).success).toBe(false)
+    expect(CreateCategoryInput.safeParse({ colorKey: 'blue', name: '' }).success).toBe(false)
+    expect(UpdateCategoryInput.safeParse({ colorKey: 'blue', id: homeAdmin.id, name: '   ' }).success).toBe(false)
   })
 })
