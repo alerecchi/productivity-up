@@ -1,5 +1,5 @@
 import type { BetterAuthOptions } from 'better-auth/minimal'
-import { sql } from 'drizzle-orm'
+import { lte, sql } from 'drizzle-orm'
 
 import type { Database } from '@/server/db/client'
 import { authRateLimits } from '@/server/db/schema'
@@ -24,6 +24,9 @@ export const AUTH_RATE_LIMIT_RULES = {
   '/sign-in/email': { max: 10, window: 10 * 60 },
   '/sign-up/email': { max: 5, window: 60 * 60 },
 }
+const MAX_AUTH_RATE_LIMIT_WINDOW_MS = Math.max(
+  ...Object.values(AUTH_RATE_LIMIT_RULES).map(({ window }) => window * 1000),
+)
 
 /** Better Auth rate-limit storage that allows a request while its window count stays within the rule's max. */
 export function createAuthRateLimitStorage(
@@ -54,6 +57,9 @@ export function createAuthRateLimitStorage(
  */
 export function createNeonRateLimitCounter(db: Database): RateLimitCounter {
   return async (key, windowMs, now) => {
+    // Keep only counters that could still be inside one of the configured windows.
+    await db.delete(authRateLimits).where(lte(authRateLimits.windowStartedAt, now - MAX_AUTH_RATE_LIMIT_WINDOW_MS))
+
     const windowExpired = sql`${authRateLimits.windowStartedAt} <= ${now - windowMs}`
     const [row] = await db
       .insert(authRateLimits)

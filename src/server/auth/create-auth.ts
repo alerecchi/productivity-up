@@ -3,7 +3,6 @@ import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/a
 import { betterAuth } from 'better-auth/minimal'
 import type { BetterAuthOptions } from 'better-auth/minimal'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
-import { waitUntil } from 'cloudflare:workers'
 
 import { getRuntimeEnvironment } from '@/config/runtime-env'
 import { AUTH_USER_FIELDS, UserTimeZoneSchema } from '@/lib/auth-user-fields'
@@ -13,7 +12,8 @@ import type { AuthRateLimitStorage } from '@/server/auth/rate-limit'
 import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
-import { sendEmailConfirmation, sendResetPassword } from '@/server/email/sender'
+import { enqueueAuthEmail } from '@/server/email/queue'
+import type { AuthEmailMessage } from '@/server/email/queue'
 import { provisionInitialBoard } from '@/server/functions/board/lifecycle'
 
 export type AuthRuntimeConfiguration = {
@@ -28,6 +28,8 @@ export type AuthDependencies = {
   provisionInitialBoard: (user: { id: string; timeZone: string }) => Promise<void>
   /** Rate-limit state shared by every Worker isolate. */
   rateLimitStorage: AuthRateLimitStorage
+  /** Durably queues verification and password-reset email for delivery. */
+  enqueueAuthEmail: (message: AuthEmailMessage) => Promise<void>
 }
 
 export type Auth = ReturnType<typeof buildAuth>
@@ -51,6 +53,7 @@ export function createAuth(
           userId: id,
         })
       },
+      enqueueAuthEmail,
       rateLimitStorage: createAuthRateLimitStorage(createNeonRateLimitCounter(db)),
     },
     configuration,
@@ -95,8 +98,7 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: ({ user, url }) => {
-        deliverAfterResponse(sendResetPassword({ to: user.email, userName: user.name, url }))
-        return Promise.resolve()
+        return dependencies.enqueueAuthEmail({ to: user.email, type: 'password-reset', url, userName: user.name })
       },
     },
     session: {
@@ -120,8 +122,7 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
       sendVerificationEmail: ({ user, url }) => {
-        deliverAfterResponse(sendEmailConfirmation({ to: user.email, userName: user.name, url }))
-        return Promise.resolve()
+        return dependencies.enqueueAuthEmail({ to: user.email, type: 'verification', url, userName: user.name })
       },
     },
     hooks: {
@@ -152,16 +153,4 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       enabled: true,
     },
   })
-}
-
-/**
- * Keeps authentication email delivery running after the response, so its latency and failures cannot reveal
- * whether an account exists.
- */
-function deliverAfterResponse(delivery: Promise<void>) {
-  waitUntil(
-    delivery.catch(() => {
-      console.error('Authentication email delivery failed')
-    }),
-  )
 }

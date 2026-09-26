@@ -1,4 +1,5 @@
 import type { Auth } from '@/server/auth/create-auth'
+import { OperationError, mapOperationError } from '@/server/core/errors'
 
 // Routes whose work differs between existing and missing emails; each response is held to the same minimum duration.
 const ENUMERATION_SENSITIVE_PATHS = new Set([
@@ -13,21 +14,27 @@ const MINIMUM_ENUMERATION_SENSITIVE_RESPONSE_MS = 500
  * duration, and throttled requests receive standard retry guidance.
  */
 export async function handleAuthRequest(request: Request, auth: Auth) {
-  const minimumDuration = ENUMERATION_SENSITIVE_PATHS.has(new URL(request.url).pathname)
+  const pathname = new URL(request.url).pathname.replace(/\/+$/, '')
+  const minimumDuration = ENUMERATION_SENSITIVE_PATHS.has(pathname)
     ? delay(MINIMUM_ENUMERATION_SENSITIVE_RESPONSE_MS)
     : Promise.resolve()
   const [response] = await Promise.all([auth.handler(request), minimumDuration])
 
-  return response.status === 429 ? rateLimitedResponse(response) : response
+  if (response.status !== 429) {
+    return response
+  }
+
+  const retryAfter = Number(response.headers.get('X-Retry-After'))
+  const mapped = await mapOperationError(
+    new OperationError(429, 'RATE_LIMITED', 'Too many requests. Please try again later.', {
+      retryAfterSeconds: Number.isInteger(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
+    }),
+    crypto.randomUUID(),
+  )
+
+  return mapped.response
 }
 
 function delay(milliseconds: number) {
   return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
-}
-
-function rateLimitedResponse(response: Response) {
-  return Response.json(
-    { code: 'RATE_LIMITED', message: 'Too many requests. Please try again later.' },
-    { headers: { 'Retry-After': response.headers.get('X-Retry-After') ?? '60' }, status: 429 },
-  )
 }

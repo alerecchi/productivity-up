@@ -145,7 +145,23 @@
           "notNull": true
         }
       },
-      "indexes": {},
+      "indexes": {
+        "auth_rate_limits_window_started_at_idx": {
+          "name": "auth_rate_limits_window_started_at_idx",
+          "columns": [
+            {
+              "expression": "window_started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},

@@ -76,11 +76,15 @@ export const verifications = pgTable(
 )
 
 // Fixed-window request counters shared by every Worker isolate; see src/server/auth/rate-limit.ts.
-export const authRateLimits = pgTable('auth_rate_limits', {
-  key: text('key').primaryKey(),
-  count: integer('count').notNull(),
-  windowStartedAt: bigint('window_started_at', { mode: 'number' }).notNull(),
-})
+export const authRateLimits = pgTable(
+  'auth_rate_limits',
+  {
+    key: text('key').primaryKey(),
+    count: integer('count').notNull(),
+    windowStartedAt: bigint('window_started_at', { mode: 'number' }).notNull(),
+  },
+  (table) => [index('auth_rate_limits_window_started_at_idx').on(table.windowStartedAt)],
+)
 
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),
