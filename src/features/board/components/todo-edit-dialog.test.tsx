@@ -152,7 +152,10 @@ describe('Todo card edit dialog', () => {
 
   it('toggles completion from the checkbox without opening edit mode', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
-    mockedUpdateTodo.mockResolvedValue({ ...existingTodo, completed: true })
+    mockedUpdateTodo.mockResolvedValue({
+      previousBucketId: existingTodo.bucketId,
+      todo: { ...existingTodo, completed: true },
+    })
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
 
@@ -190,7 +193,7 @@ describe('Todo card edit dialog', () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedListCategories.mockResolvedValue([category])
     mockedListTags.mockResolvedValue([tag, focusTag])
-    mockedUpdateTodo.mockResolvedValue(updatedTodo)
+    mockedUpdateTodo.mockResolvedValue({ previousBucketId: existingTodo.bucketId, todo: updatedTodo })
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
 
@@ -247,7 +250,7 @@ describe('Todo card edit dialog', () => {
       title: 'Stale moved review',
     }
     mockedGetTodos.mockResolvedValue([existingTodo])
-    mockedUpdateTodo.mockResolvedValue(movedTodo)
+    mockedUpdateTodo.mockResolvedValue({ previousBucketId: existingTodo.bucketId, todo: movedTodo })
     const queryClient = createTestQueryClient()
     queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
     queryClient.setQueryData([TODOS_QUERY_KEY, buckets[0].id], [laterDestinationTodo, staleMovedTodo])
@@ -341,7 +344,7 @@ describe('Todo card edit dialog', () => {
   it('confirms before deleting a Todo, closes edit mode, and removes the card from the Bucket cache', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedDeleteTodo.mockResolvedValue({
-      bucketId: existingTodo.bucketId,
+      previousBucketId: existingTodo.bucketId,
       todoId: existingTodo.id,
     })
     const queryClient = createTestQueryClient()

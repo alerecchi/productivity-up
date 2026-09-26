@@ -1,1041 +1,653 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
-import { createTodoForUser, deleteTodoForUser, getTodosForUser, moveTodoForUser, updateTodoForUser } from './operations'
+import type { InMemoryTodoState } from '@/test/in-memory-todo-repository'
+import { createInMemoryTodoRepository } from '@/test/in-memory-todo-repository'
+
 import type { TodoRepository } from './operations'
+import {
+  STALE_TODO_POSITIONS_MESSAGE,
+  createTodoForUser,
+  deleteTodoForUser,
+  getTodosForUser,
+  moveTodoForUser,
+  updateTodoForUser,
+} from './operations'
 import { CreateTodoInput, MoveTodoInput, UpdateTodoInput } from './schemas'
 
-const ownedCategory = {
-  colorKey: 'blue',
-  id: 5,
-  name: 'home admin',
-  userId: 'user-1',
-} as const
+const USER = 'user-1'
+const OTHER_USER = 'user-2'
 
-const urgentTag = {
-  colorKey: 'rose',
-  id: 11,
-  name: 'urgent',
-  userId: 'user-1',
-} as const
+const DAILY = 1
+const MONTHLY = 2
+const ARCHIVED = 3
+const FOREIGN_BUCKET = 4
+const WEEKLY = 7
 
-const focusTag = {
-  colorKey: 'teal',
-  id: 12,
-  name: 'focus',
-  userId: 'user-1',
-} as const
+const HOME = { colorKey: 'blue', id: 5, name: 'home admin', userId: USER } as const
+const FOREIGN_CATEGORY = { colorKey: 'teal', id: 6, name: 'secret', userId: OTHER_USER } as const
+const URGENT = { colorKey: 'rose', id: 11, name: 'urgent', userId: USER } as const
+const FOCUS = { colorKey: 'teal', id: 12, name: 'focus', userId: USER } as const
+const FOREIGN_TAG = { colorKey: 'blue', id: 13, name: 'foreign', userId: OTHER_USER } as const
 
-const activeBucket = {
-  archivedAt: null,
-  createdAt: new Date('2026-06-10T08:00:00.000Z'),
-  id: 2,
-  period: '2026-06-11',
-  status: 'active',
-  type: 'daily',
-  userId: 'user-1',
-} as const
+const NOT_FOUND = { code: 'RESOURCE_NOT_FOUND', status: 404 }
+const CONFLICT = { code: 'CONFLICT', status: 409 }
 
-const otherActiveBucket = {
-  ...activeBucket,
-  id: 3,
-  period: '2026-06',
-  type: 'monthly',
-} as const
+const createdAt = new Date('2026-06-11T10:15:00.000Z')
 
-const archivedBucket = {
-  ...activeBucket,
-  archivedAt: new Date('2026-06-12T08:00:00.000Z'),
-  id: 4,
-  status: 'archived',
-} as const
-
-const existingTodo = {
-  bucket: activeBucket,
-  bucketId: activeBucket.id,
-  category: null,
-  categoryId: null,
-  completed: false,
-  createdAt: new Date('2026-06-10T08:00:00.000Z'),
-  description: '',
-  id: 10,
-  position: 1024,
-  tags: [],
-  title: 'Pay rent',
-  userId: activeBucket.userId,
+function todo(
+  id: number,
+  bucketId: number,
+  position: number,
+  overrides: Partial<InMemoryTodoState['todos'][number]> = {},
+) {
+  return {
+    bucketId,
+    categoryId: null,
+    completed: false,
+    createdAt,
+    description: '',
+    id,
+    position,
+    title: `Todo ${id}`,
+    userId: USER,
+    ...overrides,
+  }
 }
 
-const createRepository = (overrides: Partial<TodoRepository> = {}): TodoRepository => ({
-  createTodo: vi.fn((todoToCreate) => Promise.resolve({ id: 10, ...todoToCreate })),
-  deleteTodo: vi.fn(),
-  findOwnedActiveBucket: vi.fn(() => Promise.resolve(activeBucket)),
-  findOwnedCategory: vi.fn(() => Promise.resolve(ownedCategory)),
-  findOwnedTags: vi.fn((userId, tagIds) =>
-    Promise.resolve([urgentTag, focusTag].filter((tag) => tag.userId === userId && tagIds.includes(tag.id))),
-  ),
-  findOwnedTodoWithBucket: vi.fn(),
-  getMaxTodoPosition: vi.fn(() => Promise.resolve(null)),
-  getTodosByBucketForUser: vi.fn(() => Promise.resolve([])),
-  hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(false)),
-  moveTodo: vi.fn(),
-  replaceTodoTags: vi.fn(() => Promise.resolve()),
-  updateTodo: vi.fn(),
-  ...overrides,
-})
+const BUCKETS: InMemoryTodoState['buckets'] = [
+  { id: DAILY, status: 'active', userId: USER },
+  { id: MONTHLY, status: 'active', userId: USER },
+  { id: ARCHIVED, status: 'archived', userId: USER },
+  { id: FOREIGN_BUCKET, status: 'active', userId: OTHER_USER },
+  { id: WEEKLY, status: 'active', userId: USER },
+]
 
-describe('todo server behavior', () => {
-  it('creates todos in an active owned bucket with normalized description and server-owned fields', async () => {
-    const repository = createRepository()
-    const createdAt = new Date('2026-06-11T10:15:00.000Z')
+function setup(state: Partial<InMemoryTodoState> = {}) {
+  return createInMemoryTodoRepository({
+    buckets: BUCKETS,
+    categories: [HOME, FOREIGN_CATEGORY],
+    tags: [URGENT, FOCUS, FOREIGN_TAG],
+    ...state,
+  }).repository
+}
 
-    const createdTodo = await createTodoForUser({
+/** Runs a competing, already-committed command right after the named read, as a concurrent request would. */
+function afterRead<TMethod extends keyof TodoRepository>(
+  repository: TodoRepository,
+  method: TMethod,
+  concurrentCommand: () => Promise<unknown>,
+) {
+  const read = repository[method] as (...args: Array<unknown>) => Promise<unknown>
+  let hasRun = false
+
+  Object.assign(repository, {
+    [method]: async (...args: Array<unknown>) => {
+      const result = await read(...args)
+
+      if (!hasRun) {
+        hasRun = true
+        await concurrentCommand()
+      }
+
+      return result
+    },
+  })
+}
+
+describe('createTodoForUser', () => {
+  it('appends the Todo to the end of the Bucket and returns the canonical Todo with sorted display data', async () => {
+    const repository = setup({ todos: [todo(20, DAILY, 2048)] })
+
+    const created = await createTodoForUser({
       data: CreateTodoInput.parse({
-        bucketId: activeBucket.id,
+        bucketId: DAILY,
+        categoryId: HOME.id,
         description: '  Details to remember  ',
+        tagIds: [URGENT.id, FOCUS.id],
         title: '  Pay rent  ',
       }),
       now: () => createdAt,
       repository,
-      userId: activeBucket.userId,
+      userId: USER,
     })
 
-    expect(repository.findOwnedActiveBucket).toHaveBeenCalledWith(activeBucket.userId, activeBucket.id)
-    expect(repository.createTodo).toHaveBeenCalledWith({
-      bucketId: activeBucket.id,
-      categoryId: null,
+    expect(created).toEqual({
+      bucketId: DAILY,
+      category: { colorKey: 'blue', id: HOME.id, name: 'home admin' },
+      categoryId: HOME.id,
       completed: false,
       createdAt,
       description: 'Details to remember',
-      position: 1024,
-      title: 'Pay rent',
-      userId: activeBucket.userId,
-    })
-    expect(createdTodo).toMatchObject({
-      bucketId: activeBucket.id,
-      completed: false,
-      description: 'Details to remember',
-      tags: [],
-      title: 'Pay rent',
-      userId: activeBucket.userId,
-    })
-  })
-
-  it('rejects normal Todo mutations while a Pending Migration Bucket gates the board', async () => {
-    const repository = createRepository({
-      deleteTodo: vi.fn(() => Promise.resolve({ bucketId: activeBucket.id, todoId: existingTodo.id })),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      hasPendingMigrationBuckets: vi.fn(() => Promise.resolve(true)),
-      moveTodo: vi.fn(() => Promise.resolve({ status: 'moved' as const, todo: existingTodo })),
-      updateTodo: vi.fn(() => Promise.resolve(existingTodo)),
-    })
-
-    await expect(
-      createTodoForUser({
-        data: { bucketId: activeBucket.id, title: 'Pay rent' },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-    await expect(
-      updateTodoForUser({
-        data: { completed: true, id: existingTodo.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-    await expect(
-      moveTodoForUser({
-        data: { id: existingTodo.id, targetBucketId: activeBucket.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-    await expect(
-      deleteTodoForUser({
-        data: { id: existingTodo.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.createTodo).not.toHaveBeenCalled()
-    expect(repository.updateTodo).not.toHaveBeenCalled()
-    expect(repository.moveTodo).not.toHaveBeenCalled()
-    expect(repository.deleteTodo).not.toHaveBeenCalled()
-  })
-
-  it('stores a whitespace-only description as an empty string', async () => {
-    const repository = createRepository()
-
-    await createTodoForUser({
-      data: CreateTodoInput.parse({
-        bucketId: activeBucket.id,
-        description: '   ',
-        title: 'Pay rent',
-      }),
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.createTodo).toHaveBeenCalledWith(expect.objectContaining({ description: '' }))
-  })
-
-  it('creates new todos after the current bottom position in the selected Bucket', async () => {
-    const repository = createRepository({
-      getMaxTodoPosition: vi.fn(() => Promise.resolve(2048)),
-    })
-
-    await createTodoForUser({
-      data: CreateTodoInput.parse({
-        bucketId: activeBucket.id,
-        title: 'Pay rent',
-      }),
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.getMaxTodoPosition).toHaveBeenCalledWith(activeBucket.userId, activeBucket.id)
-    expect(repository.createTodo).toHaveBeenCalledWith(expect.objectContaining({ position: 3072 }))
-  })
-
-  it('creates todos with an owned Category selected', async () => {
-    const repository = createRepository()
-
-    await createTodoForUser({
-      data: CreateTodoInput.parse({
-        bucketId: activeBucket.id,
-        categoryId: ownedCategory.id,
-        title: 'Pay rent',
-      }),
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.findOwnedCategory).toHaveBeenCalledWith(activeBucket.userId, ownedCategory.id)
-    expect(repository.createTodo).toHaveBeenCalledWith(expect.objectContaining({ categoryId: ownedCategory.id }))
-  })
-
-  it('creates todos with an empty Tag set', async () => {
-    const repository = createRepository()
-
-    const createdTodo = await createTodoForUser({
-      data: CreateTodoInput.parse({
-        bucketId: activeBucket.id,
-        tagIds: [],
-        title: 'Pay rent',
-      }),
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.findOwnedTags).not.toHaveBeenCalled()
-    expect(repository.replaceTodoTags).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, [])
-    expect(createdTodo.tags).toEqual([])
-  })
-
-  it('creates todos with owned Tags selected', async () => {
-    const repository = createRepository()
-
-    const createdTodo = await createTodoForUser({
-      data: CreateTodoInput.parse({
-        bucketId: activeBucket.id,
-        tagIds: [focusTag.id, urgentTag.id],
-        title: 'Pay rent',
-      }),
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.findOwnedTags).toHaveBeenCalledWith(activeBucket.userId, [focusTag.id, urgentTag.id])
-    expect(repository.replaceTodoTags).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, [
-      focusTag.id,
-      urgentTag.id,
-    ])
-    expect(createdTodo.tags).toEqual([
-      {
-        colorKey: focusTag.colorKey,
-        id: focusTag.id,
-        name: focusTag.name,
-      },
-      {
-        colorKey: urgentTag.colorKey,
-        id: urgentTag.id,
-        name: urgentTag.name,
-      },
-    ])
-  })
-
-  it("rejects creating a Todo with another user's Tag", async () => {
-    const repository = createRepository({
-      findOwnedTags: vi.fn(() => Promise.resolve([urgentTag])),
-    })
-
-    await expect(
-      createTodoForUser({
-        data: {
-          bucketId: activeBucket.id,
-          tagIds: [urgentTag.id, focusTag.id],
-          title: 'Pay rent',
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedTags).toHaveBeenCalledWith(activeBucket.userId, [urgentTag.id, focusTag.id])
-    expect(repository.createTodo).not.toHaveBeenCalled()
-  })
-
-  it("rejects creating a Todo with another user's Category", async () => {
-    const repository = createRepository({
-      findOwnedCategory: vi.fn(() => Promise.resolve(undefined)),
-    })
-
-    await expect(
-      createTodoForUser({
-        data: {
-          bucketId: activeBucket.id,
-          categoryId: ownedCategory.id,
-          title: 'Pay rent',
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedCategory).toHaveBeenCalledWith(activeBucket.userId, ownedCategory.id)
-    expect(repository.createTodo).not.toHaveBeenCalled()
-  })
-
-  it("rejects updating a Todo to another user's Category", async () => {
-    const repository = createRepository({
-      findOwnedCategory: vi.fn(() => Promise.resolve(undefined)),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-    })
-
-    await expect(
-      updateTodoForUser({
-        data: {
-          categoryId: ownedCategory.id,
-          id: existingTodo.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedCategory).toHaveBeenCalledWith(activeBucket.userId, ownedCategory.id)
-    expect(repository.updateTodo).not.toHaveBeenCalled()
-  })
-
-  it("rejects updating a Todo to another user's Tag", async () => {
-    const repository = createRepository({
-      findOwnedTags: vi.fn(() => Promise.resolve([urgentTag])),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-    })
-
-    await expect(
-      updateTodoForUser({
-        data: {
-          id: existingTodo.id,
-          tagIds: [urgentTag.id, focusTag.id],
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedTags).toHaveBeenCalledWith(activeBucket.userId, [urgentTag.id, focusTag.id])
-    expect(repository.updateTodo).not.toHaveBeenCalled()
-    expect(repository.replaceTodoTags).not.toHaveBeenCalled()
-  })
-
-  it('rejects blank titles at the server function validation boundary', () => {
-    expect(
-      CreateTodoInput.safeParse({
-        bucketId: activeBucket.id,
-        title: '   ',
-      }).success,
-    ).toBe(false)
-  })
-
-  it('rejects create and read when the bucket is archived, missing, or owned by another user', async () => {
-    const repository = createRepository({
-      findOwnedActiveBucket: vi.fn(() => Promise.resolve(undefined)),
-    })
-
-    await expect(
-      createTodoForUser({
-        data: {
-          bucketId: activeBucket.id,
-          title: 'Pay rent',
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-    await expect(
-      getTodosForUser({
-        data: { bucketId: activeBucket.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.createTodo).not.toHaveBeenCalled()
-    expect(repository.getTodosByBucketForUser).not.toHaveBeenCalled()
-  })
-
-  it('reads todos only after verifying an active owned bucket', async () => {
-    const repository = createRepository({
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([existingTodo])),
-    })
-
-    const todos = await getTodosForUser({
-      data: { bucketId: activeBucket.id },
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.findOwnedActiveBucket).toHaveBeenCalledWith(activeBucket.userId, activeBucket.id)
-    expect(repository.getTodosByBucketForUser).toHaveBeenCalledWith(activeBucket.userId, activeBucket.id)
-    expect(todos).toEqual([existingTodo])
-  })
-
-  it('returns todos in the persisted Todo Position order provided by the repository', async () => {
-    const lowerTodo = {
-      ...existingTodo,
-      id: 11,
-      position: 1024,
-      title: 'First',
-    }
-    const higherTodo = {
-      ...existingTodo,
-      id: 12,
-      position: 2048,
-      title: 'Second',
-    }
-    const repository = createRepository({
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([lowerTodo, higherTodo])),
-    })
-
-    const todos = await getTodosForUser({
-      data: { bucketId: activeBucket.id },
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(todos).toEqual([lowerTodo, higherTodo])
-  })
-
-  it('does not expose creation time as editable update input', () => {
-    expect(
-      UpdateTodoInput.safeParse({
-        createdAt: new Date('2020-01-01T00:00:00.000Z'),
-        id: existingTodo.id,
-        title: 'Changed',
-      }).success,
-    ).toBe(false)
-  })
-
-  it('rejects blank titles at the update validation boundary', () => {
-    expect(
-      UpdateTodoInput.safeParse({
-        id: existingTodo.id,
-        title: '   ',
-      }).success,
-    ).toBe(false)
-  })
-
-  it('updates todos only when the todo belongs to the current user', async () => {
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(undefined)),
-    })
-
-    await expect(
-      updateTodoForUser({
-        data: {
-          completed: true,
-          id: existingTodo.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.updateTodo).not.toHaveBeenCalled()
-  })
-
-  it('replaces the full submitted Tag set when updating a Todo', async () => {
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() =>
-        Promise.resolve({
-          ...existingTodo,
-          tags: [urgentTag],
-        }),
-      ),
-      updateTodo: vi.fn((todoId, userId, updates) =>
-        Promise.resolve({
-          ...existingTodo,
-          ...updates,
-          id: todoId,
-          userId,
-        }),
-      ),
-    })
-
-    const updatedTodo = await updateTodoForUser({
-      data: {
-        id: existingTodo.id,
-        tagIds: [focusTag.id],
-      },
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.replaceTodoTags).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, [focusTag.id])
-    expect(updatedTodo.tags).toEqual([
-      {
-        colorKey: focusTag.colorKey,
-        id: focusTag.id,
-        name: focusTag.name,
-      },
-    ])
-  })
-
-  it('preserves the existing Tag display data when update omits Tag IDs', async () => {
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() =>
-        Promise.resolve({
-          ...existingTodo,
-          tags: [urgentTag],
-        }),
-      ),
-      updateTodo: vi.fn((todoId, userId, updates) =>
-        Promise.resolve({
-          ...existingTodo,
-          ...updates,
-          id: todoId,
-          userId,
-        }),
-      ),
-    })
-
-    const updatedTodo = await updateTodoForUser({
-      data: {
-        completed: true,
-        id: existingTodo.id,
-      },
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.findOwnedTags).not.toHaveBeenCalled()
-    expect(repository.replaceTodoTags).not.toHaveBeenCalled()
-    expect(updatedTodo.tags).toEqual([
-      {
-        colorKey: urgentTag.colorKey,
-        id: urgentTag.id,
-        name: urgentTag.name,
-      },
-    ])
-  })
-
-  it('moves a Todo to another active owned Bucket', async () => {
-    const repository = createRepository({
-      findOwnedActiveBucket: vi.fn((userId, bucketId) =>
-        Promise.resolve(
-          userId === activeBucket.userId && bucketId === otherActiveBucket.id ? otherActiveBucket : undefined,
-        ),
-      ),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getMaxTodoPosition: vi.fn(() => Promise.resolve(4096)),
-      updateTodo: vi.fn((todoId, userId, updates) =>
-        Promise.resolve({
-          ...existingTodo,
-          ...updates,
-          id: todoId,
-          userId,
-        }),
-      ),
-    })
-
-    const updatedTodo = await updateTodoForUser({
-      data: {
-        bucketId: otherActiveBucket.id,
-        id: existingTodo.id,
-      },
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.findOwnedActiveBucket).toHaveBeenCalledWith(activeBucket.userId, otherActiveBucket.id)
-    expect(repository.getMaxTodoPosition).toHaveBeenCalledWith(activeBucket.userId, otherActiveBucket.id)
-    expect(repository.updateTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, {
-      bucketId: otherActiveBucket.id,
-      position: 5120,
-    })
-    expect(updatedTodo).toMatchObject({
-      bucketId: otherActiveBucket.id,
-      id: existingTodo.id,
-      tags: [],
-      title: existingTodo.title,
-    })
-  })
-
-  it('moves a Todo between adjacent anchors in the same Bucket without accepting a client position', async () => {
-    const beforeTodo = {
-      ...existingTodo,
-      id: 11,
-      position: 2048,
-      title: 'Before anchor',
-    }
-    const afterTodo = {
-      ...existingTodo,
-      id: 12,
-      position: 4096,
-      title: 'After anchor',
-    }
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([existingTodo, beforeTodo, afterTodo])),
-      moveTodo: vi.fn((todoId, userId, move) =>
-        Promise.resolve({
-          status: 'moved' as const,
-          todo: {
-            ...existingTodo,
-            bucketId: move.bucketId,
-            id: todoId,
-            position: move.position,
-            userId,
-          },
-        }),
-      ),
-    })
-
-    const result = await moveTodoForUser({
-      data: MoveTodoInput.parse({
-        afterTodoId: afterTodo.id,
-        beforeTodoId: beforeTodo.id,
-        id: existingTodo.id,
-        targetBucketId: activeBucket.id,
-      }),
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.moveTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, {
-      bucketId: activeBucket.id,
-      expectedMovedTodoPosition: existingTodo.position,
-      expectedSourceBucketId: existingTodo.bucketId,
-      expectedTargetTodoPositions: [
-        { bucketId: activeBucket.id, id: beforeTodo.id, position: beforeTodo.position },
-        { bucketId: activeBucket.id, id: afterTodo.id, position: afterTodo.position },
-      ],
-      position: 3072,
-      rebalancedTodoPositions: [],
-    })
-    expect(result).toMatchObject({
-      affectedBucketIds: [activeBucket.id],
-      affectedTodoPositions: [{ bucketId: activeBucket.id, id: existingTodo.id, position: 3072 }],
-      todo: {
-        bucketId: activeBucket.id,
-        id: existingTodo.id,
-        position: 3072,
-      },
-    })
-  })
-
-  it('moves a Todo between adjacent anchors in another Bucket and returns both affected Buckets', async () => {
-    const beforeTodo = {
-      ...existingTodo,
-      bucket: otherActiveBucket,
-      bucketId: otherActiveBucket.id,
       id: 21,
-      position: 1024,
-      title: 'Target before anchor',
-    }
-    const afterTodo = {
-      ...beforeTodo,
-      id: 22,
-      position: 2048,
-      title: 'Target after anchor',
-    }
-    const repository = createRepository({
-      findOwnedActiveBucket: vi.fn((userId, bucketId) =>
-        Promise.resolve(
-          userId === activeBucket.userId && bucketId === otherActiveBucket.id ? otherActiveBucket : undefined,
-        ),
-      ),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([beforeTodo, afterTodo])),
-      moveTodo: vi.fn((todoId, userId, move) =>
-        Promise.resolve({
-          status: 'moved' as const,
-          todo: {
-            ...existingTodo,
-            bucketId: move.bucketId,
-            id: todoId,
-            position: move.position,
-            userId,
-          },
-        }),
-      ),
-    })
-
-    const result = await moveTodoForUser({
-      data: {
-        afterTodoId: afterTodo.id,
-        beforeTodoId: beforeTodo.id,
-        id: existingTodo.id,
-        targetBucketId: otherActiveBucket.id,
-      },
-      repository,
-      userId: activeBucket.userId,
-    })
-
-    expect(repository.moveTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, {
-      bucketId: otherActiveBucket.id,
-      expectedMovedTodoPosition: existingTodo.position,
-      expectedSourceBucketId: existingTodo.bucketId,
-      expectedTargetTodoPositions: [
-        { bucketId: otherActiveBucket.id, id: beforeTodo.id, position: beforeTodo.position },
-        { bucketId: otherActiveBucket.id, id: afterTodo.id, position: afterTodo.position },
-      ],
-      position: 1536,
-      rebalancedTodoPositions: [],
-    })
-    expect(result.affectedBucketIds).toEqual([activeBucket.id, otherActiveBucket.id])
-    expect(result.todo).toMatchObject({
-      bucketId: otherActiveBucket.id,
-      id: existingTodo.id,
-      position: 1536,
-    })
-  })
-
-  it('rejects a stale Todo anchor without moving the Todo', async () => {
-    const beforeTodo = {
-      ...existingTodo,
-      id: 31,
-      position: 1024,
-      title: 'Still present anchor',
-    }
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([beforeTodo])),
-    })
-
-    await expect(
-      moveTodoForUser({
-        data: {
-          afterTodoId: 999,
-          beforeTodoId: beforeTodo.id,
-          id: existingTodo.id,
-          targetBucketId: activeBucket.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.moveTodo).not.toHaveBeenCalled()
-  })
-
-  it('rejects Todo anchors that are valid but no longer adjacent', async () => {
-    const beforeTodo = {
-      ...existingTodo,
-      id: 41,
-      position: 1024,
-      title: 'Before anchor',
-    }
-    const interveningTodo = {
-      ...existingTodo,
-      id: 42,
-      position: 2048,
-      title: 'Intervening Todo',
-    }
-    const afterTodo = {
-      ...existingTodo,
-      id: 43,
       position: 3072,
-      title: 'After anchor',
-    }
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([beforeTodo, interveningTodo, afterTodo])),
+      tags: [
+        { colorKey: 'teal', id: FOCUS.id, name: 'focus' },
+        { colorKey: 'rose', id: URGENT.id, name: 'urgent' },
+      ],
+      title: 'Pay rent',
+    })
+    expect(await repository.listTodos(USER, DAILY)).toEqual([expect.objectContaining({ id: 20 }), created])
+  })
+
+  it.each([
+    ['a missing Bucket', { bucketId: 99 }],
+    ['a foreign Bucket', { bucketId: FOREIGN_BUCKET }],
+    ['an archived Bucket', { bucketId: ARCHIVED }],
+    ['a missing Category', { categoryId: 99 }],
+    ['a foreign Category', { categoryId: FOREIGN_CATEGORY.id }],
+    ['a missing Tag', { tagIds: [URGENT.id, 99] }],
+    ['a foreign Tag', { tagIds: [URGENT.id, FOREIGN_TAG.id] }],
+  ])('rejects %s with the indistinguishable not-found error and creates nothing', async (_, input) => {
+    const repository = setup()
+
+    await expect(
+      createTodoForUser({ data: { bucketId: DAILY, title: 'Pay rent', ...input }, repository, userId: USER }),
+    ).rejects.toMatchObject(NOT_FOUND)
+    expect(await repository.listTodos(USER, DAILY)).toEqual([])
+  })
+
+  it('requires Migration before creating while a Pending Migration Bucket gates the board', async () => {
+    const repository = setup({ buckets: [...BUCKETS, { id: 9, status: 'pending_migration', userId: USER }] })
+
+    await expect(
+      createTodoForUser({ data: { bucketId: DAILY, title: 'Pay rent' }, repository, userId: USER }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await repository.listTodos(USER, DAILY)).toEqual([])
+  })
+})
+
+describe('getTodosForUser', () => {
+  it("lists an owned active Bucket's canonical Todos in position order", async () => {
+    const repository = setup({ todos: [todo(21, DAILY, 2048), todo(20, DAILY, 1024), todo(22, MONTHLY, 1024)] })
+
+    const todos = await getTodosForUser({ data: { bucketId: DAILY }, repository, userId: USER })
+
+    expect(todos.map(({ id }) => id)).toEqual([20, 21])
+    expect(todos[0]).not.toHaveProperty('userId')
+  })
+
+  it.each([
+    ['missing', 99],
+    ['foreign', FOREIGN_BUCKET],
+    ['archived', ARCHIVED],
+  ])('rejects the %s Bucket with the indistinguishable not-found error', async (_, bucketId) => {
+    await expect(getTodosForUser({ data: { bucketId }, repository: setup(), userId: USER })).rejects.toMatchObject(
+      NOT_FOUND,
+    )
+  })
+})
+
+describe('updateTodoForUser', () => {
+  const taggedTodo = () =>
+    setup({
+      todoTags: [{ tagId: URGENT.id, todoId: 20 }],
+      todos: [todo(20, DAILY, 1024, { categoryId: HOME.id })],
+    })
+
+  it('toggles completion and returns the canonical Todo with its unchanged display data and previous Bucket', async () => {
+    const repository = taggedTodo()
+
+    const result = await updateTodoForUser({ data: { completed: true, id: 20 }, repository, userId: USER })
+
+    expect(result).toEqual({
+      previousBucketId: DAILY,
+      todo: {
+        ...todo(20, DAILY, 1024, { categoryId: HOME.id, completed: true, userId: undefined }),
+        category: { colorKey: 'blue', id: HOME.id, name: 'home admin' },
+        tags: [{ colorKey: 'rose', id: URGENT.id, name: 'urgent' }],
+      },
+    })
+    expect(result.todo).not.toHaveProperty('userId')
+    expect((await repository.listTodos(USER, DAILY))[0]).toEqual(result.todo)
+  })
+
+  it('edits fields and replaces the full Category and Tag set', async () => {
+    const repository = taggedTodo()
+
+    const { todo: updated } = await updateTodoForUser({
+      data: UpdateTodoInput.parse({
+        categoryId: null,
+        description: '  New details  ',
+        id: 20,
+        tagIds: [FOCUS.id],
+        title: '  Pay rent early  ',
+      }),
+      repository,
+      userId: USER,
+    })
+
+    expect(updated).toMatchObject({
+      category: null,
+      categoryId: null,
+      description: 'New details',
+      tags: [{ colorKey: 'teal', id: FOCUS.id, name: 'focus' }],
+      title: 'Pay rent early',
+    })
+    expect((await repository.listTodos(USER, DAILY))[0]).toEqual(updated)
+  })
+
+  it('moves the Todo to the end of another owned Bucket and reports the source as its previous Bucket', async () => {
+    const repository = setup({ todos: [todo(20, DAILY, 1024), todo(30, MONTHLY, 4096)] })
+
+    const result = await updateTodoForUser({ data: { bucketId: MONTHLY, id: 20 }, repository, userId: USER })
+
+    expect(result.previousBucketId).toBe(DAILY)
+    expect(result.todo).toMatchObject({ bucketId: MONTHLY, id: 20, position: 5120 })
+    expect(await repository.listTodos(USER, DAILY)).toEqual([])
+    expect((await repository.listTodos(USER, MONTHLY)).map(({ id }) => id)).toEqual([30, 20])
+  })
+
+  it.each([
+    ['a missing Todo', { id: 99 }],
+    ['a foreign Todo', { id: 40 }],
+    ['a missing Category', { categoryId: 99 }],
+    ['a foreign Category', { categoryId: FOREIGN_CATEGORY.id }],
+    ['a foreign Tag', { tagIds: [FOREIGN_TAG.id] }],
+    ['a foreign destination Bucket', { bucketId: FOREIGN_BUCKET }],
+    ['an archived destination Bucket', { bucketId: ARCHIVED }],
+  ])('rejects %s with the indistinguishable not-found error and changes nothing', async (_, input) => {
+    const repository = setup({
+      todos: [todo(20, DAILY, 1024), todo(40, FOREIGN_BUCKET, 1024, { userId: OTHER_USER })],
     })
 
     await expect(
-      moveTodoForUser({
-        data: {
-          afterTodoId: afterTodo.id,
-          beforeTodoId: beforeTodo.id,
-          id: existingTodo.id,
-          targetBucketId: activeBucket.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.moveTodo).not.toHaveBeenCalled()
+      updateTodoForUser({ data: { id: 20, title: 'Changed', ...input }, repository, userId: USER }),
+    ).rejects.toMatchObject(NOT_FOUND)
+    expect(await repository.findTodo(USER, 20)).toMatchObject({
+      bucketId: DAILY,
+      categoryId: null,
+      tags: [],
+      title: 'Todo 20',
+    })
+    expect(await repository.findTodo(OTHER_USER, 40)).toMatchObject({ title: 'Todo 40' })
   })
 
-  it('rejects moving a Todo to an archived or unauthorized target Bucket', async () => {
-    const repository = createRepository({
-      findOwnedActiveBucket: vi.fn(() => Promise.resolve(undefined)),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-    })
+  it.each([
+    [
+      'a Pending Migration Bucket gates the board',
+      DAILY,
+      [...BUCKETS, { id: 9, status: 'pending_migration', userId: USER }],
+    ],
+    ['the Todo sits in an archived Bucket', ARCHIVED, BUCKETS],
+  ] as const)('rejects the edit with a conflict while %s', async (_, bucketId, buckets) => {
+    const repository = setup({ buckets: [...buckets], todos: [todo(20, bucketId, 1024)] })
 
     await expect(
-      moveTodoForUser({
-        data: {
-          id: existingTodo.id,
-          targetBucketId: otherActiveBucket.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedActiveBucket).toHaveBeenCalledWith(activeBucket.userId, otherActiveBucket.id)
-    expect(repository.getTodosByBucketForUser).not.toHaveBeenCalled()
-    expect(repository.moveTodo).not.toHaveBeenCalled()
+      updateTodoForUser({ data: { id: 20, title: 'Changed' }, repository, userId: USER }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await repository.findTodo(USER, 20)).toMatchObject({ title: 'Todo 20' })
   })
 
-  it("rejects moving another user's Todo", async () => {
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(undefined)),
+  it('keeps ordinary field edits last-write-wins when a concurrent move relocates the Todo', async () => {
+    const repository = setup({ todos: [todo(20, DAILY, 1024)] })
+    afterRead(repository, 'findTodo', () =>
+      repository.updateTodo({
+        changes: {},
+        destination: { bucketId: MONTHLY, expectedBucketId: DAILY },
+        todoId: 20,
+        userId: USER,
+      }),
+    )
+
+    const result = await updateTodoForUser({ data: { id: 20, title: 'Changed' }, repository, userId: USER })
+
+    expect(result.previousBucketId).toBe(MONTHLY)
+    expect(result.todo).toMatchObject({ bucketId: MONTHLY, title: 'Changed' })
+    expect(await repository.findTodo(USER, 20)).toMatchObject({ bucketId: MONTHLY, title: 'Changed' })
+  })
+
+  it('returns current Tags after a concurrent replacement during an ordinary field edit', async () => {
+    const repository = taggedTodo()
+    afterRead(repository, 'findTodo', () =>
+      repository.updateTodo({ changes: {}, tagIds: [FOCUS.id], todoId: 20, userId: USER }),
+    )
+
+    const result = await updateTodoForUser({ data: { id: 20, title: 'Changed' }, repository, userId: USER })
+
+    expect(result.todo).toMatchObject({
+      tags: [{ colorKey: 'teal', id: FOCUS.id, name: 'focus' }],
+      title: 'Changed',
     })
+  })
+
+  it('rejects a Bucket change as stale when a concurrent move already relocated the Todo', async () => {
+    const repository = setup({ todos: [todo(20, DAILY, 1024)] })
+    afterRead(repository, 'findTodo', () =>
+      repository.updateTodo({
+        changes: {},
+        destination: { bucketId: MONTHLY, expectedBucketId: DAILY },
+        todoId: 20,
+        userId: USER,
+      }),
+    )
 
     await expect(
-      moveTodoForUser({
-        data: {
-          id: existingTodo.id,
-          targetBucketId: activeBucket.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedActiveBucket).not.toHaveBeenCalled()
-    expect(repository.moveTodo).not.toHaveBeenCalled()
+      updateTodoForUser({ data: { bucketId: WEEKLY, id: 20, title: 'Changed' }, repository, userId: USER }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await repository.findTodo(USER, 20)).toMatchObject({ bucketId: MONTHLY, title: 'Todo 20' })
   })
+})
 
-  it('does not expose Todo Position as editable move input', () => {
-    expect(
-      MoveTodoInput.safeParse({
-        id: existingTodo.id,
-        position: 2048,
-        targetBucketId: activeBucket.id,
-      }).success,
-    ).toBe(false)
-  })
+describe('moveTodoForUser', () => {
+  const positionsOf = async (repository: TodoRepository, bucketId: number) =>
+    (await repository.listPositions(USER, bucketId)).map(({ id, position }) => [id, position])
 
-  it('surfaces stale repository move results as an explicit conflict', async () => {
-    const beforeTodo = {
-      ...existingTodo,
-      id: 61,
-      position: 1024,
-      title: 'Before anchor',
-    }
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([beforeTodo])),
-      moveTodo: vi.fn(() => Promise.resolve({ status: 'conflict' as const })),
-    })
-
-    await expect(
-      moveTodoForUser({
-        data: {
-          beforeTodoId: beforeTodo.id,
-          id: existingTodo.id,
-          targetBucketId: activeBucket.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-  })
-
-  it('rebalances target Bucket positions when adjacent anchors leave no integer gap', async () => {
-    const beforeTodo = {
-      ...existingTodo,
-      id: 51,
-      position: 1024,
-      title: 'Before anchor',
-    }
-    const afterTodo = {
-      ...existingTodo,
-      id: 52,
-      position: 1025,
-      title: 'After anchor',
-    }
-    const repository = createRepository({
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
-      getTodosByBucketForUser: vi.fn(() => Promise.resolve([existingTodo, beforeTodo, afterTodo])),
-      moveTodo: vi.fn((todoId, userId, move) =>
-        Promise.resolve({
-          status: 'moved' as const,
-          todo: {
-            ...existingTodo,
-            bucketId: move.bucketId,
-            id: todoId,
-            position: move.position,
-            userId,
-          },
-        }),
-      ),
+  it('moves a Todo between adjacent anchors in its Bucket and returns the committed change', async () => {
+    const repository = setup({
+      todoTags: [{ tagId: URGENT.id, todoId: 10 }],
+      todos: [todo(10, DAILY, 1024), todo(11, DAILY, 2048), todo(12, DAILY, 4096)],
     })
 
     const result = await moveTodoForUser({
-      data: {
-        afterTodoId: afterTodo.id,
-        beforeTodoId: beforeTodo.id,
-        id: existingTodo.id,
-        targetBucketId: activeBucket.id,
-      },
+      data: MoveTodoInput.parse({ afterTodoId: 12, beforeTodoId: 11, id: 10, targetBucketId: DAILY }),
       repository,
-      userId: activeBucket.userId,
+      userId: USER,
     })
 
-    expect(repository.moveTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId, {
-      bucketId: activeBucket.id,
-      expectedMovedTodoPosition: existingTodo.position,
-      expectedSourceBucketId: existingTodo.bucketId,
-      expectedTargetTodoPositions: [
-        { bucketId: activeBucket.id, id: beforeTodo.id, position: beforeTodo.position },
-        { bucketId: activeBucket.id, id: afterTodo.id, position: afterTodo.position },
-      ],
-      position: 2048,
-      rebalancedTodoPositions: [{ bucketId: activeBucket.id, id: afterTodo.id, position: 3072 }],
+    expect(result).toEqual({
+      affectedBucketIds: [DAILY],
+      positions: [{ bucketId: DAILY, id: 10, position: 3072 }],
+      sourceBucketId: DAILY,
+      todo: {
+        ...todo(10, DAILY, 3072, { userId: undefined }),
+        category: null,
+        tags: [{ colorKey: 'rose', id: URGENT.id, name: 'urgent' }],
+      },
     })
-    expect(result.affectedTodoPositions).toEqual([
-      { bucketId: activeBucket.id, id: afterTodo.id, position: 3072 },
-      { bucketId: activeBucket.id, id: existingTodo.id, position: 2048 },
+    expect(await positionsOf(repository, DAILY)).toEqual([
+      [11, 2048],
+      [10, 3072],
+      [12, 4096],
     ])
   })
 
-  it('rejects moving a Todo to an archived Bucket', async () => {
-    const repository = createRepository({
-      findOwnedActiveBucket: vi.fn((userId, bucketId) =>
-        Promise.resolve(userId === activeBucket.userId && bucketId === otherActiveBucket.id ? undefined : activeBucket),
-      ),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
+  it('moves a Todo into another Bucket and reports both Buckets as affected', async () => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), todo(21, MONTHLY, 1024), todo(22, MONTHLY, 2048)] })
+
+    const result = await moveTodoForUser({
+      data: { afterTodoId: 22, beforeTodoId: 21, id: 10, targetBucketId: MONTHLY },
+      repository,
+      userId: USER,
     })
 
-    await expect(
-      updateTodoForUser({
-        data: {
-          bucketId: otherActiveBucket.id,
-          id: existingTodo.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedActiveBucket).toHaveBeenCalledWith(activeBucket.userId, otherActiveBucket.id)
-    expect(repository.updateTodo).not.toHaveBeenCalled()
+    expect(result).toMatchObject({
+      affectedBucketIds: [DAILY, MONTHLY],
+      positions: [{ bucketId: MONTHLY, id: 10, position: 1536 }],
+      sourceBucketId: DAILY,
+      todo: { bucketId: MONTHLY, id: 10, position: 1536 },
+    })
+    expect(await positionsOf(repository, DAILY)).toEqual([])
+    expect(await positionsOf(repository, MONTHLY)).toEqual([
+      [21, 1024],
+      [10, 1536],
+      [22, 2048],
+    ])
   })
 
-  it("rejects moving a Todo to another user's Bucket", async () => {
-    const repository = createRepository({
-      findOwnedActiveBucket: vi.fn(() => Promise.resolve(undefined)),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
+  it.each([
+    ['an empty Bucket', [], {}, 1024],
+    ['after the last Todo', [todo(21, MONTHLY, 3000)], { beforeTodoId: 21 }, 4024],
+    ['without anchors at the end', [todo(21, MONTHLY, 3000)], {}, 4024],
+    ['before the first Todo', [todo(21, MONTHLY, 3000)], { afterTodoId: 21 }, 1500],
+  ])('places a Todo moved into %s at a sparse position', async (_, targetTodos, anchors, position) => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), ...targetTodos] })
+
+    const result = await moveTodoForUser({
+      data: { id: 10, targetBucketId: MONTHLY, ...anchors },
+      repository,
+      userId: USER,
     })
 
-    await expect(
-      updateTodoForUser({
-        data: {
-          bucketId: otherActiveBucket.id,
-          id: existingTodo.id,
-        },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedActiveBucket).toHaveBeenCalledWith(activeBucket.userId, otherActiveBucket.id)
-    expect(repository.updateTodo).not.toHaveBeenCalled()
+    expect(result.positions).toEqual([{ bucketId: MONTHLY, id: 10, position }])
   })
 
-  it('deletes an owned Todo and returns its cache removal data', async () => {
-    const deletedTodo = {
-      bucketId: existingTodo.bucketId,
-      todoId: existingTodo.id,
-    }
-    const repository = createRepository({
-      deleteTodo: vi.fn(() => Promise.resolve(deletedTodo)),
-      findOwnedTodoWithBucket: vi.fn(() => Promise.resolve(existingTodo)),
+  it('rebalances the target Bucket when the anchors leave no integer gap and returns every changed position', async () => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), todo(11, DAILY, 1025), todo(12, DAILY, 1026)] })
+
+    const result = await moveTodoForUser({
+      data: { afterTodoId: 12, beforeTodoId: 11, id: 10, targetBucketId: DAILY },
+      repository,
+      userId: USER,
     })
 
-    await expect(
-      deleteTodoForUser({
-        data: { id: existingTodo.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).resolves.toEqual(deletedTodo)
-
-    expect(repository.findOwnedTodoWithBucket).toHaveBeenCalledWith(activeBucket.userId, existingTodo.id)
-    expect(repository.deleteTodo).toHaveBeenCalledWith(existingTodo.id, activeBucket.userId)
+    expect(result.positions).toEqual([
+      { bucketId: DAILY, id: 11, position: 1024 },
+      { bucketId: DAILY, id: 12, position: 3072 },
+      { bucketId: DAILY, id: 10, position: 2048 },
+    ])
+    expect(await positionsOf(repository, DAILY)).toEqual([
+      [11, 1024],
+      [10, 2048],
+      [12, 3072],
+    ])
   })
 
-  it('rejects deleting a Todo from an archived Bucket', async () => {
-    const repository = createRepository({
-      deleteTodo: vi.fn(() => Promise.resolve({ bucketId: archivedBucket.id, todoId: existingTodo.id })),
-      findOwnedTodoWithBucket: vi.fn(() =>
-        Promise.resolve({
-          ...existingTodo,
-          bucket: archivedBucket,
-          bucketId: archivedBucket.id,
-        }),
-      ),
+  it('orders tied positions from concurrent creates by Todo ID and rebalances them when moving between', async () => {
+    const repository = setup({ todos: [todo(10, MONTHLY, 1024), todo(12, DAILY, 2048), todo(11, DAILY, 2048)] })
+
+    expect(
+      (await getTodosForUser({ data: { bucketId: DAILY }, repository, userId: USER })).map(({ id }) => id),
+    ).toEqual([11, 12])
+
+    await moveTodoForUser({
+      data: { afterTodoId: 12, beforeTodoId: 11, id: 10, targetBucketId: DAILY },
+      repository,
+      userId: USER,
     })
 
-    await expect(
-      deleteTodoForUser({
-        data: { id: existingTodo.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 409)
-
-    expect(repository.deleteTodo).not.toHaveBeenCalled()
+    expect(await positionsOf(repository, DAILY)).toEqual([
+      [11, 1024],
+      [10, 2048],
+      [12, 3072],
+    ])
   })
 
-  it('rejects deleting a nonexistent Todo', async () => {
-    const repository = createRepository({
-      deleteTodo: vi.fn(() => Promise.resolve(undefined)),
+  it.each([
+    ['a missing anchor', { afterTodoId: 99, beforeTodoId: 11 }],
+    ["another User's anchor", { afterTodoId: 40, beforeTodoId: 11 }],
+    ['anchors that are no longer adjacent', { afterTodoId: 13, beforeTodoId: 11 }],
+    ['a before anchor that is no longer last', { beforeTodoId: 11 }],
+    ['an after anchor that is no longer first', { afterTodoId: 12 }],
+  ])('rejects %s as stale positions without moving anything', async (_, anchors) => {
+    const repository = setup({
+      todos: [
+        todo(10, MONTHLY, 1024),
+        todo(11, DAILY, 1024),
+        todo(12, DAILY, 2048),
+        todo(13, DAILY, 3072),
+        todo(40, FOREIGN_BUCKET, 1024, { userId: OTHER_USER }),
+      ],
     })
 
     await expect(
-      deleteTodoForUser({
-        data: { id: existingTodo.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
-
-    expect(repository.findOwnedTodoWithBucket).toHaveBeenCalledWith(activeBucket.userId, existingTodo.id)
-    expect(repository.deleteTodo).not.toHaveBeenCalled()
+      moveTodoForUser({ data: { id: 10, targetBucketId: DAILY, ...anchors }, repository, userId: USER }),
+    ).rejects.toMatchObject({ ...CONFLICT, message: STALE_TODO_POSITIONS_MESSAGE })
+    expect(await positionsOf(repository, MONTHLY)).toEqual([[10, 1024]])
   })
 
-  it('deletes todos only when the todo belongs to the current user', async () => {
-    const repository = createRepository({
-      deleteTodo: vi.fn(() => Promise.resolve(undefined)),
+  const moveElsewhere = (repository: TodoRepository, todoId: number, position: number, targetBucketId = MONTHLY) =>
+    repository.listPositions(USER, DAILY).then(async (positions) => {
+      const current = positions.find(({ id }) => id === todoId)!
+      const expectedTargetTodos = (await repository.listPositions(USER, targetBucketId)).filter(
+        ({ id }) => id !== todoId,
+      )
+      return repository.moveTodo({
+        expectedTargetTodos,
+        kind: 'insert',
+        position,
+        source: { bucketId: DAILY, position: current.position },
+        targetBucketId,
+        todoId,
+        userId: USER,
+      })
     })
 
-    await expect(
-      deleteTodoForUser({
-        data: { id: existingTodo.id },
-        repository,
-        userId: activeBucket.userId,
-      }),
-    ).rejects.toHaveProperty('status', 404)
+  it.each([
+    [
+      'an anchor left the Bucket',
+      (repository: TodoRepository) => moveElsewhere(repository, 12, 1024),
+      [
+        [10, 1024],
+        [11, 2048],
+      ],
+    ],
+    [
+      'the moved Todo was repositioned',
+      (repository: TodoRepository) => moveElsewhere(repository, 10, 5000, DAILY),
+      [
+        [11, 2048],
+        [12, 4096],
+        [10, 5000],
+      ],
+    ],
+    [
+      'the moved Todo was deleted',
+      (repository: TodoRepository) => repository.deleteTodo(USER, 10),
+      [
+        [11, 2048],
+        [12, 4096],
+      ],
+    ],
+  ])('rejects the move as stale when %s after it was planned', async (_, concurrentCommand, expectedPositions) => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), todo(11, DAILY, 2048), todo(12, DAILY, 4096)] })
+    afterRead(repository, 'listPositions', () => concurrentCommand(repository))
 
-    expect(repository.findOwnedTodoWithBucket).toHaveBeenCalledWith(activeBucket.userId, existingTodo.id)
-    expect(repository.deleteTodo).not.toHaveBeenCalled()
+    await expect(
+      moveTodoForUser({
+        data: { afterTodoId: 12, beforeTodoId: 11, id: 10, targetBucketId: DAILY },
+        repository,
+        userId: USER,
+      }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await positionsOf(repository, DAILY)).toEqual(expectedPositions)
+  })
+
+  it('commits no partial rebalance when the target Bucket changed after the move was planned', async () => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), todo(11, DAILY, 1025), todo(12, DAILY, 1026)] })
+    afterRead(repository, 'listPositions', () => moveElsewhere(repository, 12, 1024))
+
+    await expect(
+      moveTodoForUser({
+        data: { afterTodoId: 12, beforeTodoId: 11, id: 10, targetBucketId: DAILY },
+        repository,
+        userId: USER,
+      }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await positionsOf(repository, DAILY)).toEqual([
+      [10, 1024],
+      [11, 1025],
+    ])
+  })
+
+  it('rejects a sparse move when a Todo is appended after its target order was read', async () => {
+    const repository = setup({ todos: [todo(10, MONTHLY, 1024), todo(11, DAILY, 1024)] })
+    afterRead(repository, 'listPositions', () =>
+      repository.createTodo({
+        bucketId: DAILY,
+        categoryId: null,
+        createdAt,
+        description: '',
+        tagIds: [],
+        title: 'Concurrent append',
+        userId: USER,
+      }),
+    )
+
+    await expect(
+      moveTodoForUser({ data: { beforeTodoId: 11, id: 10, targetBucketId: DAILY }, repository, userId: USER }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await positionsOf(repository, MONTHLY)).toEqual([[10, 1024]])
+  })
+
+  it('converges a retried move on the already committed placement', async () => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), todo(11, DAILY, 2048), todo(12, DAILY, 4096)] })
+    const retry = () =>
+      moveTodoForUser({
+        data: { afterTodoId: 12, beforeTodoId: 11, id: 10, targetBucketId: DAILY },
+        repository,
+        userId: USER,
+      })
+
+    const first = await retry()
+
+    await expect(retry()).resolves.toEqual(first)
+    expect(await positionsOf(repository, DAILY)).toEqual([
+      [11, 2048],
+      [10, 3072],
+      [12, 4096],
+    ])
+  })
+
+  it.each([
+    ['a missing Todo', { id: 99 }],
+    ['a foreign Todo', { id: 40 }],
+    ['a foreign target Bucket', { targetBucketId: FOREIGN_BUCKET }],
+    ['an archived target Bucket', { targetBucketId: ARCHIVED }],
+  ])('rejects %s with the indistinguishable not-found error', async (_, input) => {
+    const repository = setup({ todos: [todo(10, DAILY, 1024), todo(40, FOREIGN_BUCKET, 1024, { userId: OTHER_USER })] })
+
+    await expect(
+      moveTodoForUser({ data: { id: 10, targetBucketId: MONTHLY, ...input }, repository, userId: USER }),
+    ).rejects.toMatchObject(NOT_FOUND)
+    expect(await positionsOf(repository, DAILY)).toEqual([[10, 1024]])
+  })
+
+  it.each([
+    [
+      'a Pending Migration Bucket gates the board',
+      DAILY,
+      [...BUCKETS, { id: 9, status: 'pending_migration', userId: USER }],
+    ],
+    ['the Todo sits in an archived Bucket', ARCHIVED, BUCKETS],
+  ] as const)('rejects the move with a conflict while %s', async (_, bucketId, buckets) => {
+    const repository = setup({ buckets: [...buckets], todos: [todo(10, bucketId, 1024)] })
+
+    await expect(
+      moveTodoForUser({ data: { id: 10, targetBucketId: MONTHLY }, repository, userId: USER }),
+    ).rejects.toMatchObject(CONFLICT)
+    expect(await positionsOf(repository, MONTHLY)).toEqual([])
+  })
+})
+
+describe('deleteTodoForUser', () => {
+  it('deletes an owned Todo and returns its ID and previous Bucket', async () => {
+    const repository = setup({ todoTags: [{ tagId: URGENT.id, todoId: 20 }], todos: [todo(20, DAILY, 1024)] })
+
+    await expect(deleteTodoForUser({ data: { id: 20 }, repository, userId: USER })).resolves.toEqual({
+      previousBucketId: DAILY,
+      todoId: 20,
+    })
+    expect(await repository.findTodo(USER, 20)).toBeUndefined()
+  })
+
+  it.each([
+    ['a missing Todo', 99, NOT_FOUND],
+    ['a foreign Todo', 40, NOT_FOUND],
+    ['a Todo in an archived Bucket', 30, CONFLICT],
+  ])('rejects deleting %s and keeps it', async (_, id, error) => {
+    const repository = setup({
+      todos: [todo(30, ARCHIVED, 1024), todo(40, FOREIGN_BUCKET, 1024, { userId: OTHER_USER })],
+    })
+
+    await expect(deleteTodoForUser({ data: { id }, repository, userId: USER })).rejects.toMatchObject(error)
+    expect(await repository.findTodo(OTHER_USER, 40)).toBeDefined()
+    expect(await repository.findTodo(USER, 30)).toBeDefined()
+  })
+
+  it('requires Migration before deleting while a Pending Migration Bucket gates the board', async () => {
+    const repository = setup({
+      buckets: [...BUCKETS, { id: 9, status: 'pending_migration', userId: USER }],
+      todos: [todo(20, DAILY, 1024)],
+    })
+
+    await expect(deleteTodoForUser({ data: { id: 20 }, repository, userId: USER })).rejects.toMatchObject(CONFLICT)
+    expect(await repository.findTodo(USER, 20)).toBeDefined()
+  })
+
+  it('treats a Todo deleted concurrently after it was read as not found', async () => {
+    const repository = setup({ todos: [todo(20, DAILY, 1024)] })
+    afterRead(repository, 'findTodo', () => repository.deleteTodo(USER, 20))
+
+    await expect(deleteTodoForUser({ data: { id: 20 }, repository, userId: USER })).rejects.toMatchObject(NOT_FOUND)
   })
 })

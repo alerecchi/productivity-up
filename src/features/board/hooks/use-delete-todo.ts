@@ -10,7 +10,7 @@ export default function useDeleteTodo() {
   return useMutation({
     mutationFn: deleteTodo,
     onSuccess: (deletedTodo) => {
-      queryClient.setQueryData<Array<Todo>>([TODOS_QUERY_KEY, deletedTodo.bucketId], (old = []) =>
+      queryClient.setQueryData<Array<Todo>>([TODOS_QUERY_KEY, deletedTodo.previousBucketId], (old = []) =>
         old.filter((todo) => todo.id !== deletedTodo.todoId),
       )
     },

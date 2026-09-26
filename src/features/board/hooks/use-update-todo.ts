@@ -5,19 +5,14 @@ import { TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Todo } from '@/lib/types/Todo'
 import { updateTodo } from '@/server/functions/todos'
 
-type UpdateTodoVariables = {
-  data: Parameters<typeof updateTodo>[0]['data']
-  oldBucketId?: number
-}
-
 export function useUpdateTodo() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (variables: UpdateTodoVariables) => updateTodo({ data: variables.data }),
-    onSuccess: (updatedTodo: Todo, variables) => {
-      if (variables.oldBucketId !== undefined && variables.oldBucketId !== updatedTodo.bucketId) {
-        moveTodo(queryClient, variables.oldBucketId, updatedTodo)
+    mutationFn: updateTodo,
+    onSuccess: ({ previousBucketId, todo: updatedTodo }) => {
+      if (previousBucketId !== updatedTodo.bucketId) {
+        moveTodo(queryClient, previousBucketId, updatedTodo)
         return
       }
 
@@ -30,10 +25,8 @@ export function useToggleTodo() {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: updateTodo,
-    onSuccess: (updatedTodo: Todo) => {
-      queryClient.setQueryData<Array<Todo>>([TODOS_QUERY_KEY, updatedTodo.bucketId], (cache = []) =>
-        cache.map((todo) => (todo.id === updatedTodo.id ? updatedTodo : todo)),
-      )
+    onSuccess: ({ todo: updatedTodo }) => {
+      replaceTodo(queryClient, updatedTodo.bucketId, updatedTodo)
     },
   })
 }

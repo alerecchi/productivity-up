@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
+import { isStaleMoveConflict } from '@/features/board/hooks/move-todo-errors'
 import { TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Todo } from '@/lib/types/Todo'
 import { moveTodo } from '@/server/functions/todos'
@@ -87,7 +88,7 @@ export function useMoveTodo() {
     onSuccess: (result) => {
       for (const bucketId of result.affectedBucketIds) {
         queryClient.setQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucketId], (cache = []) =>
-          patchMovedTodoCache(bucketId, cache, result.todo, result.affectedTodoPositions),
+          patchMovedTodoCache(bucketId, cache, result.todo, result.positions),
         )
       }
     },
@@ -174,25 +175,3 @@ function compareTodoPosition(left: Todo, right: Todo) {
 function getAffectedBucketIds(targetBucketId: number, sourceBucketId: number | undefined) {
   return [...new Set([sourceBucketId, targetBucketId].filter((bucketId): bucketId is number => bucketId !== undefined))]
 }
-
-async function isStaleMoveConflict(error: unknown) {
-  if (!(error instanceof Response) || error.status !== 409) {
-    return false
-  }
-
-  try {
-    const body = (await error.clone().json()) as { message?: unknown }
-    return typeof body.message === 'string' && STALE_MOVE_CONFLICT_MESSAGES.has(body.message)
-  } catch {
-    return false
-  }
-}
-
-const STALE_MOVE_CONFLICT_MESSAGES = new Set([
-  'After Todo anchor is not the first Todo in the target Bucket',
-  'After Todo anchor is stale, invalid, or unauthorized',
-  'Before Todo anchor is not the last Todo in the target Bucket',
-  'Before Todo anchor is stale, invalid, or unauthorized',
-  'Todo anchors are not adjacent in the target Bucket',
-  'Todo move conflict; refresh and retry',
-])
