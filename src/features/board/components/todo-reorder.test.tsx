@@ -124,6 +124,10 @@ beforeEach(() => {
   mockedGetTodos.mockResolvedValue([])
 })
 
+function countTodoFetches(bucketId: number) {
+  return mockedGetTodos.mock.calls.filter(([input]) => input.data.bucketId === bucketId).length
+}
+
 describe('Todo reordering within a Bucket', () => {
   beforeEach(() => {
     dnd.activeDropTargetId = null
@@ -150,7 +154,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: todos[0].id,
@@ -185,7 +189,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[0].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[0] } },
           target: {
             data: {
               afterTodoId: todos[2].id,
@@ -229,7 +233,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[0].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[0] } },
           target: {
             data: {
               afterTodoId: undefined,
@@ -267,7 +271,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: todos[1].id,
@@ -299,7 +303,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: todos[2].id,
@@ -337,7 +341,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: todos[0].id,
@@ -377,7 +381,7 @@ describe('Todo reordering within a Bucket', () => {
     dnd.dragEnd?.({
       canceled: false,
       operation: {
-        source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+        source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
         target: {
           data: {
             afterTodoId: todos[0].id,
@@ -422,7 +426,7 @@ describe('Todo reordering within a Bucket', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: undefined,
@@ -584,7 +588,7 @@ describe('Todo movement across Buckets', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: destinationTodos[1].id,
@@ -611,7 +615,7 @@ describe('Todo movement across Buckets', () => {
   })
 
   it('removes the moved Todo from the source cache and inserts it into the destination cache after success', async () => {
-    const movedTodo = { ...todos[1], bucketId: destinationBucket.id, position: 1536, userId: 'user-1' }
+    const movedTodo = { ...todos[1], bucketId: destinationBucket.id, position: 1536 }
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id, destinationBucket.id],
       sourceBucketId: bucket.id,
@@ -638,7 +642,7 @@ describe('Todo movement across Buckets', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: destinationTodos[1].id,
@@ -681,7 +685,7 @@ describe('Todo movement across Buckets', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: destinationTodos[1].id,
@@ -710,7 +714,6 @@ describe('Todo movement across Buckets', () => {
     mockedMoveTodo.mockRejectedValue(new Error('Network unavailable'))
     mockedGetTodos.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
     queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
     queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
 
@@ -722,11 +725,16 @@ describe('Todo movement across Buckets', () => {
       { queryClient },
     )
 
+    const fetchesBeforeMove = {
+      destination: countTodoFetches(destinationBucket.id),
+      source: countTodoFetches(bucket.id),
+    }
+
     act(() => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: destinationTodos[1].id,
@@ -750,8 +758,10 @@ describe('Todo movement across Buckets', () => {
         queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
       ).toEqual([destinationTodos[0].id, destinationTodos[1].id])
     })
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: [TODOS_QUERY_KEY, bucket.id] })
-    expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: [TODOS_QUERY_KEY, destinationBucket.id] })
+    await waitFor(() => {
+      expect(countTodoFetches(bucket.id)).toBeGreaterThan(fetchesBeforeMove.source)
+      expect(countTodoFetches(destinationBucket.id)).toBeGreaterThan(fetchesBeforeMove.destination)
+    })
     expect(toast.error).toHaveBeenCalledWith('Could not move Todo', {
       description: 'Your board was restored. Refreshing affected Buckets now.',
     })
@@ -769,8 +779,6 @@ describe('Todo movement across Buckets', () => {
     )
     mockedGetTodos.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    const invalidateQueries = vi.spyOn(queryClient, 'invalidateQueries')
-    const refetchQueries = vi.spyOn(queryClient, 'refetchQueries')
     queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
     queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
 
@@ -782,11 +790,16 @@ describe('Todo movement across Buckets', () => {
       { queryClient },
     )
 
+    const fetchesBeforeMove = {
+      destination: countTodoFetches(destinationBucket.id),
+      source: countTodoFetches(bucket.id),
+    }
+
     act(() => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: destinationTodos[1].id,
@@ -810,12 +823,10 @@ describe('Todo movement across Buckets', () => {
         queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
       ).toEqual([destinationTodos[0].id, destinationTodos[1].id])
     })
-    expect(refetchQueries).toHaveBeenCalledWith({ queryKey: [TODOS_QUERY_KEY, bucket.id], type: 'active' }, {})
-    expect(refetchQueries).toHaveBeenCalledWith(
-      { queryKey: [TODOS_QUERY_KEY, destinationBucket.id], type: 'active' },
-      {},
-    )
-    expect(invalidateQueries).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(countTodoFetches(bucket.id)).toBeGreaterThan(fetchesBeforeMove.source)
+      expect(countTodoFetches(destinationBucket.id)).toBeGreaterThan(fetchesBeforeMove.destination)
+    })
     expect(toast.error).toHaveBeenCalledWith('Board refreshed', {
       description: 'Todo positions changed before your move completed. Review the latest order and try again.',
     })
@@ -856,7 +867,7 @@ describe('Todo movement across Buckets', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: destinationTodos[1].id,
@@ -893,7 +904,7 @@ describe('Todo movement across Buckets', () => {
   })
 
   it('moves a Todo into an empty Bucket from its top insertion line', async () => {
-    const movedTodo = { ...todos[0], bucketId: destinationBucket.id, position: 1024, userId: 'user-1' }
+    const movedTodo = { ...todos[0], bucketId: destinationBucket.id, position: 1024 }
     dnd.activeDropTargetId = `bucket-${destinationBucket.id}-insertion-0`
     mockedMoveTodo.mockResolvedValue({
       affectedBucketIds: [bucket.id, destinationBucket.id],
@@ -919,7 +930,7 @@ describe('Todo movement across Buckets', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[0].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[0] } },
           target: {
             data: {
               afterTodoId: undefined,
@@ -966,7 +977,7 @@ describe('Todo movement across Buckets', () => {
       dnd.dragEnd?.({
         canceled: false,
         operation: {
-          source: { data: { bucketId: bucket.id, kind: 'todo', todoId: todos[1].id } },
+          source: { data: { bucketId: bucket.id, kind: 'todo', todo: todos[1] } },
           target: {
             data: {
               afterTodoId: undefined,

@@ -22,7 +22,7 @@ function TodoCard({ dragHandleRef, draggableRef, isDragging = false, onEdit, tod
   const categoryColor = todo.category ? getColorPreset(todo.category.colorKey) : undefined
   const { mutate: toggleTodoMutation } = useToggleTodo()
   const handleCheckedChange = () => {
-    toggleTodoMutation({ data: { id: todo.id, completed: !todo.completed } })
+    toggleTodoMutation(todo)
   }
 
   return (

@@ -1,18 +1,22 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 
-import { TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
-import type { Todo } from '@/lib/types/Todo'
+import { useBoardCache } from '@/features/board/cache'
 import { deleteTodo } from '@/server/functions/todos'
 
+type DeleteTodoVariables = Parameters<typeof deleteTodo>[0] & {
+  bucketId: number
+}
+
 export default function useDeleteTodo() {
-  const queryClient = useQueryClient()
+  const cache = useBoardCache()
 
   return useMutation({
-    mutationFn: deleteTodo,
-    onSuccess: (deletedTodo) => {
-      queryClient.setQueryData<Array<Todo>>([TODOS_QUERY_KEY, deletedTodo.previousBucketId], (old = []) =>
-        old.filter((todo) => todo.id !== deletedTodo.todoId),
-      )
+    mutationFn: (variables: DeleteTodoVariables) => deleteTodo({ data: variables.data }),
+    onError: (error, variables) => {
+      void cache.recover(error, { bucketIds: [variables.bucketId], type: 'todos' })
+    },
+    onSuccess: async ({ previousBucketId, todoId }) => {
+      await cache.apply({ previousBucketId, todoId, type: 'todo-deleted' })
     },
   })
 }

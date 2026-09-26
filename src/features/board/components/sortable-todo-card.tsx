@@ -6,7 +6,7 @@ import type { Todo } from '@/lib/types/Todo'
 export type TodoDragData = {
   bucketId: number
   kind: 'todo'
-  todoId: number
+  todo: Todo
 }
 
 export function SortableTodoCard({
@@ -22,7 +22,7 @@ export function SortableTodoCard({
     data: {
       bucketId,
       kind: 'todo',
-      todoId: todo.id,
+      todo,
     },
     id: `todo-${todo.id}`,
   })

@@ -54,7 +54,6 @@ const existingTodo = {
   position: 1024,
   tags: [],
   title: 'Existing',
-  userId: 'user-1',
 }
 
 const createdTodo = {
@@ -68,7 +67,6 @@ const createdTodo = {
   position: 1024,
   tags: [],
   title: 'Plan review',
-  userId: 'user-1',
 }
 
 const createdCategory = {
@@ -811,6 +809,23 @@ describe('CreateTodoButton', () => {
 
     expect(await screen.findByText('Bucket is required.')).toBeInTheDocument()
     expect(mockedCreateTodo).not.toHaveBeenCalled()
+  })
+
+  it('does not invent a Todo list for a Bucket that has not been loaded', async () => {
+    mockedCreateTodo.mockResolvedValue(createdTodo)
+    const queryClient = createTestQueryClient()
+
+    render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
+    fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: '2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Add' }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Add New Task' })).not.toBeInTheDocument()
+    })
+    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 2])).toBeUndefined()
   })
 
   it('keeps the dialog open and shows feedback when saving fails', async () => {

@@ -1,18 +1,20 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 
+import { useBoardCache } from '@/features/board/cache'
 import { scrollBucketTodoListToEnd } from '@/features/board/lib/bucket-todo-list-scroll'
-import { TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
-import type { Todo } from '@/lib/types/Todo'
 import { createTodo } from '@/server/functions/todos'
 
 export default function useCreateTodo() {
-  const queryClient = useQueryClient()
+  const cache = useBoardCache()
 
   return useMutation({
     mutationFn: createTodo,
-    onSuccess: (newTodo: Todo) => {
-      queryClient.setQueryData<Array<Todo>>([TODOS_QUERY_KEY, newTodo.bucketId], (old = []) => [...old, newTodo])
-      scrollBucketTodoListToEnd(newTodo.bucketId)
+    onError: (error, variables) => {
+      void cache.recover(error, { bucketIds: [variables.data.bucketId], type: 'todos' })
+    },
+    onSuccess: async (todo) => {
+      await cache.apply({ todo, type: 'todo-created' })
+      scrollBucketTodoListToEnd(todo.bucketId)
     },
   })
 }

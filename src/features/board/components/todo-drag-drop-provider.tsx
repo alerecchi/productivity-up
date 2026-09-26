@@ -1,6 +1,5 @@
 import { DragDropProvider } from '@dnd-kit/react'
 import type { DragEndEvent } from '@dnd-kit/react'
-import { useQueryClient } from '@tanstack/react-query'
 import { createContext, useContext, useState } from 'react'
 import type { ReactNode } from 'react'
 import { flushSync } from 'react-dom'
@@ -9,7 +8,6 @@ import type { TodoDragData } from '@/features/board/components/sortable-todo-car
 import { useMoveTodo } from '@/features/board/hooks/use-move-todo'
 import { scrollTodoBoard } from '@/features/board/lib/board-auto-scroll'
 import { scrollBucketTodoListToEnd } from '@/features/board/lib/bucket-todo-list-scroll'
-import { TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Todo } from '@/lib/types/Todo'
 
 type TodoInsertionData = {
@@ -31,7 +29,6 @@ const PendingTodoMoveContext = createContext<PendingTodoMove | null>(null)
 
 export function TodoDragDropProvider({ children }: { children: ReactNode }) {
   const { mutate: moveTodo } = useMoveTodo()
-  const queryClient = useQueryClient()
   const [pendingTodoMove, setPendingTodoMove] = useState<PendingTodoMove | null>(null)
 
   const handleDragMove = (event: unknown, manager: unknown) => {
@@ -62,33 +59,30 @@ export function TodoDragDropProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    if (targetData.beforeTodoId === sourceData.todoId || targetData.afterTodoId === sourceData.todoId) {
+    const movedTodo = sourceData.todo
+
+    if (targetData.beforeTodoId === movedTodo.id || targetData.afterTodoId === movedTodo.id) {
       return
     }
 
-    const sourceTodos = queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, sourceData.bucketId])
-    const movedTodo = sourceTodos?.find((todo) => todo.id === sourceData.todoId)
-
-    if (movedTodo) {
-      flushSync(() => {
-        setPendingTodoMove(
-          removeUndefinedValues({
-            afterTodoId: targetData.afterTodoId,
-            beforeTodoId: targetData.beforeTodoId,
-            sourceBucketId: sourceData.bucketId,
-            targetBucketId: targetData.bucketId,
-            todo: { ...movedTodo, bucketId: targetData.bucketId },
-          }),
-        )
-      })
-    }
+    flushSync(() => {
+      setPendingTodoMove(
+        removeUndefinedValues({
+          afterTodoId: targetData.afterTodoId,
+          beforeTodoId: targetData.beforeTodoId,
+          sourceBucketId: sourceData.bucketId,
+          targetBucketId: targetData.bucketId,
+          todo: { ...movedTodo, bucketId: targetData.bucketId },
+        }),
+      )
+    })
 
     moveTodo(
       {
         data: removeUndefinedValues({
           afterTodoId: targetData.afterTodoId,
           beforeTodoId: targetData.beforeTodoId,
-          id: sourceData.todoId,
+          id: movedTodo.id,
           targetBucketId: targetData.bucketId,
         }),
         sourceBucketId: sourceData.bucketId,
@@ -126,8 +120,9 @@ function isTodoDragData(data: unknown): data is TodoDragData {
     data.kind === 'todo' &&
     'bucketId' in data &&
     typeof data.bucketId === 'number' &&
-    'todoId' in data &&
-    typeof data.todoId === 'number'
+    'todo' in data &&
+    typeof data.todo === 'object' &&
+    data.todo !== null
   )
 }
 
