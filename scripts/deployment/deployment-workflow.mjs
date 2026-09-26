@@ -211,10 +211,11 @@ export function queryLiveDeploymentMetadata(repositoryDirectory, workerName) {
 async function runStagingSmokeTest(deploymentUrl) {
   const email = requiredEnvironmentVariable('STAGING_SMOKE_TEST_EMAIL')
   const password = requiredEnvironmentVariable('STAGING_SMOKE_TEST_PASSWORD')
+  const accessHeaders = stagingAccessHeaders()
   const origin = new URL(deploymentUrl).origin
   const signInResponse = await fetch(new URL('/api/auth/sign-in/email', deploymentUrl), {
     body: JSON.stringify({ email, password }),
-    headers: { 'content-type': 'application/json', origin },
+    headers: { ...accessHeaders, 'content-type': 'application/json', origin },
     method: 'POST',
     redirect: 'manual',
   })
@@ -232,7 +233,7 @@ async function runStagingSmokeTest(deploymentUrl) {
 
   try {
     const boardResponse = await fetch(new URL('/board', deploymentUrl), {
-      headers: { cookie: cookies },
+      headers: { ...accessHeaders, cookie: cookies },
       redirect: 'manual',
     })
     if (!boardResponse.ok) {
@@ -243,7 +244,7 @@ async function runStagingSmokeTest(deploymentUrl) {
   } finally {
     const signOutResponse = await fetch(new URL('/api/auth/sign-out', deploymentUrl), {
       body: JSON.stringify({}),
-      headers: { 'content-type': 'application/json', cookie: cookies, origin },
+      headers: { ...accessHeaders, 'content-type': 'application/json', cookie: cookies, origin },
       method: 'POST',
       redirect: 'manual',
     })
@@ -259,18 +260,19 @@ async function runStagingSmokeTest(deploymentUrl) {
  * and gets a heartbeat answer, while signed-out and foreign-origin upgrades are refused.
  */
 export async function verifyRealtimeTransport(deploymentUrl, cookies) {
+  const accessHeaders = stagingAccessHeaders()
   const origin = new URL(deploymentUrl).origin
   const realtimeUrl = new URL(`/api/realtime?clientInstanceId=${crypto.randomUUID()}`, deploymentUrl)
   realtimeUrl.protocol = realtimeUrl.protocol === 'https:' ? 'wss:' : 'ws:'
 
-  const authenticated = await openRealtimeSocket(realtimeUrl, { cookie: cookies, origin })
+  const authenticated = await openRealtimeSocket(realtimeUrl, { ...accessHeaders, cookie: cookies, origin })
   if (authenticated.outcome !== 'pong') {
     throw new Error(`Authenticated realtime connection did not answer a heartbeat (${authenticated.outcome}).`)
   }
 
   for (const [label, headers] of [
-    ['signed-out', { origin }],
-    ['foreign-origin', { cookie: cookies, origin: 'https://foreign.example' }],
+    ['signed-out', { ...accessHeaders, origin }],
+    ['foreign-origin', { ...accessHeaders, cookie: cookies, origin: 'https://foreign.example' }],
   ]) {
     const rejected = await openRealtimeSocket(realtimeUrl, headers)
     if (rejected.outcome !== 'rejected') {
@@ -281,7 +283,7 @@ export async function verifyRealtimeTransport(deploymentUrl, cookies) {
   // A caller cannot select another User's Durable Object, even while authenticated.
   const forgedUserUrl = new URL(realtimeUrl)
   forgedUserUrl.searchParams.set('userId', 'another-user')
-  const forgedUser = await openRealtimeSocket(forgedUserUrl, { cookie: cookies, origin })
+  const forgedUser = await openRealtimeSocket(forgedUserUrl, { ...accessHeaders, cookie: cookies, origin })
   if (forgedUser.outcome !== 'rejected') {
     throw new Error(`A caller-supplied realtime User ID was not rejected (${forgedUser.outcome}).`)
   }
@@ -427,6 +429,15 @@ function requiredEnvironmentVariable(name, sourceEnvironment = process.env) {
   const value = sourceEnvironment[name]
   if (!value) throw new Error(`${name} is required.`)
   return value
+}
+
+function stagingAccessHeaders() {
+  const clientId = requiredEnvironmentVariable('STAGING_CF_ACCESS_CLIENT_ID')
+  const clientSecret = requiredEnvironmentVariable('STAGING_CF_ACCESS_CLIENT_SECRET')
+  return {
+    'CF-Access-Client-Id': clientId.replace(/^CF-Access-Client-Id:\s*/i, ''),
+    'CF-Access-Client-Secret': clientSecret.replace(/^CF-Access-Client-Secret:\s*/i, ''),
+  }
 }
 
 function capture(command, arguments_, { cwd, env = process.env }) {

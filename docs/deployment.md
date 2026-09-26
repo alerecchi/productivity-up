@@ -85,7 +85,18 @@ STAGING_PUBLIC_URL=https://productivity-up-staging.<account-subdomain>.workers.d
 VITE_APP_NAME=Productivity Up
 ```
 
+Keep the staging-only Cloudflare Access Service Token in the ignored `.env.deploy.local` file alongside the other deployment variables:
+
+```dotenv
+STAGING_CF_ACCESS_CLIENT_ID=...
+STAGING_CF_ACCESS_CLIENT_SECRET=...
+```
+
+The deployment workflow removes both values from child process environments.
+
 The direct URLs must point to separate Neon databases and use non-pooler hosts. Hyperdrive handles runtime connection pooling, so Neon pooler URLs are not part of this deployment model. The scripts expose only the selected direct URL to the Drizzle migration subprocess. Install, build, Wrangler, and metadata subprocesses receive neither direct URL, smoke-test credentials, setup credentials, nor local application secrets. `STAGING_PUBLIC_URL` is an operator input used to derive the staging build URL, but it is also removed before subprocesses start. The production command always builds with `https://productivity-up.com` as its public URL.
+
+The staging Cloudflare Access application should continue to require interactive login for normal visitors. Its staging-only Service Auth policy grants this smoke-test Service Token access to the Worker. The smoke test sends the token's `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers on every request, so Access checks never replace the application's own checks: the realtime upgrade must still refuse a caller without an app session. Do not add this Service Token to Wrangler or expose it to deployment subprocesses.
 
 The staging smoke-test account must already exist, have a verified email address, and have a readable board. The smoke test signs in, loads `/board`, and opens the realtime WebSocket at `/api/realtime`. The signed-in connection must answer a heartbeat, while signed-out, foreign-origin, and caller-supplied User ID upgrades must be refused. It does not create, edit, or delete data.
 
