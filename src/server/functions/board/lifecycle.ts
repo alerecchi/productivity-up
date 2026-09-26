@@ -285,7 +285,7 @@ export async function completeDayForUser({
 }
 
 /** Maps a reconciled snapshot to the canonical board state. */
-function toBoardState(snapshot: BoardSnapshot): BoardState {
+export function toBoardState(snapshot: BoardSnapshot): BoardState {
   if (!snapshot.planningDate || !snapshot.timeZone) {
     throw new Error('Board lifecycle has not been initialized')
   }

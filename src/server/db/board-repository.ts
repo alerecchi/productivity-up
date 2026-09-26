@@ -12,18 +12,6 @@ type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0]
 
 export function createBoardRepository(db: Database): BoardRepository {
   return {
-    async archiveBucket(userId, bucketId, archivedAt) {
-      const [bucket] = await db
-        .update(buckets)
-        .set({
-          archivedAt,
-          status: 'archived',
-        })
-        .where(and(eq(buckets.id, bucketId), eq(buckets.userId, userId)))
-        .returning()
-
-      return bucket
-    },
     async commitInitialBoardState(state) {
       await db.transaction(async (tx) => {
         const user = (
@@ -165,9 +153,78 @@ export function createBoardRepository(db: Database): BoardRepository {
         throw error
       }
     },
-    findBucketById(userId, bucketId) {
-      return db.query.buckets.findFirst({
-        where: and(eq(buckets.id, bucketId), eq(buckets.userId, userId)),
+    async commitMigrationStep(step, plan) {
+      const { sourceBucketId, userId } = step
+
+      return db.transaction(async (tx) => {
+        // Every board write locks the User row first, so the state read below stays authoritative until commit.
+        const user = (
+          await tx
+            .select({ planningDate: users.planningDate, timeZone: users.timeZone })
+            .from(users)
+            .where(eq(users.id, userId))
+            .for('update')
+        ).at(0)
+
+        if (!user) {
+          throw new Error('User not found')
+        }
+
+        const userBuckets = await tx
+          .select({ id: buckets.id, period: buckets.period, status: buckets.status, type: buckets.type })
+          .from(buckets)
+          .where(
+            and(
+              eq(buckets.userId, userId),
+              or(inArray(buckets.status, ['active', 'pending_migration']), eq(buckets.id, sourceBucketId)),
+            ),
+          )
+          .orderBy(asc(buckets.id))
+        const sourceTodos = await tx
+          .select({ id: todos.id })
+          .from(todos)
+          .where(and(eq(todos.userId, userId), eq(todos.bucketId, sourceBucketId), eq(todos.completed, false)))
+          .orderBy(asc(todos.position), asc(todos.id))
+        const activeBucketIds = userBuckets.filter((bucket) => bucket.status === 'active').map((bucket) => bucket.id)
+        const lastPositions =
+          activeBucketIds.length === 0
+            ? []
+            : await tx
+                .select({ bucketId: todos.bucketId, position: max(todos.position) })
+                .from(todos)
+                .where(and(eq(todos.userId, userId), inArray(todos.bucketId, activeBucketIds)))
+                .groupBy(todos.bucketId)
+
+        const result = plan({
+          buckets: userBuckets,
+          lastPositions: new Map(
+            lastPositions.flatMap(({ bucketId, position }) => (position === null ? [] : [[bucketId, position]])),
+          ),
+          planningDate: user.planningDate,
+          sourceTodoIds: sourceTodos.map((todo) => todo.id),
+          timeZone: user.timeZone,
+        })
+
+        if (result.kind !== 'commit') {
+          return result
+        }
+
+        // One UPDATE per moved Todo, all while the User row is locked. Latency grows with the number of Todos, and so
+        // does the time other writes for this User wait. If confirmation gets slow, switch to a single
+        // `UPDATE … SET bucket_id = CASE id …, position = CASE id … WHERE id IN (…)`: one round trip for any size.
+        for (const move of result.moves) {
+          await tx
+            .update(todos)
+            .set({ bucketId: move.bucketId, position: move.position })
+            .where(and(eq(todos.id, move.id), eq(todos.userId, userId)))
+        }
+
+        await tx
+          .update(buckets)
+          .set({ archivedAt: step.at, status: 'archived' })
+          .where(and(eq(buckets.id, sourceBucketId), eq(buckets.userId, userId)))
+
+        return result
       })
     },
     findBucketByUserTypeAndPeriod(userId, type, period) {
@@ -180,14 +237,6 @@ export function createBoardRepository(db: Database): BoardRepository {
         .select()
         .from(buckets)
         .where(and(eq(buckets.userId, userId), eq(buckets.status, 'active')))
-    },
-    async getMaxTodoPosition(userId, bucketId) {
-      const [row] = await db
-        .select({ position: max(todos.position) })
-        .from(todos)
-        .where(and(eq(todos.userId, userId), eq(todos.bucketId, bucketId)))
-
-      return row.position ?? null
     },
     async getPendingMigrationBuckets(userId) {
       return db
@@ -238,18 +287,6 @@ export function createBoardRepository(db: Database): BoardRepository {
       return db.query.users.findFirst({
         where: eq(users.id, userId),
       })
-    },
-    async moveTodoForMigration(todoId, userId, move) {
-      const [todo] = await db
-        .update(todos)
-        .set({
-          bucketId: move.bucketId,
-          position: move.position,
-        })
-        .where(and(eq(todos.id, todoId), eq(todos.userId, userId), eq(todos.bucketId, move.expectedSourceBucketId)))
-        .returning()
-
-      return todo
     },
   }
 }

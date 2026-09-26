@@ -4,31 +4,27 @@ import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
 import { errorResponse } from '@/server/core/errors'
 import type { BucketDb, TodoDbSelect, UserDb } from '@/server/db/types'
-import { getBoardForUser } from '@/server/functions/board/lifecycle'
-import type { LifecycleRepository } from '@/server/functions/board/lifecycle'
+import { toBoardState } from '@/server/functions/board/lifecycle'
+import type { BoardBucket, BoardSnapshot, LifecycleRepository } from '@/server/functions/board/lifecycle'
 
 const ENABLED_BUCKET_HORIZONS = ['yearly', 'monthly', 'weekly', 'daily'] as const
 const TODO_POSITION_GAP = 1024
 
 export type BoardRepository = LifecycleRepository & {
-  archiveBucket: (userId: string, bucketId: number, archivedAt: Date) => Promise<BucketDb | undefined>
-  findBucketById: (userId: string, bucketId: number) => Promise<BucketDb | undefined>
+  /**
+   * In one transaction: locks the User row, reads the {@link MigrationStepState}, and asks `plan` what to do. On
+   * `commit` it applies every move and archives the source Bucket; otherwise it writes nothing. Returns the plan.
+   */
+  commitMigrationStep: (
+    step: { at: Date; sourceBucketId: number; userId: string },
+    plan: (state: MigrationStepState) => MigrationStepPlan,
+  ) => Promise<MigrationStepPlan>
   findBucketByUserTypeAndPeriod: (userId: string, type: BucketType, period: string) => Promise<BucketDb | undefined>
   getActiveBuckets: (userId: string) => Promise<Array<BucketDb>>
-  getMaxTodoPosition: (userId: string, bucketId: number) => Promise<number | null>
   getPendingMigrationBuckets: (userId: string) => Promise<Array<BucketDb>>
   getTodosByBucket: (userId: string, bucketId: number) => Promise<Array<TodoDbSelect>>
   getTodosByBucketWithDisplay: (userId: string, bucketId: number) => Promise<Array<MigrationTodo>>
   getUser: (userId: string) => Promise<UserDb | undefined>
-  moveTodoForMigration: (
-    todoId: number,
-    userId: string,
-    move: {
-      bucketId: number
-      expectedSourceBucketId: number
-      position: number
-    },
-  ) => Promise<TodoDbSelect | undefined>
 }
 
 export type MigrationTodo = TodoDbSelect & {
@@ -53,6 +49,28 @@ export type ConfirmMigrationStepData = {
   sourceBucketId: number
 }
 
+/** Authoritative Migration Step inputs, read inside the confirmation transaction after the User row is locked. */
+export type MigrationStepState = {
+  /** The User's active and pending Buckets, plus the requested source Bucket whatever its status, ordered by ID. */
+  buckets: Array<Pick<BucketDb, 'id' | 'period' | 'status' | 'type'>>
+  /** Highest Todo Position per active Bucket; absent for empty Buckets. */
+  lastPositions: Map<number, number>
+  planningDate: string | null
+  /** IDs of incomplete Todos currently in the source Bucket, in board order. */
+  sourceTodoIds: Array<number>
+  timeZone: string | null
+}
+
+export type MigrationStepPlan =
+  | {
+      board: BoardSnapshot
+      destinationBucketIds: Array<number>
+      kind: 'commit'
+      moves: Array<Pick<TodoDbSelect, 'bucketId' | 'id' | 'position'>>
+    }
+  | { kind: 'not_found' }
+  | { kind: 'stale' }
+
 type ConfirmMigrationStepDependencies = {
   data: ConfirmMigrationStepData
   now?: () => Date
@@ -68,103 +86,96 @@ type GetMigrationStepDependencies = {
   userId: string
 }
 
+/** Commits every Todo choice and the source Bucket's archive together, or fails without writing. */
 export async function confirmMigrationStepForUser({
   data,
   now = () => new Date(),
   repository,
   userId,
 }: ConfirmMigrationStepDependencies) {
-  const user = await repository.getUser(userId)
+  const plan = await repository.commitMigrationStep(
+    { at: now(), sourceBucketId: data.sourceBucketId, userId },
+    (state) => planMigrationStep(state, data),
+  )
 
-  if (!user) {
-    throw new Error('User not found')
-  }
-
-  if (!user.timeZone || !user.planningDate) {
-    throw new Error('Board lifecycle has not been initialized')
-  }
-
-  const sourceBucket = await repository.findBucketById(userId, data.sourceBucketId)
-
-  if (!sourceBucket) {
+  if (plan.kind === 'not_found') {
     throw errorResponse(404, 'Pending Migration Bucket not found')
   }
 
-  if (sourceBucket.status !== 'pending_migration' || sourceBucket.type === 'inbox') {
+  if (plan.kind === 'stale') {
     throw errorResponse(409, 'Migration Step conflict; refresh and retry')
   }
 
-  const sourceTodos = (await repository.getTodosByBucket(userId, sourceBucket.id)).toSorted(
-    (a, b) => a.position - b.position || a.id - b.id,
-  )
-  const incompleteTodos = sourceTodos.filter((todo) => !todo.completed)
+  return {
+    board: toBoardState(plan.board),
+    destinationBucketIds: plan.destinationBucketIds,
+    sourceBucketId: data.sourceBucketId,
+    status: 'confirmed' as const,
+  }
+}
 
-  await assertDecisionMapMatchesMigrationState({
-    decisions: data.decisions,
-    incompleteTodos,
-    planningDate: user.planningDate,
-    repository,
-    sourceBucket,
-    userId,
-  })
+/**
+ * Decides a Migration Step against authoritative state. The decisions must cover exactly the source Bucket's current
+ * incomplete Todos, which are appended to their destinations in board order.
+ */
+function planMigrationStep(state: MigrationStepState, data: ConfirmMigrationStepData): MigrationStepPlan {
+  const { planningDate, timeZone } = state
+  const sourceBucket = state.buckets.find((bucket) => bucket.id === data.sourceBucketId)
 
-  const migratedTodoPositions: Array<Pick<TodoDbSelect, 'bucketId' | 'id' | 'position'>> = []
-  const nextPositionsByBucketId = new Map<number, number>()
-
-  for (const todo of incompleteTodos) {
-    const decision = data.decisions[todo.id]
-
-    if (!decision) {
-      throw new Error('Migration Step requires decisions for all current incomplete Todos')
-    }
-
-    const destinationBucket = await getMigrationDestinationBucket({
-      decision,
-      planningDate: user.planningDate,
-      repository,
-      sourceBucket,
-      userId,
-    })
-    const currentMaxPosition =
-      nextPositionsByBucketId.get(destinationBucket.id) ??
-      (await repository.getMaxTodoPosition(userId, destinationBucket.id)) ??
-      0
-    const position = currentMaxPosition + TODO_POSITION_GAP
-    nextPositionsByBucketId.set(destinationBucket.id, position)
-
-    const movedTodo = await repository.moveTodoForMigration(todo.id, userId, {
-      bucketId: destinationBucket.id,
-      expectedSourceBucketId: sourceBucket.id,
-      position,
-    })
-
-    if (!movedTodo) {
-      throw errorResponse(409, 'Migration Step conflict; refresh and retry')
-    }
-
-    migratedTodoPositions.push({
-      bucketId: movedTodo.bucketId,
-      id: movedTodo.id,
-      position: movedTodo.position,
-    })
+  if (!sourceBucket) {
+    return { kind: 'not_found' }
   }
 
-  const remainingIncompleteTodos = (await repository.getTodosByBucket(userId, sourceBucket.id)).filter(
-    (todo) => !todo.completed,
-  )
-
-  if (remainingIncompleteTodos.length === 0) {
-    await repository.archiveBucket(userId, sourceBucket.id, now())
+  if (sourceBucket.status !== 'pending_migration' || sourceBucket.type === 'inbox' || !planningDate || !timeZone) {
+    return { kind: 'stale' }
   }
+
+  // With equal counts, a decision for every current Todo means the decided set is exactly the current set.
+  if (Object.keys(data.decisions).length !== state.sourceTodoIds.length) {
+    return { kind: 'stale' }
+  }
+
+  const findActiveDestination = (decision: MigrationDecision) => {
+    const { period, type } = getMigrationDestination(sourceBucket.type, decision, planningDate)
+
+    return state.buckets.find(
+      (bucket) => bucket.status === 'active' && bucket.type === type && bucket.period === period,
+    )
+  }
+  const destinations = {
+    carry_forward: findActiveDestination('carry_forward'),
+    move_back: findActiveDestination('move_back'),
+  }
+  const lastPositions = new Map(state.lastPositions)
+  const moves = []
+
+  for (const todoId of state.sourceTodoIds) {
+    const decision = data.decisions[todoId]
+    const destination = decision && destinations[decision]
+
+    if (!destination) {
+      return { kind: 'stale' }
+    }
+
+    const position = (lastPositions.get(destination.id) ?? 0) + TODO_POSITION_GAP
+    lastPositions.set(destination.id, position)
+    moves.push({ bucketId: destination.id, id: todoId, position })
+  }
+
+  const toBoardBucket = ({ id, period, type }: BoardBucket): BoardBucket => ({ id, period, type })
 
   return {
-    board: await getBoardForUser({
-      now,
-      repository,
-      userId,
-    }),
-    migratedTodoPositions,
-    status: 'confirmed' as const,
+    board: {
+      activeBuckets: state.buckets.filter((bucket) => bucket.status === 'active').map(toBoardBucket),
+      pendingMigrationBuckets: state.buckets
+        .filter((bucket) => bucket.status === 'pending_migration' && bucket.id !== sourceBucket.id)
+        .map(toBoardBucket),
+      planningDate,
+      timeZone,
+    },
+    destinationBucketIds: [...new Set(moves.map((move) => move.bucketId))].toSorted((a, b) => a - b),
+    kind: 'commit',
+    moves,
   }
 }
 
@@ -250,56 +261,6 @@ async function getMigrationFlowRecap({
   }
 }
 
-async function assertDecisionMapMatchesMigrationState({
-  decisions,
-  incompleteTodos,
-  planningDate,
-  repository,
-  sourceBucket,
-  userId,
-}: {
-  decisions: Partial<Record<number, MigrationDecision>>
-  incompleteTodos: Array<TodoDbSelect>
-  planningDate: string
-  repository: BoardRepository
-  sourceBucket: BucketDb
-  userId: string
-}) {
-  const incompleteTodoIds = new Set(incompleteTodos.map((todo) => todo.id))
-  const submittedTodoIds = Object.keys(decisions).map(Number)
-  const hasMissingDecision = incompleteTodos.some((todo) => decisions[todo.id] === undefined)
-
-  if (hasMissingDecision) {
-    throw errorResponse(409, 'Migration Step requires decisions for all current incomplete Todos')
-  }
-
-  for (const todoId of submittedTodoIds) {
-    if (incompleteTodoIds.has(todoId)) {
-      continue
-    }
-
-    const decision = decisions[todoId]
-
-    if (!decision) {
-      throw errorResponse(409, 'Migration Step conflict; refresh and retry')
-    }
-
-    const destinationBucket = await getMigrationDestinationBucket({
-      decision,
-      planningDate,
-      repository,
-      sourceBucket,
-      userId,
-    })
-    const destinationTodos = await repository.getTodosByBucket(userId, destinationBucket.id)
-    const alreadyAppliedTodo = destinationTodos.find((todo) => todo.id === todoId && !todo.completed)
-
-    if (!alreadyAppliedTodo) {
-      throw errorResponse(409, 'Migration Step conflict; refresh and retry')
-    }
-  }
-}
-
 async function getMigrationDestinationBucket({
   decision,
   planningDate,
@@ -313,16 +274,25 @@ async function getMigrationDestinationBucket({
   sourceBucket: BucketDb
   userId: string
 }) {
-  const destinationType =
-    decision === 'carry_forward' ? sourceBucket.type : getNearestBroaderBucketType(sourceBucket.type)
-  const destinationPeriod = destinationType === 'inbox' ? 'inbox' : derivePeriodKeys(planningDate)[destinationType]
-  const bucket = await repository.findBucketByUserTypeAndPeriod(userId, destinationType, destinationPeriod)
+  const { period, type } = getMigrationDestination(sourceBucket.type, decision, planningDate)
+  const bucket = await repository.findBucketByUserTypeAndPeriod(userId, type, period)
 
   if (!bucket || bucket.status !== 'active') {
     throw new Error('Active migration destination Bucket not found')
   }
 
   return bucket
+}
+
+/** The Bucket a decision sends a Todo to: the source's current period, or the nearest broader horizon. */
+function getMigrationDestination(
+  sourceType: BucketType,
+  decision: MigrationDecision,
+  planningDate: string,
+): { period: string; type: BucketType } {
+  const type = decision === 'carry_forward' ? sourceType : getNearestBroaderBucketType(sourceType)
+
+  return { period: type === 'inbox' ? 'inbox' : derivePeriodKeys(planningDate)[type], type }
 }
 
 function getNearestBroaderBucketType(sourceType: BucketType): BucketType {

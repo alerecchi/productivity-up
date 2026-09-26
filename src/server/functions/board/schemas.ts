@@ -116,13 +116,8 @@ export const MigrationStepResponse = z.object({
 })
 
 export const ConfirmMigrationStepResponse = z.object({
-  board: BoardResponse,
-  migratedTodoPositions: z.array(
-    z.object({
-      bucketId: PositiveIdSchema,
-      id: PositiveIdSchema,
-      position: z.int(),
-    }),
-  ),
+  board: ReconcileLifecycleResponse,
+  destinationBucketIds: z.array(PositiveIdSchema),
+  sourceBucketId: PositiveIdSchema,
   status: z.literal('confirmed'),
 })

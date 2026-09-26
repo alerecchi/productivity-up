@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { Suspense } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import { MigrationFlow } from '@/features/board/components/migration-flow'
 import { storeMigrationFlowStarted } from '@/features/board/lib/migration-flow-started'
 import type { BucketDb } from '@/server/db/types'
@@ -153,15 +154,18 @@ describe('MigrationFlow', () => {
         status: 'migration_required',
         timeZone: 'Europe/Berlin',
       },
-      migratedTodoPositions: [{ bucketId: 5, id: 20, position: 1024 }],
+      destinationBucketIds: [5],
+      sourceBucketId: 10,
       status: 'confirmed',
     })
 
-    render(
+    const { queryClient } = render(
       <Suspense fallback={<p>Loading migration</p>}>
         <MigrationFlow onFlowComplete={onFlowComplete} />
       </Suspense>,
     )
+    queryClient.setQueryData(boardCacheKeys.todos(dailyBucket.id), [])
+    queryClient.setQueryData(boardCacheKeys.todos(5), [])
 
     expect(
       await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
@@ -179,6 +183,10 @@ describe('MigrationFlow', () => {
     expect(screen.getByText('Weekly move')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
     expect(onFlowComplete).not.toHaveBeenCalled()
+    await waitFor(() => {
+      expect(queryClient.getQueryState(boardCacheKeys.todos(dailyBucket.id))?.isInvalidated).toBe(true)
+      expect(queryClient.getQueryState(boardCacheKeys.todos(5))?.isInvalidated).toBe(true)
+    })
   })
 
   it('resumes after refresh at the next unresolved Migration Step without repeating the Completion Recap', async () => {
@@ -224,7 +232,8 @@ describe('MigrationFlow', () => {
         status: 'migration_required',
         timeZone: 'Europe/Berlin',
       },
-      migratedTodoPositions: [{ bucketId: 5, id: 20, position: 1024 }],
+      destinationBucketIds: [5],
+      sourceBucketId: 10,
       status: 'confirmed',
     })
 
@@ -316,10 +325,8 @@ describe('MigrationFlow', () => {
         status: 'ready',
         timeZone: 'Europe/Berlin',
       },
-      migratedTodoPositions: [
-        { bucketId: 4, id: 20, position: 1024 },
-        { bucketId: 4, id: 21, position: 2048 },
-      ],
+      destinationBucketIds: [4],
+      sourceBucketId: 10,
       status: 'confirmed',
     })
 
@@ -392,7 +399,8 @@ describe('MigrationFlow', () => {
         status: 'ready',
         timeZone: 'Europe/Berlin',
       },
-      migratedTodoPositions: [{ bucketId: 5, id: 20, position: 1024 }],
+      destinationBucketIds: [5],
+      sourceBucketId: 10,
       status: 'confirmed',
     })
 
@@ -446,7 +454,8 @@ describe('MigrationFlow', () => {
         status: 'ready',
         timeZone: 'Europe/Berlin',
       },
-      migratedTodoPositions: [{ bucketId: 5, id: 20, position: 1024 }],
+      destinationBucketIds: [5],
+      sourceBucketId: 10,
       status: 'confirmed',
     })
     onFlowComplete.mockRejectedValue(new Error('Navigation failed'))
@@ -505,10 +514,8 @@ describe('MigrationFlow', () => {
         status: 'ready',
         timeZone: 'Europe/Berlin',
       },
-      migratedTodoPositions: [
-        { bucketId: 4, id: 30, position: 1024 },
-        { bucketId: 4, id: 31, position: 2048 },
-      ],
+      destinationBucketIds: [4],
+      sourceBucketId: 11,
       status: 'confirmed',
     })
 
