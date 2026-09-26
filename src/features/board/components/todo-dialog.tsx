@@ -102,6 +102,7 @@ export default function TodoDialog({ buckets, defaultBucketId, editingTodo, isOp
                 bucketId: Number(value.bucketId),
                 id: editingTodo.id,
               },
+              sourceBucketId: editingTodo.bucketId,
             })
           } else {
             await createTodoMutation.mutateAsync({
@@ -375,6 +376,7 @@ export default function TodoDialog({ buckets, defaultBucketId, editingTodo, isOp
 
     try {
       await deleteTodoMutation.mutateAsync({
+        bucketId: editingTodo.bucketId,
         data: {
           id: editingTodo.id,
         },

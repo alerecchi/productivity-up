@@ -9,6 +9,15 @@ import { listTags } from '@/server/functions/tags'
 import { deleteTodo, getTodos, updateTodo } from '@/server/functions/todos'
 import { createTestQueryClient, render } from '@/test'
 
+const toast = vi.hoisted(() => ({
+  error: vi.fn(),
+}))
+
+vi.mock('sonner', () => ({
+  Toaster: () => null,
+  toast,
+}))
+
 vi.mock('@/server/functions/categories', () => ({
   createCategory: vi.fn(),
   deleteCategory: vi.fn(),
@@ -89,7 +98,6 @@ const existingTodo = {
     },
   ],
   title: 'Plan review',
-  userId: 'user-1',
 }
 
 const mockedGetTodos = vi.mocked(getTodos)
@@ -108,6 +116,7 @@ describe('Todo card edit dialog', () => {
     mockedListTags.mockResolvedValue([])
     mockedDeleteTodo.mockReset()
     mockedUpdateTodo.mockReset()
+    toast.error.mockReset()
     vi.spyOn(window, 'confirm').mockRestore()
   })
 
@@ -174,6 +183,36 @@ describe('Todo card edit dialog', () => {
     expect(screen.queryByRole('heading', { name: 'Edit Task' })).not.toBeInTheDocument()
   })
 
+  it('checks the Todo immediately while the toggle is saving', () => {
+    mockedUpdateTodo.mockReturnValue(new Promise(() => {}))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+
+    render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
+
+    fireEvent.click(screen.getByRole('checkbox'))
+
+    return waitFor(() => expect(screen.getByRole('checkbox')).toBeChecked())
+  })
+
+  it('unchecks the Todo again and explains the failure when the server rejects a toggle', async () => {
+    mockedGetTodos.mockResolvedValue([existingTodo])
+    mockedUpdateTodo.mockRejectedValue(new Response(null, { status: 400 }))
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+
+    render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
+
+    fireEvent.click(screen.getByRole('checkbox'))
+
+    await waitFor(() => {
+      expect(toast.error).toHaveBeenCalledWith('Could not update Todo', {
+        description: 'Your change was undone. Please try again.',
+      })
+    })
+    expect(screen.getByRole('checkbox')).not.toBeChecked()
+  })
+
   it('saves Todo edits, closes, and replaces the Todo in the current Bucket cache', async () => {
     const updatedTodo = {
       ...existingTodo,
@@ -188,7 +227,6 @@ describe('Todo card edit dialog', () => {
         },
       ],
       title: 'Plan async review',
-      userId: 'user-1',
     }
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedListCategories.mockResolvedValue([category])
@@ -404,6 +442,26 @@ describe('Todo card edit dialog', () => {
     expect(await screen.findByText('Todo not found or unauthorized')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
     expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
+  })
+
+  it('refreshes the Bucket when the Todo being deleted no longer exists', async () => {
+    mockedGetTodos.mockResolvedValueOnce([existingTodo]).mockResolvedValue([])
+    mockedDeleteTodo.mockRejectedValue(
+      new Response(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Resource not found' } }), { status: 404 }),
+    )
+    const queryClient = createTestQueryClient()
+
+    render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
+
+    fireEvent.click(await screen.findByText(existingTodo.title))
+    expect(await screen.findByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Delete todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Delete todo' }))
+
+    expect(await screen.findByText('Could not delete the todo.')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([])
+    })
   })
 
   it('does not expose Todo deletion in create mode', async () => {

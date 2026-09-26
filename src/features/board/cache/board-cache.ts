@@ -102,7 +102,98 @@ const BoardCacheScopeSchema: z.ZodType<BoardCacheScope> = z.discriminatedUnion('
   z.object({ type: z.enum(['all', 'board', 'buckets', 'categories', 'migration-step', 'tags']) }).strict(),
 ])
 
+/**
+ * How a failed mutation relates to durable state: `rejected` left it untouched, `conflict` means the
+ * cached view is stale, and `uncertain` means the write may or may not have committed.
+ */
+export type MutationFailure = 'conflict' | 'rejected' | 'uncertain'
+
+const REJECTED_STATUSES = new Set([400, 401, 403, 429])
+const CONFLICT_STATUSES = new Set([404, 409])
+
+function getMutationFailure(error: unknown): MutationFailure {
+  if (error === undefined || (error instanceof Response && REJECTED_STATUSES.has(error.status))) {
+    return 'rejected'
+  }
+
+  if (error instanceof Response && CONFLICT_STATUSES.has(error.status)) {
+    return 'conflict'
+  }
+
+  return 'uncertain'
+}
+
+type PendingOptimisticChange = {
+  bucketIds: Array<number>
+  change: OptimisticBoardChange
+}
+
+type OptimisticState = {
+  /** Buckets touched by optimistic changes that were in flight together; refetched once none remain pending. */
+  overlappedBucketIds: Set<number>
+  pendingChanges: Set<PendingOptimisticChange>
+}
+
+// Shared by every cache instance of one QueryClient, since `useBoardCache` creates an instance per render.
+const optimisticStateByClient = new WeakMap<QueryClient, OptimisticState>()
+
+function getOptimisticState(queryClient: QueryClient) {
+  let optimisticState = optimisticStateByClient.get(queryClient)
+
+  if (!optimisticState) {
+    optimisticState = { overlappedBucketIds: new Set(), pendingChanges: new Set() }
+    optimisticStateByClient.set(queryClient, optimisticState)
+  }
+
+  return optimisticState
+}
+
 export function createBoardCache(queryClient: QueryClient) {
+  const { overlappedBucketIds, pendingChanges } = getOptimisticState(queryClient)
+
+  const track = (pendingChange: PendingOptimisticChange) => {
+    for (const otherChange of pendingChanges) {
+      if (otherChange.bucketIds.some((bucketId) => pendingChange.bucketIds.includes(bucketId))) {
+        for (const bucketId of [...otherChange.bucketIds, ...pendingChange.bucketIds]) {
+          overlappedBucketIds.add(bucketId)
+        }
+      }
+    }
+
+    pendingChanges.add(pendingChange)
+  }
+
+  // Refetches overlapped Buckets once no pending change touches them, since their responses may have arrived out of order.
+  const settle = async (syncedScope?: BoardCacheScope) => {
+    const settledBucketIds = [...overlappedBucketIds].filter(
+      (bucketId) => ![...pendingChanges].some((otherChange) => otherChange.bucketIds.includes(bucketId)),
+    )
+
+    for (const bucketId of settledBucketIds) {
+      overlappedBucketIds.delete(bucketId)
+    }
+
+    const bucketIdsToSync =
+      syncedScope?.type === 'all'
+        ? []
+        : settledBucketIds.filter(
+            (bucketId) => syncedScope?.type !== 'todos' || !syncedScope.bucketIds.includes(bucketId),
+          )
+
+    if (bucketIdsToSync.length > 0) {
+      await sync({ bucketIds: bucketIdsToSync, type: 'todos' })
+    }
+  }
+
+  // Layers still-pending optimistic changes back over canonical data written to `bucketIds`.
+  const reapplyPendingChanges = (bucketIds: Array<number> | 'all') => {
+    for (const pendingChange of pendingChanges) {
+      if (bucketIds === 'all' || pendingChange.bucketIds.some((bucketId) => bucketIds.includes(bucketId))) {
+        applyOptimisticChange(queryClient, pendingChange.change)
+      }
+    }
+  }
+
   const sync = async (scope: BoardCacheScope) => {
     const parsedScope = BoardCacheScopeSchema.safeParse(scope)
     const validScope = parsedScope.success ? parsedScope.data : ({ type: 'all' } as const)
@@ -117,6 +208,7 @@ export function createBoardCache(queryClient: QueryClient) {
           }),
         ),
       )
+      reapplyPendingChanges(validScope.bucketIds)
       return
     }
 
@@ -125,6 +217,7 @@ export function createBoardCache(queryClient: QueryClient) {
         predicate: (query) => BOARD_QUERY_ROOTS.has(query.queryKey[0]),
         refetchType: 'active',
       })
+      reapplyPendingChanges('all')
       return
     }
 
@@ -144,9 +237,10 @@ export function createBoardCache(queryClient: QueryClient) {
     }
 
     const committedChange = parsedChange.data
+    const affectedBucketIds = getAffectedBucketIds(committedChange)
 
     await Promise.all(
-      getAffectedBucketIds(committedChange).map((bucketId) =>
+      affectedBucketIds.map((bucketId) =>
         queryClient.cancelQueries({ exact: true, queryKey: boardCacheKeys.todos(bucketId) }),
       ),
     )
@@ -158,23 +252,37 @@ export function createBoardCache(queryClient: QueryClient) {
             compareTodoPosition,
           ),
         )
-        return
+        break
       case 'todo-deleted':
         updateLoadedTodos(queryClient, boardCacheKeys.todos(committedChange.previousBucketId), (todos) =>
           todos.filter((todo) => todo.id !== committedChange.todoId),
         )
-        return
+        break
       case 'todo-moved': {
         const bucketsToSync = applyCommittedTodoMove(queryClient, committedChange)
 
         if (bucketsToSync.length > 0) {
           await sync({ bucketIds: bucketsToSync, type: 'todos' })
         }
-        return
+        break
       }
       case 'todo-updated':
         applyCommittedTodoUpdate(queryClient, committedChange)
     }
+
+    reapplyPendingChanges(affectedBucketIds)
+  }
+
+  // Returns the scope it refetched, if any.
+  const reconcileFailure = async (failure: MutationFailure, scope: BoardCacheScope) => {
+    const syncedScope: BoardCacheScope | undefined =
+      failure === 'conflict' ? scope : failure === 'uncertain' ? { type: 'all' } : undefined
+
+    if (syncedScope) {
+      await sync(syncedScope)
+    }
+
+    return syncedScope
   }
 
   return {
@@ -187,14 +295,10 @@ export function createBoardCache(queryClient: QueryClient) {
       await Promise.all(queryKeys.map((queryKey) => queryClient.cancelQueries({ exact: true, queryKey })))
 
       const snapshots = queryKeys.map((queryKey) => snapshotQuery(queryClient, queryKey))
+      const pendingChange: PendingOptimisticChange = { bucketIds: affectedBucketIds, change }
 
-      if (change.type === 'todo-edited') {
-        updateLoadedTodos(queryClient, boardCacheKeys.todos(change.bucketId), (todos) =>
-          todos.map((todo) => (todo.id === change.todoId ? { ...todo, ...change.changes } : todo)),
-        )
-      } else {
-        applyOptimisticTodoMove(queryClient, change)
-      }
+      applyOptimisticChange(queryClient, change)
+      track(pendingChange)
 
       const optimisticRevisions = queryKeys.map((queryKey) => queryClient.getQueryState(queryKey)?.dataUpdateCount)
 
@@ -207,28 +311,46 @@ export function createBoardCache(queryClient: QueryClient) {
           }
 
           settled = true
+          pendingChanges.delete(pendingChange)
           await apply(committedChange)
+          await settle()
         },
-        async rollback() {
+        async rollback(error?: unknown) {
+          const failure = getMutationFailure(error)
+
           if (settled) {
-            return
+            return failure
           }
 
           settled = true
+          pendingChanges.delete(pendingChange)
           const hasInterveningWrite = queryKeys.some(
             (queryKey, index) => queryClient.getQueryState(queryKey)?.dataUpdateCount !== optimisticRevisions[index],
           )
 
+          const affectedScope: BoardCacheScope = { bucketIds: affectedBucketIds, type: 'todos' }
+
           if (hasInterveningWrite) {
-            await sync({ bucketIds: affectedBucketIds, type: 'todos' })
-            return
+            const syncedScope: BoardCacheScope = failure === 'uncertain' ? { type: 'all' } : affectedScope
+            await sync(syncedScope)
+            await settle(syncedScope)
+            return failure
           }
 
           for (const snapshot of snapshots) {
             restoreSnapshot(queryClient, snapshot)
           }
+
+          await settle(await reconcileFailure(failure, affectedScope))
+          return failure
         },
       }
+    },
+    /** Reconciles a failed non-optimistic mutation: conflicts refetch `scope`, uncertain outcomes resync the board. */
+    async recover(error: unknown, scope: BoardCacheScope) {
+      const failure = getMutationFailure(error)
+      await reconcileFailure(failure, scope)
+      return failure
     },
     sync,
   }
@@ -343,6 +465,17 @@ function restoreSnapshot(queryClient: QueryClient, snapshot: TodoQuerySnapshot) 
   }
 
   queryClient.setQueryData(snapshot.queryKey, snapshot.data)
+}
+
+function applyOptimisticChange(queryClient: QueryClient, change: OptimisticBoardChange) {
+  if (change.type === 'todo-moved') {
+    applyOptimisticTodoMove(queryClient, change)
+    return
+  }
+
+  updateLoadedTodos(queryClient, boardCacheKeys.todos(change.bucketId), (todos) =>
+    todos.map((todo) => (todo.id === change.todoId ? { ...todo, ...change.changes } : todo)),
+  )
 }
 
 function applyOptimisticTodoMove(queryClient: QueryClient, change: OptimisticTodoMove) {
