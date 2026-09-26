@@ -194,7 +194,7 @@ export function createBoardCache(queryClient: QueryClient) {
     }
   }
 
-  const sync = async (scope: BoardCacheScope) => {
+  const sync = async (scope: BoardCacheScope, refetchType: 'active' | 'all' = 'active') => {
     const parsedScope = BoardCacheScopeSchema.safeParse(scope)
     const validScope = parsedScope.success ? parsedScope.data : ({ type: 'all' } as const)
 
@@ -204,7 +204,7 @@ export function createBoardCache(queryClient: QueryClient) {
           queryClient.invalidateQueries({
             exact: true,
             queryKey: boardCacheKeys.todos(bucketId),
-            refetchType: 'active',
+            refetchType,
           }),
         ),
       )
@@ -215,7 +215,7 @@ export function createBoardCache(queryClient: QueryClient) {
     if (validScope.type === 'all') {
       await queryClient.invalidateQueries({
         predicate: (query) => BOARD_QUERY_ROOTS.has(query.queryKey[0]),
-        refetchType: 'active',
+        refetchType,
       })
       reapplyPendingChanges('all')
       return
@@ -224,7 +224,7 @@ export function createBoardCache(queryClient: QueryClient) {
     await queryClient.invalidateQueries({
       exact: true,
       queryKey: getQueryKeyForScope(validScope),
-      refetchType: 'active',
+      refetchType,
     })
   }
 
@@ -332,7 +332,8 @@ export function createBoardCache(queryClient: QueryClient) {
 
           if (hasInterveningWrite) {
             const syncedScope: BoardCacheScope = failure === 'uncertain' ? { type: 'all' } : affectedScope
-            await sync(syncedScope)
+            // The snapshot is no longer safe to restore, so refresh inactive loaded Buckets too.
+            await sync(syncedScope, 'all')
             await settle(syncedScope)
             return failure
           }

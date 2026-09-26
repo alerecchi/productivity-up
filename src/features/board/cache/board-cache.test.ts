@@ -737,6 +737,39 @@ describe('board cache overlapping optimistic changes', () => {
     unsubscribe()
   })
 
+  it('repairs an inactive Bucket after an overlapping mutation is rejected', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const firstTodo = createTodo({ id: 1, title: 'First' })
+    const secondTodo = createTodo({ completed: false, id: 2, position: 2048 })
+    const canonicalTodos = [firstTodo, { ...secondTodo, completed: true }]
+    const queryFn = vi.fn().mockResolvedValueOnce([firstTodo, secondTodo]).mockResolvedValue(canonicalTodos)
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const unsubscribe = observer.subscribe(() => undefined)
+
+    await observer.refetch()
+    unsubscribe()
+
+    const rejectedChange = await cache.begin({
+      bucketId: 10,
+      changes: { title: 'Optimistic title' },
+      todoId: firstTodo.id,
+      type: 'todo-edited',
+    })
+    const confirmedChange = await cache.begin({
+      bucketId: 10,
+      changes: { completed: true },
+      todoId: secondTodo.id,
+      type: 'todo-edited',
+    })
+
+    await confirmedChange.confirm({ previousBucketId: 10, todo: canonicalTodos[1], type: 'todo-updated' })
+    await rejectedChange.rollback(new Response(null, { status: 400 }))
+
+    expect(queryFn).toHaveBeenCalledTimes(2)
+    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual(canonicalTodos)
+  })
+
   it('does not refetch after optimistic changes that settle one after another', async () => {
     const queryClient = createQueryClient()
     const cache = createBoardCache(queryClient)
