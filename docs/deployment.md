@@ -62,7 +62,7 @@ EMAIL_FROM=...
 RESEND_API_KEY=...
 ```
 
-Do not create `.dev.vars`. Its presence prevents the Cloudflare Vite plugin from loading `.env.local`. Run the application normally with `pnpm dev`; local development does not select a Wrangler environment or use Hyperdrive.
+Do not create `.dev.vars`. Its presence prevents the Cloudflare Vite plugin from loading `.env.local`. Run the application normally with `pnpm dev`; local development does not select a Wrangler environment or use Hyperdrive. The top-level `USER_REALTIME` binding runs the realtime Durable Object locally, so `pnpm dev` serves the same WebSocket endpoint as deployed environments.
 
 Apply migrations to the development branch with:
 
@@ -87,7 +87,7 @@ VITE_APP_NAME=Productivity Up
 
 The direct URLs must point to separate Neon databases and use non-pooler hosts. Hyperdrive handles runtime connection pooling, so Neon pooler URLs are not part of this deployment model. The scripts expose only the selected direct URL to the Drizzle migration subprocess. Install, build, Wrangler, and metadata subprocesses receive neither direct URL, smoke-test credentials, setup credentials, nor local application secrets. `STAGING_PUBLIC_URL` is an operator input used to derive the staging build URL, but it is also removed before subprocesses start. The production command always builds with `https://productivity-up.com` as its public URL.
 
-The staging smoke-test account must already exist, have a verified email address, and have a readable board. The smoke test signs in and loads `/board`; it does not create, edit, or delete data.
+The staging smoke-test account must already exist, have a verified email address, and have a readable board. The smoke test signs in, loads `/board`, and opens the realtime WebSocket at `/api/realtime`. The signed-in connection must answer a heartbeat, while signed-out, foreign-origin, and caller-supplied User ID upgrades must be refused. It does not create, edit, or delete data.
 
 Create or refresh that account without resetting staging data:
 
@@ -105,7 +105,7 @@ Staging uses disposable data and is not a production release. Before the first p
 pnpm deploy:staging
 ```
 
-Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test. Every request crosses the runtime configuration check, so a successful sign-in and board load prove that the Worker received its Hyperdrive, Durable Object, Queue, dead-letter Queue, variables, and secrets. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
+Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test, including the realtime WebSocket checks. Every request crosses the runtime configuration check, so a successful sign-in and board load prove that the Worker received its Hyperdrive, Durable Object, Queue, dead-letter Queue, variables, and secrets. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
 
 ## Production
 

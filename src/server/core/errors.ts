@@ -5,6 +5,7 @@ export type ErrorCode =
   | 'CONFLICT'
   | 'EMAIL_VERIFICATION_REQUIRED'
   | 'INTERNAL_ERROR'
+  | 'ORIGIN_NOT_ALLOWED'
   | 'RATE_LIMITED'
   | 'RESOURCE_NOT_FOUND'
   | 'VALIDATION_FAILED'
@@ -33,6 +34,10 @@ export function authenticationRequired() {
 
 export function emailVerificationRequired() {
   return new OperationError(403, 'EMAIL_VERIFICATION_REQUIRED', 'Email verification is required')
+}
+
+export function originNotAllowed() {
+  return new OperationError(403, 'ORIGIN_NOT_ALLOWED', 'Origin is not allowed')
 }
 
 export type MappedOperationError = {

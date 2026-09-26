@@ -5,6 +5,7 @@ import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/reac
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 
 import { userSessionQuery } from '@/features/authentication/queries/user-session'
+import { RealtimeSync } from '@/features/board/realtime'
 import { AppNavigation } from '@/features/shared/components/app-navigation'
 import { Toaster } from '@/features/shared/components/ui/sonner'
 
@@ -39,6 +40,8 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 })
 
 function RootDocument({ children }: { children: React.ReactNode }) {
+  const { user } = Route.useRouteContext()
+
   return (
     <html lang='en'>
       <head>
@@ -46,6 +49,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <AppNavigation />
+        <RealtimeSync userId={user?.emailVerified ? user.id : undefined} />
         {children}
         <Toaster />
         <TanStackDevtools

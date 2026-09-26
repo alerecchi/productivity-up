@@ -10,6 +10,15 @@
       "storage": "sqlite",
     },
   },
+  // Local development binding; deployed environments declare their own.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "USER_REALTIME",
+        "class_name": "UserRealtimeDurableObject",
+      },
+    ],
+  },
   "env": {
     "staging": {
       "name": "productivity-up-staging",

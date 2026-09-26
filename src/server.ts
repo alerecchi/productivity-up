@@ -1,6 +1,7 @@
 import handler from '@tanstack/react-start/server-entry'
 
-import { parseCloudflareRuntimeEnvironment } from '@/config/runtime-environment'
+import { getRuntimeEnvironment } from '@/config/runtime-env'
+import { REALTIME_PATH, createRealtimeGatewayDependencies, handleRealtimeRequest } from '@/server/realtime/gateway'
 
 export { UserRealtimeDurableObject } from '@/server/realtime/user-realtime-durable-object'
 
@@ -9,12 +10,18 @@ type QueueBatch = {
 }
 
 export default {
-  async fetch(request: Request, environment: Cloudflare.Env) {
-    parseCloudflareRuntimeEnvironment(environment)
+  async fetch(request: Request) {
+    const environment = getRuntimeEnvironment()
+
+    // Handled before TanStack Start so the Durable Object's WebSocket upgrade response reaches the client as-is.
+    if (new URL(request.url).pathname === REALTIME_PATH) {
+      return await handleRealtimeRequest(request, createRealtimeGatewayDependencies(environment))
+    }
+
     return await handler.fetch(request)
   },
-  queue(batch: QueueBatch, environment: Cloudflare.Env) {
-    parseCloudflareRuntimeEnvironment(environment)
+  queue(batch: QueueBatch) {
+    getRuntimeEnvironment()
     batch.retryAll()
   },
 }

@@ -34,3 +34,18 @@ export function emitCompletionRecord(record: CompletionRecord) {
 export function responseByteLength(value: unknown) {
   return new TextEncoder().encode(JSON.stringify(value)).byteLength
 }
+
+/** Returns the Cloudflare colo that received the request, or `unknown` outside Cloudflare. */
+export function getRequestRegion(request: Request | undefined) {
+  if (!request) {
+    return 'unknown'
+  }
+
+  const cloudflare = Reflect.get(request, 'cf')
+  if (!cloudflare || typeof cloudflare !== 'object') {
+    return 'unknown'
+  }
+
+  const colo = Reflect.get(cloudflare, 'colo')
+  return typeof colo === 'string' ? colo : 'unknown'
+}
