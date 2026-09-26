@@ -1,9 +1,11 @@
 import { drizzleAdapter } from 'better-auth/adapters/drizzle'
+import { APIError, createAuthMiddleware, getSessionFromCtx } from 'better-auth/api'
 import { betterAuth } from 'better-auth/minimal'
 import { tanstackStartCookies } from 'better-auth/tanstack-start'
 
 import { getRuntimeEnvironment } from '@/config/runtime-env'
 import { AUTH_USER_FIELDS, UserTimeZoneSchema } from '@/lib/auth-user-fields'
+import { authorizeAccountOperation } from '@/server/auth-operation-access'
 import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
@@ -36,6 +38,9 @@ export function createAuth(
       database: {
         joins: true,
       },
+      // Explicit so Better Auth never relaxes origin and CSRF checks based on the runtime environment.
+      disableCSRFCheck: false,
+      disableOriginCheck: false,
     },
     database: drizzleAdapter(db, {
       provider: 'pg',
@@ -58,6 +63,7 @@ export function createAuth(
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
+      revokeSessionsOnPasswordReset: true,
       sendResetPassword: async ({ user, url }) => {
         await sendResetPassword({
           to: user.email,
@@ -69,7 +75,7 @@ export function createAuth(
     session: {
       cookieCache: {
         enabled: true,
-        maxAge: 15 * 60, // cache for 5 minutes
+        maxAge: 5 * 60,
       },
     },
     user: {
@@ -89,6 +95,27 @@ export function createAuth(
       sendVerificationEmail: async ({ user, url }) => {
         await sendEmailConfirmation({ to: user.email, userName: user.name, url })
       },
+    },
+    hooks: {
+      before: createAuthMiddleware(async (context) => {
+        const access = await authorizeAccountOperation(context.path, () =>
+          getSessionFromCtx(context, { disableCookieCache: true }),
+        )
+
+        if (access === 'authentication-required') {
+          throw new APIError('UNAUTHORIZED', {
+            code: 'UNAUTHORIZED',
+            message: 'Unauthorized',
+          })
+        }
+
+        if (access === 'email-verification-required') {
+          throw new APIError('FORBIDDEN', {
+            code: 'EMAIL_VERIFICATION_REQUIRED',
+            message: 'Email verification is required',
+          })
+        }
+      }),
     },
     plugins: [tanstackStartCookies()],
   })
