@@ -1,5 +1,6 @@
 import ResetPasswordChange from '@features/authentication/components/reset-password-change'
 import ResetPasswordRequest from '@features/authentication/components/reset-password-request'
+import { Button } from '@shared/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@shared/components/ui/card'
 import { useState } from 'react'
 import type { ReactNode } from 'react'
@@ -69,7 +70,11 @@ function getCardContent(
     cardTitle = 'Password reset link sent!'
     cardSubtitle =
       "If this email exists in our system, check your email for the reset link. If it doesn't appear within a few minutes, check your spam folder."
-    cardContent = null
+    cardContent = (
+      <Button className='w-full' onClick={() => setFormSubmitted(false)} type='button' variant='outline'>
+        Request another reset link
+      </Button>
+    )
   } else if (token) {
     cardTitle = 'Change your password'
     cardSubtitle = 'Please enter your new password to regain access to your account'

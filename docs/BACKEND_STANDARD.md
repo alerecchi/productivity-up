@@ -188,6 +188,7 @@ Each named backend operation MUST emit one completion record. The record contain
 - cold-start signal when available;
 - conflict and rate-limit flags.
 - connection-close failure flag, without changing the operation's committed outcome.
+- for Queue deliveries: the opaque work ID, delivery attempt, and fixed provider error code.
 
 Emit the record once at completion, including failed operations. Use structured fields that can be queried in Cloudflare Workers Logs and correlated with traces. Keep aggregate coverage and telemetry volume informational until production-shaped evidence supports numeric budgets.
 

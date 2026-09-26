@@ -23,6 +23,7 @@
     "staging": {
       "name": "productivity-up-staging",
       "workers_dev": true,
+      "triggers": { "crons": ["*/15 * * * *"] },
       "version_metadata": {
         "binding": "VERSION_METADATA",
       },
@@ -65,6 +66,7 @@
           {
             "queue": "productivity-up-staging-auth-email",
             "dead_letter_queue": "productivity-up-staging-auth-email-dlq",
+            "max_retries": 5,
           },
         ],
       },
@@ -81,6 +83,7 @@
     "production": {
       "name": "productivity-up-production",
       "workers_dev": false,
+      "triggers": { "crons": ["*/15 * * * *"] },
       "version_metadata": {
         "binding": "VERSION_METADATA",
       },
@@ -123,6 +126,7 @@
           {
             "queue": "productivity-up-production-auth-email",
             "dead_letter_queue": "productivity-up-production-auth-email-dlq",
+            "max_retries": 5,
           },
         ],
       },

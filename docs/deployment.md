@@ -28,7 +28,13 @@ Each environment also has isolated realtime and email-delivery resources:
 | Staging     | `USER_REALTIME`        | `productivity-up-staging-auth-email`    | `productivity-up-staging-auth-email-dlq`    |
 | Production  | `USER_REALTIME`        | `productivity-up-production-auth-email` | `productivity-up-production-auth-email-dlq` |
 
-`AUTH_EMAIL_QUEUE` and `AUTH_EMAIL_DEAD_LETTER_QUEUE` expose the two Queues to application code. The email Queue consumer sends exhausted messages to the environment's dead-letter Queue. Until durable email delivery is implemented, the Worker retries every received Queue batch instead of acknowledging and losing unknown work.
+`AUTH_EMAIL_QUEUE` and `AUTH_EMAIL_DEAD_LETTER_QUEUE` expose the two Queues to application code. Verification and password-reset requests first store the email work in the `auth_email_deliveries` table, then attempt a Queue write. Once work is stored in the outbox, Queue publication is retried until it succeeds or the link expires. Better Auth can return a generic response even if the initial Queue write fails. Queue messages contain only the opaque work ID. The consumer sends the email through Resend with an idempotency key derived from that ID, retries failed attempts after 10, 30, 60, and 120 seconds, and sends the work ID to the dead-letter Queue after the fifth failed attempt. Sent, expired, and dead-lettered rows no longer store the recipient, name, or link. The consumer's `max_retries` of 5 is a platform backstop for failures outside the delivery code. In local development there is no Queue, so the email is sent during the request.
+
+Each Queue message emits one `auth_email.deliver` record with the work ID, attempt, outcome, safe Resend error code, and durations. To investigate a dead-lettered email, find its work ID in those records or in the `auth_email_deliveries` table; the row keeps its User ID and attempt count.
+
+Each deployed Worker runs outbox maintenance every 15 minutes. It republishes pending, unexpired rows without a confirmed Queue write, so a transient Queue failure stays recoverable while Better Auth preserves generic public responses. The relay marks rows queued only after the Queue write succeeds; duplicate publications remain safe through the provider idempotency key. It then clears recipient details and action URLs from pending rows whose links have expired, including rows stranded by database or Queue failures after the platform moves a message to the dead-letter Queue. The dispatcher and expiry sweep emit allow-listed completion records, including failures.
+
+An outbox insert failure has no stored work for the relay to retry. The producer emits an `auth_email.outbox_insert` failure record with only the email kind, deployment version, and a random request ID; it does not include the address, link, User ID, or raw database error. Monitor this event in both Workers and alert an operator on any occurrence. The public response may still be generic, so users can request another verification link from `/email-confirmation` or another password-reset link from `/reset-password`.
 
 Create the Queues once before deploying this configuration:
 
@@ -107,6 +113,38 @@ pnpm db:setup-staging-smoke-account
 ```
 
 The command uses the staging direct database URL, marks the configured user as verified, refreshes its credential password, and creates any missing active Buckets. It refuses pooled connections and a staging URL that matches production. Rerunning it preserves existing users, Buckets, Todos, Categories, and Tags.
+
+### Authentication email test
+
+Run this after a staging deployment that changes email delivery:
+
+```sh
+pnpm test:staging-email
+```
+
+It signs up a throwaway `delivered+<id>@resend.dev` User and checks three things:
+
+- the verification email is queued, sent through Resend to that address, and its outbox row keeps no recipient or link;
+- a work item with an address Resend rejects is retried five times and dead-lettered;
+- `wrangler tail` output during the run contains delivery records but no recipient, link token, password, or credential.
+
+It then deletes the User and its outbox rows. The dead-letter check waits for the full retry schedule, so a run takes about five minutes. Add these values to `.env.deploy.local` for it:
+
+```dotenv
+CLOUDFLARE_ACCOUNT_ID=...
+STAGING_QUEUES_API_TOKEN=...
+```
+
+`STAGING_QUEUES_API_TOKEN` is a Cloudflare API token with Queues edit permission, used only to publish the dead-letter work item. The command also reads `STAGING_RESEND_API_KEY` from `.env.cloudflare-setup.local`, and it uses your Wrangler login for `wrangler tail`. It is not part of `pnpm deploy:staging`.
+
+### Removing pre-outbox Queue messages
+
+Messages queued before the outbox existed contain the recipient address and link. The new consumer acknowledges them without sending, and their links expire within an hour. After the first deployment of the outbox consumer to each environment, purge its dead-letter Queue once, because earlier failures may have left such messages there:
+
+```sh
+pnpm exec wrangler queues purge productivity-up-staging-auth-email-dlq
+pnpm exec wrangler queues purge productivity-up-production-auth-email-dlq
+```
 
 ## Staging
 

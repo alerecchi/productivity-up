@@ -1,4 +1,4 @@
-export { buildAuth, createAuth } from '@/server/auth/create-auth'
+export { buildAuth, createAuth, didAuthEmailEnqueueFail } from '@/server/auth/create-auth'
 export type { Auth, AuthDependencies, AuthRuntimeConfiguration } from '@/server/auth/create-auth'
 export { handleAuthRequest } from '@/server/auth/handle-auth-request'
 export { AUTH_RATE_LIMIT_RULES, createAuthRateLimitStorage, createNeonRateLimitCounter } from '@/server/auth/rate-limit'

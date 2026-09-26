@@ -37,11 +37,11 @@ function createInMemoryCounter(): RateLimitCounter {
   }
 }
 
-function createTestAuth(state: SharedState) {
+function createTestAuth(state: SharedState, enqueueAuthEmail = () => Promise.resolve()) {
   return buildAuth(
     {
       database: memoryAdapter(state.tables),
-      enqueueAuthEmail: vi.fn(() => Promise.resolve()),
+      enqueueAuthEmail: vi.fn(enqueueAuthEmail),
       provisionInitialBoard: () => Promise.resolve(),
       rateLimitStorage: createAuthRateLimitStorage(state.counter, () => state.now),
     },
@@ -211,6 +211,56 @@ describe('public authentication enumeration resistance', () => {
     ])
 
     expect(await comparable(existing, existingEmail)).toEqual(await comparable(missing, missingEmail))
+  })
+
+  it('keeps sign-up responses generic when enqueue fails for a new account', async () => {
+    const state = createSharedState()
+    const setupAuth = createTestAuth(state)
+    const created = await handleAuthRequest(authRequest('/sign-up/email', signUpBody(existingEmail)), setupAuth)
+    expect(created.status).toBe(200)
+
+    const failingAuth = createTestAuth(state, () => Promise.reject(new Error('Queue unavailable')))
+    const [existing, missing] = await Promise.all([
+      handleAuthRequest(authRequest('/sign-up/email', signUpBody(existingEmail)), failingAuth),
+      handleAuthRequest(authRequest('/sign-up/email', signUpBody(missingEmail)), failingAuth),
+    ])
+
+    expect(await comparable(existing, existingEmail)).toEqual(await comparable(missing, missingEmail))
+    expect(existing.status).toBe(200)
+    expect(existing.headers.get('set-cookie')).toBeNull()
+    expect(missing.headers.get('set-cookie')).toBeNull()
+  })
+
+  it('keeps password reset responses generic when enqueue fails for an existing account', async () => {
+    const state = createSharedState()
+    const setupAuth = createTestAuth(state)
+    const created = await handleAuthRequest(authRequest('/sign-up/email', signUpBody(existingEmail)), setupAuth)
+    expect(created.status).toBe(200)
+
+    const failingAuth = createTestAuth(state, () => Promise.reject(new Error('Outbox unavailable')))
+    const [existing, missing] = await Promise.all([
+      handleAuthRequest(authRequest('/request-password-reset', { email: existingEmail }), failingAuth),
+      handleAuthRequest(authRequest('/request-password-reset', { email: missingEmail }), failingAuth),
+    ])
+
+    expect(await comparable(existing, existingEmail)).toEqual(await comparable(missing, missingEmail))
+    expect(existing.status).toBe(200)
+  })
+
+  it('keeps verification resend responses generic when queue publication fails', async () => {
+    const state = createSharedState()
+    const setupAuth = createTestAuth(state)
+    const created = await handleAuthRequest(authRequest('/sign-up/email', signUpBody(existingEmail)), setupAuth)
+    expect(created.status).toBe(200)
+
+    const failingAuth = createTestAuth(state, () => Promise.reject(new Error('Queue unavailable')))
+    const [existing, missing] = await Promise.all([
+      handleAuthRequest(authRequest('/send-verification-email', { email: existingEmail }), failingAuth),
+      handleAuthRequest(authRequest('/send-verification-email', { email: missingEmail }), failingAuth),
+    ])
+
+    expect(await comparable(existing, existingEmail)).toEqual(await comparable(missing, missingEmail))
+    expect(existing.status).toBe(200)
   })
 
   it('applies the enumeration response hold to normalized trailing-slash paths', async () => {

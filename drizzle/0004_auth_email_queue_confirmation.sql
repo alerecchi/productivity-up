@@ -1,0 +1,1 @@
+ALTER TABLE "auth_email_deliveries" ADD COLUMN "queued_at" timestamp with time zone;

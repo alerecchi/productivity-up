@@ -1,4 +1,5 @@
 import type { Auth } from '@/server/auth/create-auth'
+import { didAuthEmailEnqueueFail } from '@/server/auth/create-auth'
 import { OperationError, mapOperationError } from '@/server/core/errors'
 
 // Routes whose work differs between existing and missing emails; each response is held to the same minimum duration.
@@ -21,6 +22,11 @@ export async function handleAuthRequest(request: Request, auth: Auth) {
   const [response] = await Promise.all([auth.handler(request), minimumDuration])
 
   if (response.status !== 429) {
+    if (pathname === '/api/auth/send-verification-email' && didAuthEmailEnqueueFail(auth)) {
+      // Better Auth propagates resend callback failures for existing Users only; keep the public response generic.
+      return new Response(JSON.stringify({ status: true }), { headers: response.headers, status: 200 })
+    }
+
     return response
   }
 

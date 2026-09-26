@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm'
-import { bigint, boolean, date, index, integer, pgTable, text, timestamp } from 'drizzle-orm/pg-core'
+import { bigint, boolean, date, index, integer, pgEnum, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core'
 
 export const users = pgTable('users', {
   id: text('id').primaryKey(),
@@ -85,6 +85,28 @@ export const authRateLimits = pgTable(
   },
   (table) => [index('auth_rate_limits_window_started_at_idx').on(table.windowStartedAt)],
 )
+
+export const AuthEmailKindEnum = pgEnum('auth_email_kind', ['email_verification', 'password_reset'])
+export const AuthEmailStatusEnum = pgEnum('auth_email_status', ['pending', 'sent', 'dead_lettered', 'expired'])
+
+// Outbox for queued authentication email; see src/server/email/queue.ts. Final states clear the recipient, name, and URL.
+export const authEmailDeliveries = pgTable('auth_email_deliveries', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id')
+    .references(() => users.id, { onDelete: 'cascade' })
+    .notNull(),
+  kind: AuthEmailKindEnum('kind').notNull(),
+  status: AuthEmailStatusEnum('status').default('pending').notNull(),
+  queuedAt: timestamp('queued_at', { withTimezone: true }),
+  recipient: text('recipient'),
+  recipientName: text('recipient_name'),
+  actionUrl: text('action_url'),
+  attempts: integer('attempts').default(0).notNull(),
+  providerMessageId: text('provider_message_id'),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true }),
+})
 
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(sessions),

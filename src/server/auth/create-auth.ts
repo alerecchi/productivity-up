@@ -12,8 +12,8 @@ import type { AuthRateLimitStorage } from '@/server/auth/rate-limit'
 import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
-import { enqueueAuthEmail } from '@/server/email/queue'
-import type { AuthEmailMessage } from '@/server/email/queue'
+import { AUTH_EMAIL_LINK_EXPIRES_IN_SECONDS, createAuthEmailProducer } from '@/server/email/queue'
+import type { AuthEmailWork } from '@/server/email/queue'
 import { provisionInitialBoard } from '@/server/functions/board/lifecycle'
 
 export type AuthRuntimeConfiguration = {
@@ -28,11 +28,18 @@ export type AuthDependencies = {
   provisionInitialBoard: (user: { id: string; timeZone: string }) => Promise<void>
   /** Rate-limit state shared by every Worker isolate. */
   rateLimitStorage: AuthRateLimitStorage
-  /** Durably queues verification and password-reset email for delivery. */
-  enqueueAuthEmail: (message: AuthEmailMessage) => Promise<void>
+  /** Durably queues verification and password-reset email for delivery; resolves after the queue write. */
+  enqueueAuthEmail: (work: AuthEmailWork) => Promise<void>
 }
 
 export type Auth = ReturnType<typeof buildAuth>
+
+const authInstancesWithEmailEnqueueFailure = new WeakSet<object>()
+
+/** Reports whether an enqueue callback failed while this request-scoped auth instance handled a request. */
+export function didAuthEmailEnqueueFail(auth: Auth) {
+  return authInstancesWithEmailEnqueueFailure.has(auth)
+}
 
 /** Creates the production Better Auth instance for one invocation's database connection. */
 export function createAuth(
@@ -53,7 +60,7 @@ export function createAuth(
           userId: id,
         })
       },
-      enqueueAuthEmail,
+      enqueueAuthEmail: createAuthEmailProducer(db),
       rateLimitStorage: createAuthRateLimitStorage(createNeonRateLimitCounter(db)),
     },
     configuration,
@@ -62,7 +69,17 @@ export function createAuth(
 
 /** Creates a Better Auth instance from explicit dependencies. */
 export function buildAuth(dependencies: AuthDependencies, configuration: AuthRuntimeConfiguration) {
-  return betterAuth({
+  const authRef: { current?: object } = {}
+  const enqueueAuthEmail = async (work: AuthEmailWork) => {
+    try {
+      await dependencies.enqueueAuthEmail(work)
+    } catch (error) {
+      if (authRef.current) authInstancesWithEmailEnqueueFailure.add(authRef.current)
+      throw error
+    }
+  }
+
+  const auth = betterAuth({
     baseURL: configuration.baseUrl,
     secret: configuration.secret,
     advanced: {
@@ -96,9 +113,16 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,
+      resetPasswordTokenExpiresIn: AUTH_EMAIL_LINK_EXPIRES_IN_SECONDS,
       revokeSessionsOnPasswordReset: true,
       sendResetPassword: ({ user, url }) => {
-        return dependencies.enqueueAuthEmail({ to: user.email, type: 'password-reset', url, userName: user.name })
+        return enqueueAuthEmail({
+          actionUrl: url,
+          kind: 'password_reset',
+          recipient: user.email,
+          recipientName: user.name,
+          userId: user.id,
+        })
       },
     },
     session: {
@@ -121,8 +145,15 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       sendOnSignUp: true,
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
+      expiresIn: AUTH_EMAIL_LINK_EXPIRES_IN_SECONDS,
       sendVerificationEmail: ({ user, url }) => {
-        return dependencies.enqueueAuthEmail({ to: user.email, type: 'verification', url, userName: user.name })
+        return enqueueAuthEmail({
+          actionUrl: url,
+          kind: 'email_verification',
+          recipient: user.email,
+          recipientName: user.name,
+          userId: user.id,
+        })
       },
     },
     hooks: {
@@ -153,4 +184,7 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       enabled: true,
     },
   })
+
+  authRef.current = auth
+  return auth
 }
