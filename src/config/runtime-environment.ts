@@ -5,7 +5,7 @@ export type RuntimeQueue = {
 }
 
 export type RuntimeDurableObjectNamespace = {
-  getByName: (name: string) => unknown
+  getByName: (name: string) => { fetch: (request: Request) => Promise<Response> }
 }
 
 export type RuntimeEnvironment = {
@@ -23,6 +23,9 @@ export type RuntimeEnvironment = {
     apiKey: string
     from: string
   }
+  realtime: {
+    userRealtime: RuntimeDurableObjectNamespace
+  }
   version: string
 } & (
   | {
@@ -32,7 +35,6 @@ export type RuntimeEnvironment = {
       bindings: {
         authEmailDeadLetterQueue: RuntimeQueue
         authEmailQueue: RuntimeQueue
-        userRealtime: RuntimeDurableObjectNamespace
       }
       deployment: 'production' | 'staging'
     }
@@ -42,16 +44,17 @@ const absoluteHttpUrl = z.string().refine((value) => hasProtocol(value, ['http:'
 
 const postgresUrl = z.string().refine((value) => hasProtocol(value, ['postgres:', 'postgresql:']))
 
+const queueSchema = z.custom<RuntimeQueue>(hasCallableProperty('send'))
+const durableObjectNamespaceSchema = z.custom<RuntimeDurableObjectNamespace>(hasCallableProperty('getByName'))
+
 const commonSchema = z.object({
   APP_NAME: z.string().trim().min(1),
   BETTER_AUTH_SECRET: z.string().min(32),
   BETTER_AUTH_URL: absoluteHttpUrl,
   EMAIL_FROM: z.email(),
   RESEND_API_KEY: z.string().trim().min(1),
+  USER_REALTIME: durableObjectNamespaceSchema,
 })
-
-const queueSchema = z.custom<RuntimeQueue>(hasCallableProperty('send'))
-const durableObjectNamespaceSchema = z.custom<RuntimeDurableObjectNamespace>(hasCallableProperty('getByName'))
 
 const developmentSchema = commonSchema.extend({
   DATABASE_URL: postgresUrl,
@@ -62,7 +65,6 @@ const cloudflareSchema = commonSchema.extend({
   AUTH_EMAIL_QUEUE: queueSchema,
   ENVIRONMENT: z.enum(['production', 'staging']),
   HYPERDRIVE: z.object({ connectionString: postgresUrl }),
-  USER_REALTIME: durableObjectNamespaceSchema,
   VERSION_METADATA: z.object({ id: z.string().trim().min(1) }),
 })
 
@@ -92,7 +94,6 @@ export function parseCloudflareRuntimeEnvironment(source: unknown): RuntimeEnvir
     bindings: {
       authEmailDeadLetterQueue: environment.AUTH_EMAIL_DEAD_LETTER_QUEUE,
       authEmailQueue: environment.AUTH_EMAIL_QUEUE,
-      userRealtime: environment.USER_REALTIME,
     },
     database: { connectionString: environment.HYPERDRIVE.connectionString },
     deployment: environment.ENVIRONMENT,
@@ -111,6 +112,7 @@ function commonEnvironment(environment: z.infer<typeof commonSchema>) {
       apiKey: environment.RESEND_API_KEY,
       from: environment.EMAIL_FROM,
     },
+    realtime: { userRealtime: environment.USER_REALTIME },
   }
 }
 

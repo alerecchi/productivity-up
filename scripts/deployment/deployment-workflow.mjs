@@ -239,6 +239,7 @@ async function runStagingSmokeTest(deploymentUrl) {
       throw new Error(`Authenticated staging board load returned HTTP ${boardResponse.status}.`)
     }
     await boardResponse.arrayBuffer()
+    await verifyRealtimeTransport(deploymentUrl, cookies)
   } finally {
     const signOutResponse = await fetch(new URL('/api/auth/sign-out', deploymentUrl), {
       body: JSON.stringify({}),
@@ -251,6 +252,60 @@ async function runStagingSmokeTest(deploymentUrl) {
     }
     await signOutResponse.arrayBuffer()
   }
+}
+
+/**
+ * Proves the authenticated WebSocket path through the Worker and Durable Object: the signed-in User connects
+ * and gets a heartbeat answer, while signed-out and foreign-origin upgrades are refused.
+ */
+export async function verifyRealtimeTransport(deploymentUrl, cookies) {
+  const origin = new URL(deploymentUrl).origin
+  const realtimeUrl = new URL(`/api/realtime?clientInstanceId=${crypto.randomUUID()}`, deploymentUrl)
+  realtimeUrl.protocol = realtimeUrl.protocol === 'https:' ? 'wss:' : 'ws:'
+
+  const authenticated = await openRealtimeSocket(realtimeUrl, { cookie: cookies, origin })
+  if (authenticated.outcome !== 'pong') {
+    throw new Error(`Authenticated realtime connection did not answer a heartbeat (${authenticated.outcome}).`)
+  }
+
+  for (const [label, headers] of [
+    ['signed-out', { origin }],
+    ['foreign-origin', { cookie: cookies, origin: 'https://foreign.example' }],
+  ]) {
+    const rejected = await openRealtimeSocket(realtimeUrl, headers)
+    if (rejected.outcome !== 'rejected') {
+      throw new Error(`A ${label} realtime connection was not rejected (${rejected.outcome}).`)
+    }
+  }
+
+  // A caller cannot select another User's Durable Object, even while authenticated.
+  const forgedUserUrl = new URL(realtimeUrl)
+  forgedUserUrl.searchParams.set('userId', 'another-user')
+  const forgedUser = await openRealtimeSocket(forgedUserUrl, { cookie: cookies, origin })
+  if (forgedUser.outcome !== 'rejected') {
+    throw new Error(`A caller-supplied realtime User ID was not rejected (${forgedUser.outcome}).`)
+  }
+}
+
+function openRealtimeSocket(url, headers, timeoutMs = 10_000) {
+  return new Promise((resolve) => {
+    const socket = new WebSocket(url, { headers })
+    let opened = false
+    const finish = (outcome) => {
+      clearTimeout(timer)
+      socket.onclose = socket.onerror = socket.onmessage = socket.onopen = null
+      socket.close()
+      resolve({ outcome })
+    }
+    const timer = setTimeout(() => finish('timed out'), timeoutMs)
+
+    socket.onopen = () => {
+      opened = true
+      socket.send('ping')
+    }
+    socket.onmessage = (event) => finish(event.data === 'pong' ? 'pong' : 'unexpected message')
+    socket.onerror = socket.onclose = () => finish(opened ? 'closed' : 'rejected')
+  })
 }
 
 export function createCommandEnvironment(environmentName, sourceEnvironment = process.env) {

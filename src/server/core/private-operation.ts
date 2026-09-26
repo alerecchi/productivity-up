@@ -5,7 +5,12 @@ import type { z } from 'zod'
 import { getRuntimeEnvironment } from '@/config/runtime-env'
 import { createAuth } from '@/server/auth'
 import { authenticationRequired, emailVerificationRequired, mapOperationError } from '@/server/core/errors'
-import { createDatabaseMetrics, emitCompletionRecord, responseByteLength } from '@/server/core/telemetry'
+import {
+  createDatabaseMetrics,
+  emitCompletionRecord,
+  getRequestRegion,
+  responseByteLength,
+} from '@/server/core/telemetry'
 import type { CompletionRecordEmitter } from '@/server/core/telemetry'
 import { connectDatabase } from '@/server/db/client'
 import type { Database } from '@/server/db/client'
@@ -149,7 +154,7 @@ export function createPrivateOperation<TResponse extends z.ZodType>(
       operation,
       outcome,
       rateLimited,
-      region: getRegion(request),
+      region: getRequestRegion(request),
       requestId,
       responseBytes,
       status,
@@ -163,20 +168,6 @@ export function createPrivateOperation<TResponse extends z.ZodType>(
 
     return operationResult as PrivateOperationResult
   })
-}
-
-function getRegion(request: Request | undefined) {
-  if (!request) {
-    return 'unknown'
-  }
-
-  const cloudflare = Reflect.get(request, 'cf')
-  if (!cloudflare || typeof cloudflare !== 'object') {
-    return 'unknown'
-  }
-
-  const colo = Reflect.get(cloudflare, 'colo')
-  return typeof colo === 'string' ? colo : 'unknown'
 }
 
 function roundDuration(durationMs: number) {

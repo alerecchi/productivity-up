@@ -16,7 +16,7 @@ const commonEnvironment = {
 
 const authEmailQueue = { send: () => Promise.resolve() }
 const authEmailDeadLetterQueue = { send: () => Promise.resolve() }
-const userRealtime = { getByName: () => ({}) }
+const userRealtime = { getByName: () => ({ fetch: () => Promise.resolve(new Response()) }) }
 const versionMetadata = { id: 'worker-version-id' }
 
 describe('development runtime configuration', () => {
@@ -25,6 +25,7 @@ describe('development runtime configuration', () => {
       parseDevelopmentRuntimeEnvironment({
         ...commonEnvironment,
         DATABASE_URL: 'postgresql://development.example.test/productivity_up',
+        USER_REALTIME: userRealtime,
       }),
     ).toEqual({
       application: { name: 'Productivity Up' },
@@ -38,6 +39,7 @@ describe('development runtime configuration', () => {
         apiKey: 'test-resend-api-key',
         from: 'noreply@example.test',
       },
+      realtime: { userRealtime },
       version: 'development',
     })
   })
@@ -49,14 +51,28 @@ describe('development runtime configuration', () => {
       parseDevelopmentRuntimeEnvironment({
         ...commonEnvironment,
         BETTER_AUTH_SECRET: secretValue,
+        USER_REALTIME: userRealtime,
       }),
     ).toThrow('Missing or invalid runtime configuration: DATABASE_URL.')
 
     try {
-      parseDevelopmentRuntimeEnvironment({ ...commonEnvironment, BETTER_AUTH_SECRET: secretValue })
+      parseDevelopmentRuntimeEnvironment({
+        ...commonEnvironment,
+        BETTER_AUTH_SECRET: secretValue,
+        USER_REALTIME: userRealtime,
+      })
     } catch (error) {
       expect(String(error)).not.toContain(secretValue)
     }
+  })
+
+  it('rejects a missing realtime Durable Object binding', () => {
+    expect(() =>
+      parseDevelopmentRuntimeEnvironment({
+        ...commonEnvironment,
+        DATABASE_URL: 'postgresql://development.example.test/productivity_up',
+      }),
+    ).toThrow('Missing or invalid runtime configuration: USER_REALTIME.')
   })
 })
 
@@ -81,7 +97,6 @@ describe('Cloudflare runtime configuration', () => {
       bindings: {
         authEmailDeadLetterQueue,
         authEmailQueue,
-        userRealtime,
       },
       database: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
       deployment,
@@ -89,6 +104,7 @@ describe('Cloudflare runtime configuration', () => {
         apiKey: 'test-resend-api-key',
         from: 'noreply@example.test',
       },
+      realtime: { userRealtime },
       version: versionMetadata.id,
     })
   })
