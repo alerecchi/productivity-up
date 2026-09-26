@@ -3,7 +3,7 @@ import type { z } from 'zod'
 import type { TagDisplay } from '@/lib/types/Tag'
 import { errorResponse } from '@/server/core/errors'
 import { requireNoPendingMigrationBuckets } from '@/server/core/pending-migration-gate'
-import type { TagDbInsert, TagDbSelect } from '@/server/db/types'
+import type { TagDbInsert } from '@/server/db/types'
 import type { CreateTagInput, DeleteTagInput, UpdateTagInput } from '@/server/functions/tags/schemas'
 
 export class TagNameConflictError extends Error {
@@ -14,20 +14,22 @@ export class TagNameConflictError extends Error {
 
 export type DeletedTag = {
   tagId: number
-  userId: string
 }
 
+/**
+ * User-scoped Tag persistence. Updates and deletes resolve `undefined` for missing and foreign Tags alike; creates and
+ * updates reject with `TagNameConflictError` when the (User, name) uniqueness constraint fails.
+ */
 export type TagRepository = {
-  createTag: (tag: TagDbInsert) => Promise<TagDbSelect>
+  createTag: (tag: TagDbInsert) => Promise<TagDisplay>
   deleteTag: (tagId: number, userId: string) => Promise<DeletedTag | undefined>
-  findTagByName: (userId: string, name: string) => Promise<TagDbSelect | undefined>
   hasPendingMigrationBuckets: (userId: string) => Promise<boolean>
-  listTagsForUser: (userId: string) => Promise<Array<TagDbSelect>>
+  listTagsForUser: (userId: string) => Promise<Array<TagDisplay>>
   updateTag: (
     tagId: number,
     userId: string,
     updates: Pick<TagDbInsert, 'colorKey' | 'name'>,
-  ) => Promise<TagDbSelect | undefined>
+  ) => Promise<TagDisplay | undefined>
 }
 
 type CreateTagDependencies = {
@@ -55,61 +57,33 @@ type DeleteTagDependencies = {
 
 export async function createTagForUser({ data, repository, userId }: CreateTagDependencies) {
   await requireNoPendingMigrationBuckets(repository, userId, 'Tags')
-  const tagWithName = await repository.findTagByName(userId, data.name)
-
-  if (tagWithName) {
-    throw errorResponse(409, 'Tag name already exists')
-  }
-
-  const tag = await repository
+  return repository
     .createTag({
       colorKey: data.colorKey,
       name: data.name,
       userId,
     })
-    .catch((error: unknown) => {
-      if (error instanceof TagNameConflictError) {
-        throw errorResponse(409, error.message)
-      }
-
-      throw error
-    })
-
-  return toTagDisplay(tag)
+    .catch(mapTagNameConflict)
 }
 
-export async function listTagsForUser({ repository, userId }: ListTagsDependencies) {
-  const tags = await repository.listTagsForUser(userId)
-
-  return tags.map(toTagDisplay)
+export function listTagsForUser({ repository, userId }: ListTagsDependencies) {
+  return repository.listTagsForUser(userId)
 }
 
 export async function updateTagForUser({ data, repository, userId }: UpdateTagDependencies) {
   await requireNoPendingMigrationBuckets(repository, userId, 'Tags')
-  const tagWithName = await repository.findTagByName(userId, data.name)
-
-  if (tagWithName && tagWithName.id !== data.id) {
-    throw errorResponse(409, 'Tag name already exists')
-  }
-
   const tag = await repository
     .updateTag(data.id, userId, {
       colorKey: data.colorKey,
       name: data.name,
     })
-    .catch((error: unknown) => {
-      if (error instanceof TagNameConflictError) {
-        throw errorResponse(409, error.message)
-      }
-
-      throw error
-    })
+    .catch(mapTagNameConflict)
 
   if (!tag) {
     throw errorResponse(404, 'Tag not found or unauthorized')
   }
 
-  return toTagDisplay(tag)
+  return tag
 }
 
 export async function deleteTagForUser({ data, repository, userId }: DeleteTagDependencies) {
@@ -127,10 +101,10 @@ export function normalizeTagName(name: string) {
   return name.trim().toLowerCase()
 }
 
-function toTagDisplay(tag: TagDbSelect): TagDisplay {
-  return {
-    colorKey: tag.colorKey,
-    id: tag.id,
-    name: tag.name,
+function mapTagNameConflict(error: unknown): never {
+  if (error instanceof TagNameConflictError) {
+    throw errorResponse(409, error.message)
   }
+
+  throw error
 }

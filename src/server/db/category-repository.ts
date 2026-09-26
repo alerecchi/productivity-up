@@ -8,20 +8,17 @@ import type { CategoryDbInsert } from '@/server/db/types'
 import { CategoryNameConflictError } from '@/server/functions/categories/operations'
 import type { CategoryRepository } from '@/server/functions/categories/operations'
 
+const categoryDisplay = { colorKey: categories.colorKey, id: categories.id, name: categories.name }
+
+/** Production Category repository. Every write is one owner-scoped statement returning only display data. */
 export function createCategoryRepository(db: Database): CategoryRepository {
   return {
     async createCategory(categoryToAdd: CategoryDbInsert) {
       const [category] = await db
         .insert(categories)
         .values(categoryToAdd)
-        .returning()
-        .catch((error: unknown) => {
-          if (isUniqueConstraintViolation(error, 'categories_user_id_name_unique')) {
-            throw new CategoryNameConflictError()
-          }
-
-          throw error
-        })
+        .returning(categoryDisplay)
+        .catch(mapNameConflict)
 
       return category
     },
@@ -29,42 +26,37 @@ export function createCategoryRepository(db: Database): CategoryRepository {
       const [category] = await db
         .delete(categories)
         .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
-        .returning({
-          categoryId: categories.id,
-          userId: categories.userId,
-        })
+        .returning({ categoryId: categories.id })
 
       return category
-    },
-    findCategoryByName(userId: string, name: string) {
-      return db.query.categories.findFirst({
-        where: and(eq(categories.userId, userId), eq(categories.name, name)),
-      })
     },
     hasPendingMigrationBuckets(userId) {
       return hasPendingMigrationBuckets(db, userId)
     },
     listCategoriesForUser(userId: string) {
-      return db.query.categories.findMany({
-        orderBy: [asc(categories.name)],
-        where: eq(categories.userId, userId),
-      })
+      return db
+        .select(categoryDisplay)
+        .from(categories)
+        .where(eq(categories.userId, userId))
+        .orderBy(asc(categories.name))
     },
     async updateCategory(categoryId, userId, updates) {
       const [category] = await db
         .update(categories)
         .set(updates)
         .where(and(eq(categories.id, categoryId), eq(categories.userId, userId)))
-        .returning()
-        .catch((error: unknown) => {
-          if (isUniqueConstraintViolation(error, 'categories_user_id_name_unique')) {
-            throw new CategoryNameConflictError()
-          }
-
-          throw error
-        })
+        .returning(categoryDisplay)
+        .catch(mapNameConflict)
 
       return category
     },
   }
+}
+
+function mapNameConflict(error: unknown): never {
+  if (isUniqueConstraintViolation(error, 'categories_user_id_name_unique')) {
+    throw new CategoryNameConflictError()
+  }
+
+  throw error
 }

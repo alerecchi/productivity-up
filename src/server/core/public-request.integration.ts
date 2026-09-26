@@ -27,16 +27,18 @@ vi.mock('@/server/db/client', () => ({
     return Promise.resolve({
       close: vi.fn(() => Promise.resolve()),
       db: {
-        query: {
-          categories: {
-            findMany: () =>
-              fixture.failCategories
-                ? Promise.reject(new Error('private-database-value'))
-                : Promise.resolve([
-                    { colorKey: 'blue', id: 7, name: 'Project', secret: 'private-value', userId: 'user-1' },
-                  ]),
-          },
-        },
+        select: () => ({
+          from: () => ({
+            where: () => ({
+              orderBy: () =>
+                fixture.failCategories
+                  ? Promise.reject(new Error('private-database-value'))
+                  : Promise.resolve([
+                      { colorKey: 'blue', id: 7, name: 'Project', secret: 'private-value', userId: 'user-1' },
+                    ]),
+            }),
+          }),
+        }),
       },
     })
   }),
