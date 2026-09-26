@@ -15,6 +15,13 @@
       "when": 1789561406006,
       "tag": "0001_initial_board_invariants",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790368061345,
+      "tag": "0002_auth_rate_limits",
+      "breakpoints": true
     }
   ]
 }
