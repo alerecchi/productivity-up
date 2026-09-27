@@ -7,4 +7,7 @@ import { AUTH_USER_FIELDS } from '@/lib/auth-user-fields'
 export const authClient = createAuthClient({
   baseURL: clientEnv.VITE_SERVER_URL,
   plugins: [inferAdditionalFields({ user: AUTH_USER_FIELDS })],
+  sessionOptions: {
+    refetchInterval: 15 * 60,
+  },
 })

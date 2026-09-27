@@ -4,6 +4,7 @@ import { ReactQueryDevtoolsPanel } from '@tanstack/react-query-devtools'
 import { HeadContent, Scripts, createRootRouteWithContext } from '@tanstack/react-router'
 import { TanStackRouterDevtoolsPanel } from '@tanstack/react-router-devtools'
 
+import { SessionRefresh } from '@/features/authentication/components/session-refresh'
 import { userSessionQuery } from '@/features/authentication/queries/user-session'
 import { RealtimeSync } from '@/features/board/realtime'
 import { AppNavigation } from '@/features/shared/components/app-navigation'
@@ -49,6 +50,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
       </head>
       <body>
         <AppNavigation />
+        <SessionRefresh />
         <RealtimeSync userId={user?.emailVerified ? user.id : undefined} />
         {children}
         <Toaster />
