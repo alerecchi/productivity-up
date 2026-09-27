@@ -102,6 +102,7 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       },
     },
     session: {
+      deferSessionRefresh: true,
       cookieCache: {
         enabled: true,
         maxAge: 5 * 60,

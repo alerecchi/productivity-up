@@ -446,9 +446,7 @@ describe('Todo card edit dialog', () => {
 
   it('refreshes the Bucket when the Todo being deleted no longer exists', async () => {
     mockedGetTodos.mockResolvedValueOnce([existingTodo]).mockResolvedValue([])
-    mockedDeleteTodo.mockRejectedValue(
-      new Response(JSON.stringify({ error: { code: 'NOT_FOUND', message: 'Resource not found' } }), { status: 404 }),
-    )
+    mockedDeleteTodo.mockRejectedValue(operationErrorResponse(404, 'RESOURCE_NOT_FOUND', 'Resource not found'))
     const queryClient = createTestQueryClient()
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
@@ -458,7 +456,7 @@ describe('Todo card edit dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Delete todo' }))
     fireEvent.click(screen.getByRole('button', { name: 'Delete todo' }))
 
-    expect(await screen.findByText('Could not delete the todo.')).toBeInTheDocument()
+    expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     await waitFor(() => {
       expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([])
     })
