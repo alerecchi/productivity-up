@@ -3,7 +3,10 @@ import { memoryAdapter } from 'better-auth/adapters/memory'
 import { describe, expect, it, vi } from 'vitest'
 
 import { AUTH_RATE_LIMIT_RULES, buildAuth, createAuthRateLimitStorage, handleAuthRequest } from '@/server/auth'
-import type { RateLimitCounter } from '@/server/auth'
+import type { AuthDependencies, RateLimitCounter } from '@/server/auth'
+import { createAuthEmailDispatcher } from '@/server/email/auth-email'
+import type { AuthEmailSendRecord } from '@/server/email/auth-email'
+import { EmailDeliveryError } from '@/server/email/sender'
 
 const BASE_URL = 'http://localhost:3000'
 
@@ -37,11 +40,14 @@ function createInMemoryCounter(): RateLimitCounter {
   }
 }
 
-function createTestAuth(state: SharedState) {
+function createTestAuth(
+  state: SharedState,
+  dispatchAuthEmail: AuthDependencies['dispatchAuthEmail'] = () => Promise.resolve(),
+) {
   return buildAuth(
     {
       database: memoryAdapter(state.tables),
-      enqueueAuthEmail: vi.fn(() => Promise.resolve()),
+      dispatchAuthEmail,
       provisionInitialBoard: () => Promise.resolve(),
       rateLimitStorage: createAuthRateLimitStorage(state.counter, () => state.now),
     },
@@ -147,6 +153,18 @@ describe('public authentication rate limits', () => {
     expect((await auth.handler(authRequest(path, body('throttled@example.test')))).status).toBe(429)
   })
 
+  it('throttles verification resends with safe retry guidance', async () => {
+    const auth = createTestAuth(createSharedState())
+    const resend = () =>
+      handleAuthRequest(authRequest('/send-verification-email', { email: 'missing@example.test' }), auth)
+
+    await Promise.all([resend(), resend(), resend()])
+    const throttled = await resend()
+
+    expect(throttled.status).toBe(429)
+    expect(throttled.headers.get('Retry-After')).toBe('900')
+  })
+
   it('starts a new window once the previous one has elapsed', async () => {
     const state = createSharedState()
     const auth = createTestAuth(state)
@@ -212,6 +230,43 @@ describe('public authentication enumeration resistance', () => {
 
     expect(await comparable(existing, existingEmail)).toEqual(await comparable(missing, missingEmail))
   })
+
+  it.each([
+    ['/request-password-reset', (email: string) => ({ email })],
+    ['/send-verification-email', (email: string) => ({ email })],
+  ])(
+    '%s responds the same for existing and missing email addresses when the email provider fails',
+    async (path, body) => {
+      const records: Array<AuthEmailSendRecord> = []
+      const scheduled: Array<Promise<unknown>> = []
+      const auth = createTestAuth(
+        createSharedState(),
+        createAuthEmailDispatcher({
+          deploymentVersion: 'test',
+          emit: (record) => records.push(record),
+          schedule: (work) => scheduled.push(work),
+          send: () => Promise.reject(new EmailDeliveryError('internal_server_error')),
+        }),
+      )
+      const signUp = await handleAuthRequest(
+        authRequest('/sign-up/email', signUpBody(existingEmail), { 'cf-connecting-ip': '203.0.113.99' }),
+        auth,
+      )
+      expect(records[0]?.requestId).toBe(signUp.headers.get('X-Request-ID'))
+
+      const [existing, missing] = await Promise.all([
+        handleAuthRequest(authRequest(path, body(existingEmail), { 'X-Request-ID': 'caller-supplied' }), auth),
+        handleAuthRequest(authRequest(path, body(missingEmail)), auth),
+      ])
+      await Promise.all(scheduled)
+
+      expect(existing.status).toBe(200)
+      expect(records.at(-1)?.requestId).toBe(existing.headers.get('X-Request-ID'))
+      expect(existing.headers.get('X-Request-ID')).not.toBe('caller-supplied')
+      expect(await comparable(existing, existingEmail)).toEqual(await comparable(missing, missingEmail))
+      expect(records.at(-1)).toMatchObject({ outcome: 'failed', providerErrorCode: 'internal_server_error' })
+    },
+  )
 
   it('applies the enumeration response hold to normalized trailing-slash paths', async () => {
     vi.useFakeTimers()

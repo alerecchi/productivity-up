@@ -23,7 +23,7 @@ This registry makes the mandatory rules reviewable. The detailed sections below 
 | Cache reconciliation             | Prevents optimistic and derived-cache drift                            | TanStack Query state                    | One cache-reconciliation module                                 | Success, rollback, absent-cache, conflict, and resynchronization tests         |
 | Per-User realtime hints          | Prevents cross-User leakage and pre-commit publication                 | Realtime invalidation                   | Authenticated gateway after commit                              | Multi-client isolation and publication-order tests                             |
 | Authentication controls          | Prevents session reuse, enumeration, and abuse                         | Better Auth flows                       | Better Auth configuration, Neon-backed limits, and route policy | Session, reset, rate-limit, and enumeration tests                              |
-| Durable email delivery           | Prevents lost verification and reset messages                          | Authentication email                    | Queue with retries and dead-letter handling                     | Provider failure, retry, and dead-letter tests                                 |
+| Recoverable email delivery       | Keeps lost verification and reset messages recoverable                 | Authentication email                    | Sanitized send records and user-requested resend                | Provider failure, safe logging, and resend tests                               |
 | Telemetry allow-list             | Prevents sensitive-data leakage while preserving diagnosis             | Completion records and logs             | Typed completion record and Cloudflare redaction config         | Required-field and forbidden-field tests plus staging inspection               |
 | Local validation gate            | Prevents formatting, test, type, and build regressions                 | Every backend change                    | `pnpm validate`                                                 | Clean-checkout validation run; zero-tests failure test                         |
 | Evidence-based performance       | Prevents speculative budgets and infrastructure                        | First-release performance policy        | Production-shaped telemetry and issue #80 triggers              | Recorded measurements before numeric budgets or new infrastructure             |
@@ -159,7 +159,7 @@ Do not add replay cursors, sequence numbers, client-mutation IDs, or protocol ve
 
 ## Authentication email and sensitive data
 
-Verification and password-reset email MUST be sent to the requested recipient through durable, retrying delivery with a dead-letter path. Provider failures MUST not silently discard authentication email.
+Verification and password-reset email MUST be sent to the requested recipient. Delivery is best-effort: the Worker sends directly through the provider after the response with `waitUntil`, and a failed send is not stored or retried. Every send attempt MUST emit a sanitized record, and failures MUST be logged at error level, so no failure is silent. Users MUST be able to request another email from the verification and password-reset screens. The server rate limit remains the abuse boundary, and the UI cooldown is feedback only. A provider failure MUST NOT change the generic public response.
 
 Application logs, traces, and completion records MUST NOT contain:
 

@@ -14,14 +14,19 @@ const MINIMUM_ENUMERATION_SENSITIVE_RESPONSE_MS = 500
  * duration, and throttled requests receive standard retry guidance.
  */
 export async function handleAuthRequest(request: Request, auth: Auth) {
+  const requestId = crypto.randomUUID()
+  const headers = new Headers(request.headers)
+  headers.set('X-Request-ID', requestId)
   const pathname = new URL(request.url).pathname.replace(/\/+$/, '')
   const minimumDuration = ENUMERATION_SENSITIVE_PATHS.has(pathname)
     ? delay(MINIMUM_ENUMERATION_SENSITIVE_RESPONSE_MS)
     : Promise.resolve()
-  const [response] = await Promise.all([auth.handler(request), minimumDuration])
+  const [response] = await Promise.all([auth.handler(new Request(request, { headers })), minimumDuration])
 
   if (response.status !== 429) {
-    return response
+    const result = new Response(response.body, response)
+    result.headers.set('X-Request-ID', requestId)
+    return result
   }
 
   const retryAfter = Number(response.headers.get('X-Retry-After'))
@@ -29,7 +34,7 @@ export async function handleAuthRequest(request: Request, auth: Auth) {
     new OperationError(429, 'RATE_LIMITED', 'Too many requests. Please try again later.', {
       retryAfterSeconds: Number.isInteger(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
     }),
-    crypto.randomUUID(),
+    requestId,
   )
 
   return mapped.response

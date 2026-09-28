@@ -14,8 +14,6 @@ const commonEnvironment = {
   RESEND_API_KEY: 'test-resend-api-key',
 }
 
-const authEmailQueue = { send: () => Promise.resolve() }
-const authEmailDeadLetterQueue = { send: () => Promise.resolve() }
 const userRealtime = { getByName: () => ({ fetch: () => Promise.resolve(new Response()) }) }
 const versionMetadata = { id: 'worker-version-id' }
 
@@ -81,8 +79,6 @@ describe('Cloudflare runtime configuration', () => {
     expect(
       parseCloudflareRuntimeEnvironment({
         ...commonEnvironment,
-        AUTH_EMAIL_DEAD_LETTER_QUEUE: authEmailDeadLetterQueue,
-        AUTH_EMAIL_QUEUE: authEmailQueue,
         ENVIRONMENT: deployment,
         HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
         USER_REALTIME: userRealtime,
@@ -93,10 +89,6 @@ describe('Cloudflare runtime configuration', () => {
       authentication: {
         baseUrl: 'https://example.test',
         secret: 'runtime-test-secret-at-least-32-characters',
-      },
-      bindings: {
-        authEmailDeadLetterQueue,
-        authEmailQueue,
       },
       database: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
       deployment,
@@ -109,42 +101,34 @@ describe('Cloudflare runtime configuration', () => {
     })
   })
 
-  it.each([
-    'AUTH_EMAIL_DEAD_LETTER_QUEUE',
-    'AUTH_EMAIL_QUEUE',
-    'ENVIRONMENT',
-    'HYPERDRIVE',
-    'USER_REALTIME',
-    'VERSION_METADATA',
-  ])('rejects a missing %s binding or value', (missingKey) => {
-    const source: Record<string, unknown> = {
-      ...commonEnvironment,
-      AUTH_EMAIL_DEAD_LETTER_QUEUE: authEmailDeadLetterQueue,
-      AUTH_EMAIL_QUEUE: authEmailQueue,
-      ENVIRONMENT: 'staging',
-      HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
-      USER_REALTIME: userRealtime,
-      VERSION_METADATA: versionMetadata,
-    }
-    delete source[missingKey]
+  it.each(['ENVIRONMENT', 'HYPERDRIVE', 'USER_REALTIME', 'VERSION_METADATA'])(
+    'rejects a missing %s binding or value',
+    (missingKey) => {
+      const source: Record<string, unknown> = {
+        ...commonEnvironment,
+        ENVIRONMENT: 'staging',
+        HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
+        USER_REALTIME: userRealtime,
+        VERSION_METADATA: versionMetadata,
+      }
+      delete source[missingKey]
 
-    expect(() => parseCloudflareRuntimeEnvironment(source)).toThrow(
-      `Missing or invalid runtime configuration: ${missingKey}.`,
-    )
-  })
+      expect(() => parseCloudflareRuntimeEnvironment(source)).toThrow(
+        `Missing or invalid runtime configuration: ${missingKey}.`,
+      )
+    },
+  )
 
   it('rejects bindings without the required capability', () => {
     expect(() =>
       parseCloudflareRuntimeEnvironment({
         ...commonEnvironment,
-        AUTH_EMAIL_DEAD_LETTER_QUEUE: authEmailDeadLetterQueue,
-        AUTH_EMAIL_QUEUE: {},
         ENVIRONMENT: 'staging',
         HYPERDRIVE: { connectionString: 'postgresql://hyperdrive.internal/productivity_up' },
-        USER_REALTIME: userRealtime,
+        USER_REALTIME: {},
         VERSION_METADATA: versionMetadata,
       }),
-    ).toThrow('Missing or invalid runtime configuration: AUTH_EMAIL_QUEUE.')
+    ).toThrow('Missing or invalid runtime configuration: USER_REALTIME.')
   })
 
   it('reports only sorted configuration keys for malformed input', () => {
@@ -153,8 +137,6 @@ describe('Cloudflare runtime configuration', () => {
     try {
       parseCloudflareRuntimeEnvironment({
         ...commonEnvironment,
-        AUTH_EMAIL_DEAD_LETTER_QUEUE: {},
-        AUTH_EMAIL_QUEUE: {},
         ENVIRONMENT: 'preview',
         HYPERDRIVE: { connectionString: 'database-secret-value' },
         USER_REALTIME: {},
@@ -166,7 +148,7 @@ describe('Cloudflare runtime configuration', () => {
 
     expect(thrownError).toBeInstanceOf(RuntimeConfigurationError)
     expect(String(thrownError)).toBe(
-      'RuntimeConfigurationError: Missing or invalid runtime configuration: AUTH_EMAIL_DEAD_LETTER_QUEUE, AUTH_EMAIL_QUEUE, ENVIRONMENT, HYPERDRIVE, USER_REALTIME, VERSION_METADATA.',
+      'RuntimeConfigurationError: Missing or invalid runtime configuration: ENVIRONMENT, HYPERDRIVE, USER_REALTIME, VERSION_METADATA.',
     )
     expect(String(thrownError)).not.toContain('database-secret-value')
   })

@@ -1,5 +1,5 @@
 import EmailConfirmation from '@features/authentication/components/email-confirmation'
-import { createFileRoute, redirect } from '@tanstack/react-router'
+import { createFileRoute, redirect, useRouterState } from '@tanstack/react-router'
 
 export const Route = createFileRoute('/_auth-pages/email-confirmation')({
   beforeLoad: ({ context }) => {
@@ -11,5 +11,6 @@ export const Route = createFileRoute('/_auth-pages/email-confirmation')({
 })
 
 function RouteComponent() {
-  return <EmailConfirmation />
+  const { verificationEmail, verificationEmailSentAt } = useRouterState({ select: (state) => state.location.state })
+  return <EmailConfirmation email={verificationEmail} emailSentAt={verificationEmailSentAt} />
 }
