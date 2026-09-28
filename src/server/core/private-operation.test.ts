@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
 
+import type { RealtimeHint } from '@/lib/realtime'
 import { OperationError, mapOperationError } from '@/server/core/errors'
 import { createPrivateOperation } from '@/server/core/private-operation'
 import type { PrivateOperationDependencies } from '@/server/core/private-operation'
@@ -12,6 +13,8 @@ import type { Database } from '@/server/db/client'
 import { PRIVATE_OPERATION_NAMES } from '@/server/functions/private-operation-inventory'
 
 const responseSchema = z.object({ id: z.int().positive() })
+const CLIENT_INSTANCE_ID = '5b0c2f55-6d0e-4d8f-9a39-0f7c7f0d8a11'
+const createdHints = ({ id }: { id: number }): Array<RealtimeHint> => [{ bucketIds: [id], type: 'todo-created' }]
 
 describe('private operation public request contract', () => {
   it.each(PRIVATE_OPERATION_NAMES)('%s rejects a signed-out request before product behavior', async (operation) => {
@@ -131,6 +134,92 @@ describe('private operation public request contract', () => {
     )
   })
 
+  it("publishes a successful command's hints once to the User's clients other than the origin", async () => {
+    const { dependencies, publish } = createDependencies(
+      { emailVerified: true, id: 'user-1' },
+      { 'X-Client-Instance-Id': CLIENT_INSTANCE_ID },
+    )
+
+    const result = await invokeOperation(
+      'todos.create',
+      dependencies,
+      vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: 7, todoContent: 'stripped' }))),
+      createdHints,
+    )
+
+    expect(result).toMatchObject({ result: { id: 7 } })
+    expect(publish).toHaveBeenCalledExactlyOnceWith('user-1', [{ bucketIds: [7], type: 'todo-created' }], {
+      originClientInstanceId: CLIENT_INSTANCE_ID,
+    })
+  })
+
+  it.each([
+    ['the command fails', vi.fn(() => Promise.reject(new OperationError(409, 'CONFLICT', 'Refresh and retry')))],
+    ['the response is not a valid DTO', vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: -1 })))],
+  ])('publishes nothing when %s', async (_case, next) => {
+    const { dependencies, publish } = createDependencies({ emailVerified: true, id: 'user-1' })
+
+    const response = await invokeOperation('todos.create', dependencies, next, createdHints)
+
+    expect(response).toBeInstanceOf(Response)
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it('publishes nothing for an operation without declared hints', async () => {
+    const { dependencies, publish } = createDependencies({ emailVerified: true, id: 'user-1' })
+
+    await invokeOperation(
+      'todos.list',
+      dependencies,
+      vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: 7 }))),
+    )
+
+    expect(publish).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['a missing', {}],
+    ['a malformed', { 'X-Client-Instance-Id': 'user-2' }],
+  ])('notifies every client when the request has %s client-instance ID', async (_case, headers) => {
+    const { dependencies, publish } = createDependencies({ emailVerified: true, id: 'user-1' }, headers)
+
+    await invokeOperation(
+      'todos.create',
+      dependencies,
+      vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: 7 }))),
+      createdHints,
+    )
+
+    expect(publish).toHaveBeenCalledExactlyOnceWith('user-1', [{ bucketIds: [7], type: 'todo-created' }], {
+      originClientInstanceId: undefined,
+    })
+  })
+
+  it.each([
+    ['publishing fails', createdHints],
+    [
+      'deriving its hints fails',
+      () => {
+        throw new Error('hint bug')
+      },
+    ],
+  ])('keeps a committed result when %s', async (_case, hints) => {
+    const { dependencies, emit, publish } = createDependencies({ emailVerified: true, id: 'user-1' })
+    publish.mockImplementationOnce(() => {
+      throw new Error('realtime unavailable')
+    })
+
+    const result = await invokeOperation(
+      'todos.create',
+      dependencies,
+      vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: 7 }))),
+      hints,
+    )
+
+    expect(result).toMatchObject({ result: { id: 7 } })
+    expect(emit).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'success', status: 200 }))
+  })
+
   it.each([
     {
       error: new RequestValidationError([{ code: 'custom', message: 'Safe detail', path: ['title'] }]),
@@ -201,8 +290,12 @@ describe('private operation public request contract', () => {
   })
 })
 
-function createDependencies(user: { emailVerified: boolean; id: string } | null) {
+function createDependencies(
+  user: { emailVerified: boolean; id: string } | null,
+  requestHeaders: Record<string, string> = {},
+) {
   const emit = vi.fn()
+  const publish = vi.fn<PrivateOperationDependencies['publish']>()
   const close = vi.fn(() => Promise.resolve())
   const getSession = vi.fn(() => Promise.resolve(user ? { user } : null))
   const setResponseHeader = vi.fn()
@@ -212,6 +305,7 @@ function createDependencies(user: { emailVerified: boolean; id: string } | null)
         authorization: 'authorization-secret',
         cookie: 'session=cookie-secret',
         'x-user-email': 'user@example.test',
+        ...requestHeaders,
       },
     }),
     { cf: { colo: 'FRA' } },
@@ -233,18 +327,20 @@ function createDependencies(user: { emailVerified: boolean; id: string } | null)
     getRequest: () => request,
     getSession,
     now: () => now++,
+    publish,
     setResponseHeader,
   }
 
-  return { close, dependencies, emit, getSession, setResponseHeader }
+  return { close, dependencies, emit, getSession, publish, setResponseHeader }
 }
 
 async function invokeOperation(
   operation: string,
   dependencies: PrivateOperationDependencies,
   next: ReturnType<typeof vi.fn>,
+  hints?: (result: z.output<typeof responseSchema>) => Array<RealtimeHint>,
 ) {
-  const middleware = createPrivateOperation({ operation, response: responseSchema }, dependencies)
+  const middleware = createPrivateOperation({ hints, operation, response: responseSchema }, dependencies)
   const server = middleware.options.server as (options: unknown) => Promise<unknown>
 
   try {

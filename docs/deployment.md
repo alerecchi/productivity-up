@@ -125,6 +125,23 @@ pnpm deploy:staging
 
 Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test, including the realtime WebSocket checks. Every request crosses the runtime configuration check, so a successful sign-in and board load prove that the Worker received its Hyperdrive, Durable Object, variables, and secrets. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
 
+### Manual realtime convergence check
+
+The read-only smoke test cannot prove that committed Todo changes reach a User's other clients. Until the E2E suite in [issue #111](https://github.com/alerecchi/productivity-up/issues/111) automates it, run this check by hand after a staging deployment that changes realtime or Todo commands. It needs two verified staging accounts, User A and User B, each with at least two active Buckets.
+
+1. Open `/board` as User A in two separate browser windows (A1 and A2), and as User B in a private window (B1).
+2. In A1, perform each action below. After each one, confirm that A2 shows the same Buckets and Todo order within a few seconds without reloading:
+   - create a Todo;
+   - edit its title, then change its Bucket from the edit dialog;
+   - toggle its completion;
+   - drag it to another position in the same Bucket, then into another Bucket;
+   - drag Todos repeatedly into the same gap until the Bucket rebalances, then compare the full order in both windows;
+   - delete it.
+3. In the developer tools of A1, confirm that its `/api/realtime` WebSocket receives no hint messages for its own changes.
+4. Repeat one create and one move from A2 and confirm that A1 converges.
+5. Throughout, confirm in B1's developer tools that its `/api/realtime` WebSocket receives only heartbeat `pong` frames and that B1 issues no Todo requests.
+6. Take A2 offline, make a change in A1, then bring A2 back online. A2 must reconnect and converge through its full resynchronization.
+
 ## Production
 
 ```sh

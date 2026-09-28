@@ -7,7 +7,7 @@ import type { Bucket } from '@/lib/types/Bucket'
 import { listCategories } from '@/server/functions/categories'
 import { listTags } from '@/server/functions/tags'
 import { deleteTodo, getTodos, updateTodo } from '@/server/functions/todos'
-import { createTestQueryClient, operationErrorResponse, render } from '@/test'
+import { createTestQueryClient, operationErrorResponse, realtimeOriginHeaders, render } from '@/test'
 
 const toast = vi.hoisted(() => ({
   error: vi.fn(),
@@ -174,6 +174,7 @@ describe('Todo card edit dialog', () => {
 
     await waitFor(() => {
       expect(mockedUpdateTodo.mock.calls[0]?.[0]).toEqual({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           completed: true,
           id: existingTodo.id,
@@ -256,6 +257,7 @@ describe('Todo card edit dialog', () => {
       expect(screen.queryByRole('heading', { name: 'Edit Task' })).not.toBeInTheDocument()
     })
     expect(mockedUpdateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: realtimeOriginHeaders(queryClient),
       data: {
         bucketId: existingTodo.bucketId,
         categoryId: null,
@@ -302,6 +304,7 @@ describe('Todo card edit dialog', () => {
 
     await waitFor(() => {
       expect(mockedUpdateTodo.mock.calls[0]?.[0]).toEqual({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           bucketId: buckets[0].id,
           categoryId: category.id,
@@ -400,6 +403,7 @@ describe('Todo card edit dialog', () => {
       expect(screen.queryByRole('heading', { name: 'Edit Task' })).not.toBeInTheDocument()
     })
     expect(mockedDeleteTodo.mock.calls[0]?.[0]).toEqual({
+      headers: realtimeOriginHeaders(queryClient),
       data: {
         id: existingTodo.id,
       },

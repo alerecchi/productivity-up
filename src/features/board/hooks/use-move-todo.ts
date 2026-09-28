@@ -3,6 +3,7 @@ import { toast } from 'sonner'
 
 import { useBoardCache } from '@/features/board/cache'
 import { isStaleMoveConflict } from '@/features/board/hooks/move-todo-errors'
+import { useRealtimeOriginHeaders } from '@/features/board/realtime'
 import { moveTodo } from '@/server/functions/todos'
 
 type MoveTodoVariables = Parameters<typeof moveTodo>[0] & {
@@ -12,9 +13,10 @@ type MoveTodoVariables = Parameters<typeof moveTodo>[0] & {
 /** Moves a Todo optimistically to its drop position; the server decides its canonical Todo Position. */
 export function useMoveTodo() {
   const cache = useBoardCache()
+  const headers = useRealtimeOriginHeaders()
 
   return useMutation({
-    mutationFn: (variables: MoveTodoVariables) => moveTodo({ data: variables.data }),
+    mutationFn: (variables: MoveTodoVariables) => moveTodo({ data: variables.data, headers }),
     onMutate: async ({ data, sourceBucketId }) => ({
       pendingChange: await cache.begin({
         ...(data.afterTodoId === undefined ? {} : { afterTodoId: data.afterTodoId }),
