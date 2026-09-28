@@ -1,8 +1,6 @@
 import handler from '@tanstack/react-start/server-entry'
 
 import { getRuntimeEnvironment } from '@/config/runtime-env'
-import { handleAuthEmailBatch } from '@/server/email/queue'
-import type { AuthEmailBatch } from '@/server/email/queue'
 import { REALTIME_PATH, createRealtimeGatewayDependencies, handleRealtimeRequest } from '@/server/realtime/gateway'
 
 export { UserRealtimeDurableObject } from '@/server/realtime/user-realtime-durable-object'
@@ -17,9 +15,5 @@ export default {
     }
 
     return await handler.fetch(request)
-  },
-  queue(batch: AuthEmailBatch) {
-    getRuntimeEnvironment()
-    return handleAuthEmailBatch(batch)
   },
 }

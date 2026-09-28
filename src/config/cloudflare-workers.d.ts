@@ -2,10 +2,6 @@ interface Hyperdrive {
   readonly connectionString: string
 }
 
-interface Queue<TBody = unknown> {
-  send: (message: TBody) => Promise<void>
-}
-
 interface DurableObjectStub {
   fetch: (request: Request) => Promise<Response>
 }

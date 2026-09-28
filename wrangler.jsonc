@@ -50,24 +50,6 @@
           "enabled": true,
         },
       },
-      "queues": {
-        "producers": [
-          {
-            "binding": "AUTH_EMAIL_QUEUE",
-            "queue": "productivity-up-staging-auth-email",
-          },
-          {
-            "binding": "AUTH_EMAIL_DEAD_LETTER_QUEUE",
-            "queue": "productivity-up-staging-auth-email-dlq",
-          },
-        ],
-        "consumers": [
-          {
-            "queue": "productivity-up-staging-auth-email",
-            "dead_letter_queue": "productivity-up-staging-auth-email-dlq",
-          },
-        ],
-      },
       "vars": {
         "APP_NAME": "Productivity Up",
         "BETTER_AUTH_URL": "https://productivity-up-staging.ale-recchi.workers.dev",
@@ -107,24 +89,6 @@
         "traces": {
           "enabled": true,
         },
-      },
-      "queues": {
-        "producers": [
-          {
-            "binding": "AUTH_EMAIL_QUEUE",
-            "queue": "productivity-up-production-auth-email",
-          },
-          {
-            "binding": "AUTH_EMAIL_DEAD_LETTER_QUEUE",
-            "queue": "productivity-up-production-auth-email-dlq",
-          },
-        ],
-        "consumers": [
-          {
-            "queue": "productivity-up-production-auth-email",
-            "dead_letter_queue": "productivity-up-production-auth-email-dlq",
-          },
-        ],
       },
       "routes": [
         {

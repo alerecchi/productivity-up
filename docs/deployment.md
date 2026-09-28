@@ -4,7 +4,7 @@ The deployment commands always fetch and deploy the pinned `main@origin` revisio
 
 The Cloudflare Vite plugin selects and flattens the Wrangler environment during the build through `CLOUDFLARE_ENV`. Wrangler then deploys the generated `dist/server/wrangler.json`; the deployment command does not select an environment again.
 
-The custom Worker entrypoint validates the complete runtime configuration before it handles an HTTP request or Queue batch. Validation errors identify missing or invalid keys without including their values. The authenticated staging smoke test therefore proves that the deployed Worker received every required binding before it signs in and loads the board.
+The custom Worker entrypoint validates the complete runtime configuration before it handles an HTTP request. Validation errors identify missing or invalid keys without including their values. The authenticated staging smoke test therefore proves that the deployed Worker received every required binding before it signs in and loads the board.
 
 ## Local validation and deployment
 
@@ -21,22 +21,21 @@ Create separate runtime secrets for `productivity-up-staging` and `productivity-
 
 Wrangler tracks the non-secret `BETTER_AUTH_URL`, `EMAIL_FROM`, and `APP_NAME` values separately for each environment. Runtime database access uses the environment's `HYPERDRIVE` binding, not a Worker secret.
 
-Each environment also has isolated realtime and email-delivery resources:
+Each environment also has an isolated `USER_REALTIME` Durable Object binding for realtime.
 
-| Environment | Durable Object binding | Email Queue                             | Dead-letter Queue                           |
-| ----------- | ---------------------- | --------------------------------------- | ------------------------------------------- |
-| Staging     | `USER_REALTIME`        | `productivity-up-staging-auth-email`    | `productivity-up-staging-auth-email-dlq`    |
-| Production  | `USER_REALTIME`        | `productivity-up-production-auth-email` | `productivity-up-production-auth-email-dlq` |
+### Authentication email
 
-`AUTH_EMAIL_QUEUE` and `AUTH_EMAIL_DEAD_LETTER_QUEUE` expose the two Queues to application code. The email Queue consumer sends exhausted messages to the environment's dead-letter Queue. Until durable email delivery is implemented, the Worker retries every received Queue batch instead of acknowledging and losing unknown work.
+Verification and password-reset email is sent directly through Resend with the environment's `RESEND_API_KEY`. The Worker schedules each send with `waitUntil`, so the send finishes after the response. Delivery is best-effort. A failed send is not stored or retried, and the public response stays the same generic acceptance. Users recover by requesting another email from the verification waiting screen or the password-reset confirmation screen. The server's per-IP limits (three requests per 15 minutes) bound those requests, and the 60-second UI cooldown only gives feedback.
 
-Create the Queues once before deploying this configuration:
+Every send emits one `auth_email.send` record with the email kind, request ID, deployment version, outcome (`sent` or `failed`), duration, the safe provider error code of a failure, and the Resend message ID of a success. Records never contain addresses, names, links, tokens, email bodies, or raw provider errors. Failures are logged at error level. To find them in Workers Logs, filter the Worker's events on `operation = auth_email.send` and `outcome = failed`.
+
+Earlier releases delivered this email through Cloudflare Queues. Once a release without Queues is live in an environment, delete that environment's leftover Queues:
 
 ```sh
-pnpm exec wrangler queues create productivity-up-staging-auth-email
-pnpm exec wrangler queues create productivity-up-staging-auth-email-dlq
-pnpm exec wrangler queues create productivity-up-production-auth-email
-pnpm exec wrangler queues create productivity-up-production-auth-email-dlq
+pnpm exec wrangler queues delete productivity-up-staging-auth-email
+pnpm exec wrangler queues delete productivity-up-staging-auth-email-dlq
+pnpm exec wrangler queues delete productivity-up-production-auth-email
+pnpm exec wrangler queues delete productivity-up-production-auth-email-dlq
 ```
 
 Wrangler provisions the SQLite-backed `UserRealtimeDurableObject` namespace from the declarative `exports` configuration during deployment. Do not create or migrate that namespace by hand.
@@ -98,6 +97,14 @@ The direct URLs must point to separate Neon databases and use non-pooler hosts. 
 
 The staging Cloudflare Access application should continue to require interactive login for normal visitors. Its staging-only Service Auth policy grants this smoke-test Service Token access to the Worker. The smoke test sends the token's `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers on every request, so Access checks never replace the application's own checks: the realtime upgrade must still refuse a caller without an app session. Do not add this Service Token to Wrangler or expose it to deployment subprocesses.
 
+To check authentication email on the deployed staging Worker, run the command below. It reads `STAGING_RESEND_API_KEY`, the staging Worker's `RESEND_API_KEY` secret, from `.env.cloudflare-setup.local`, so the Resend lookup uses the same account that sent the email. The key needs full access, not sending-only access, to read sent emails.
+
+```sh
+pnpm test:staging-email
+```
+
+The check signs up a throwaway `delivered+<id>@resend.dev` User. It waits for the Worker's `auth_email.send` record through `wrangler tail`, then confirms through the Resend API that the email went to that recipient. It also fails if the tailed logs contain the recipient, a verification link, the password, or a credential. It deletes the User afterwards. Run it after a staging deployment that changes authentication email; the deployment command does not run it.
+
 The staging smoke-test account must already exist, have a verified email address, and have a readable board. The smoke test signs in, loads `/board`, and opens the realtime WebSocket at `/api/realtime`. The signed-in connection must answer a heartbeat, while signed-out, foreign-origin, and caller-supplied User ID upgrades must be refused. It does not create, edit, or delete data.
 
 Create or refresh that account without resetting staging data:
@@ -116,7 +123,7 @@ Staging uses disposable data and is not a production release. Before the first p
 pnpm deploy:staging
 ```
 
-Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test, including the realtime WebSocket checks. Every request crosses the runtime configuration check, so a successful sign-in and board load prove that the Worker received its Hyperdrive, Durable Object, Queue, dead-letter Queue, variables, and secrets. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
+Staging runs the initial and pending Drizzle migrations, deploys the Worker, then runs the authenticated read-only smoke test, including the realtime WebSocket checks. Every request crosses the runtime configuration check, so a successful sign-in and board load prove that the Worker received its Hyperdrive, Durable Object, variables, and secrets. If that final test fails, the command prints the full report, marks the smoke test as failed, and exits nonzero. The deployed Worker remains live and the command does not roll it back.
 
 ## Production
 
@@ -138,7 +145,7 @@ The override skips only the staging revision check. Installation, build, migrati
 
 Do not use a Worker rollback as the default recovery path. Cloudflare changes only the Worker version; Neon remains on its current schema. If the previous Worker is not compatible with that schema, rolling back the Worker can make the incident worse. Deploy a forward fix instead.
 
-A Worker rollback also does not remove Queues, Queue messages, or Durable Object namespaces and their stored data. Confirm compatibility with those resources before selecting an older Worker version.
+A Worker rollback also does not remove Durable Object namespaces or their stored data. Worker versions from before direct authentication email require the deleted email Queues, so do not roll back to them. Confirm compatibility with those resources before selecting an older Worker version.
 
 Only roll back after confirming that the selected Worker version supports the current Neon schema. When that condition holds, use the version ID shown by the Worker deployment history:
 

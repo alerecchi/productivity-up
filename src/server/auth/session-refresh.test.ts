@@ -24,8 +24,8 @@ describe('session refresh over HTTP', () => {
     const auth = buildAuth(
       {
         database: memoryAdapter(tables),
-        enqueueAuthEmail: (message) => {
-          if (message.type === 'verification') verificationUrl = message.url
+        dispatchAuthEmail: (email) => {
+          if (email.kind === 'email_verification') verificationUrl = email.actionUrl
           return Promise.resolve()
         },
         provisionInitialBoard: () => Promise.resolve(),

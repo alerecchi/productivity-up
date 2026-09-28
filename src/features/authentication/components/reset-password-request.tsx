@@ -3,40 +3,34 @@ import { FieldGroup, FieldSet } from '@shared/components/ui/field'
 import { Mail } from 'lucide-react'
 import z from 'zod'
 
-import { authClient } from '@/features/authentication/auth-client'
+import { formatWait } from '@/features/authentication/hooks/use-cooldown'
+import type { Cooldown } from '@/features/authentication/hooks/use-cooldown'
+import { cooldownFeedback, requestPasswordResetEmail } from '@/features/authentication/lib/auth-email-requests'
 
 type ResetPasswordRequestProps = {
-  userEmail?: string
-  emailVerified?: boolean
-  setFormSubmitted: React.Dispatch<React.SetStateAction<boolean>>
+  defaultEmail: string
+  /** Shared with the request-again action, so both wait for the same accepted request or retry guidance. */
+  cooldown: Cooldown
+  onRequested: (email: string) => void
   tokenError: boolean
 }
-// TODO: extract logic?
+
 export default function ResetPasswordRequest({
-  userEmail = '',
-  emailVerified = false,
-  setFormSubmitted,
+  defaultEmail,
+  cooldown,
+  onRequested,
   tokenError,
 }: ResetPasswordRequestProps) {
   const form = useAppForm({
     defaultValues: {
-      email: emailVerified ? userEmail : '',
+      email: defaultEmail,
     },
+    // A server error must not block retrying once the cooldown ends; submit validators still check the address.
+    canSubmitWhenInvalid: true,
     validators: {
-      onSubmitAsync: async ({ value: data }) => {
-        const response = await authClient.requestPasswordReset({
-          email: data.email,
-          redirectTo: '/reset-password',
-        })
-        if (response.error) {
-          return { form: 'There was a problem with generating your link, please refresh the page and try again' }
-        }
-        return undefined
-      },
+      onSubmitAsync: async ({ value }) => cooldownFeedback(await requestPasswordResetEmail(value.email), cooldown),
     },
-    onSubmit: () => {
-      setFormSubmitted(true)
-    },
+    onSubmit: ({ value }) => onRequested(value.email),
   })
 
   const formId = 'reset-password-request'
@@ -70,7 +64,15 @@ export default function ResetPasswordRequest({
             <form.FormErrorAlert />
           </form.AppForm>
           <form.AppForm>
-            <form.SubmitButton text='Send password reset link' formId={formId} />
+            <form.SubmitButton
+              text={
+                cooldown.remainingSeconds > 0
+                  ? `Send password reset link in ${formatWait(cooldown.remainingSeconds)}`
+                  : 'Send password reset link'
+              }
+              formId={formId}
+              disabled={cooldown.remainingSeconds > 0}
+            />
           </form.AppForm>
         </FieldGroup>
       </FieldSet>
