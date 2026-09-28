@@ -1,11 +1,12 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { CanonicalBoard } from '@/features/board/cache'
 import { Board } from '@/features/board/components/board'
-import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
+import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
 import type { Bucket } from '@/lib/types/Bucket'
-import type { BucketDb } from '@/server/db/types'
 import {
   completeDay,
   confirmMigrationStep,
@@ -13,7 +14,7 @@ import {
   getMigrationStep,
   reconcileLifecycle,
 } from '@/server/functions/board'
-import { createTestQueryClient, render } from '@/test'
+import { createTestQueryClient, operationErrorResponse, render } from '@/test'
 
 vi.mock('@/features/board/components/bucket-column', () => ({
   BucketColumn: ({ bucket, isPlanningBucket }: { bucket: Bucket; isPlanningBucket?: boolean }) => (
@@ -63,7 +64,7 @@ const todayBuckets = [
   createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
   createBucket({ id: 4, period: '2026-W27', type: 'weekly' }),
   createBucket({ id: 5, period: '2026-07-03', type: 'daily' }),
-] satisfies Array<BucketDb>
+] satisfies Array<Bucket>
 
 const tomorrowBuckets = [
   todayBuckets[0],
@@ -71,7 +72,7 @@ const tomorrowBuckets = [
   todayBuckets[2],
   todayBuckets[3],
   createBucket({ id: 6, period: '2026-07-04', type: 'daily' }),
-] satisfies Array<BucketDb>
+] satisfies Array<Bucket>
 
 const mockedCompleteDay = vi.mocked(completeDay)
 const mockedConfirmMigrationStep = vi.mocked(confirmMigrationStep)
@@ -110,7 +111,7 @@ describe('Board lifecycle controls', () => {
       timeZone: 'Europe/Berlin',
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: todayBuckets,
       planningDate: '2026-07-03',
       status: 'ready',
@@ -126,12 +127,21 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByText('No migration needed')).toBeInTheDocument()
     expect(screen.getByText('Open the board')).toBeInTheDocument()
     expect(screen.getByText('2 completed')).toBeInTheDocument()
+    expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).toMatchObject({
+      completionRecap: {
+        completedCount: 2,
+        completedPlanningDate: '2026-07-03',
+        nextPlanningDate: '2026-07-04',
+      },
+      planningDate: '2026-07-04',
+    })
     expect(screen.queryByRole('button', { name: 'Continue to migration' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Close and plan tomorrow' }))
 
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: '2026-07-03 is wrapped' })).not.toBeInTheDocument()
     })
+    expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).not.toHaveProperty('completionRecap')
     expect(mockedCompleteDay).toHaveBeenCalledWith({ data: { planningDate: '2026-07-03' } })
   })
 
@@ -139,7 +149,6 @@ describe('Board lifecycle controls', () => {
     const pendingBucket = createBucket({
       id: 7,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     mockedCompleteDay.mockResolvedValue({
@@ -155,7 +164,7 @@ describe('Board lifecycle controls', () => {
       timeZone: 'Europe/Berlin',
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: todayBuckets,
       planningDate: '2026-07-03',
       status: 'ready',
@@ -172,11 +181,18 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByText('2 incomplete')).toBeInTheDocument()
     expect(screen.getByText('Daily 2026-07-03')).toBeInTheDocument()
     expect(mockedGetMigrationStep).not.toHaveBeenCalled()
+    expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).toMatchObject({
+      completionRecap: {
+        completedCount: 1,
+        incompleteCount: 2,
+      },
+      status: 'migration_required',
+    })
   })
 
   it('disables Complete day with planning-ahead feedback when Planning Date is tomorrow', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: tomorrowBuckets,
       planningDate: '2026-07-04',
       status: 'ready',
@@ -203,15 +219,15 @@ describe('Board lifecycle controls', () => {
       timeZone: 'Europe/Berlin',
     }
     mockedReconcileLifecycle.mockResolvedValue(reconciledBoard)
-    mockedGetBoard.mockResolvedValue(reconciledBoard)
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], { status: 'reconciliation_required' })
+    queryClient.setQueryData(getBoardQueryOptions.queryKey, { status: 'reconciliation_required' })
 
     render(<Board />, { queryClient })
 
     expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
     expect(screen.getByText('Planning today')).toBeInTheDocument()
     expect(mockedReconcileLifecycle).toHaveBeenCalledTimes(1)
+    expect(mockedGetBoard).not.toHaveBeenCalled()
   })
 
   it('offers a retry when Lifecycle Reconciliation fails', async () => {
@@ -221,10 +237,11 @@ describe('Board lifecycle controls', () => {
       status: 'ready' as const,
       timeZone: 'Europe/Berlin',
     }
-    mockedReconcileLifecycle.mockRejectedValueOnce(new Error('Network down')).mockResolvedValue(reconciledBoard)
-    mockedGetBoard.mockResolvedValue(reconciledBoard)
+    mockedReconcileLifecycle
+      .mockRejectedValueOnce(operationErrorResponse(400, 'VALIDATION_ERROR'))
+      .mockResolvedValue(reconciledBoard)
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], { status: 'reconciliation_required' })
+    queryClient.setQueryData(getBoardQueryOptions.queryKey, { status: 'reconciliation_required' })
 
     render(<Board />, { queryClient })
 
@@ -236,7 +253,7 @@ describe('Board lifecycle controls', () => {
   it('shows toast feedback when Complete day fails', async () => {
     mockedCompleteDay.mockRejectedValue(new Error('Cannot complete day while Todos are incomplete'))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: todayBuckets,
       planningDate: '2026-07-03',
       status: 'ready',
@@ -253,11 +270,36 @@ describe('Board lifecycle controls', () => {
     expect(screen.queryByRole('heading', { name: 'Day complete' })).not.toBeInTheDocument()
   })
 
+  it('refreshes the board when Complete day conflicts with a newer Planning Date', async () => {
+    mockedCompleteDay.mockRejectedValue(
+      operationErrorResponse(409, 'CONFLICT', 'The board changed; refresh and try again'),
+    )
+    mockedGetBoard.mockResolvedValue({
+      buckets: tomorrowBuckets,
+      planningDate: '2026-07-04',
+      status: 'ready',
+      timeZone: 'Europe/Berlin',
+    })
+    const queryClient = createTestQueryClient()
+    setBoard(queryClient, {
+      buckets: todayBuckets,
+      planningDate: '2026-07-03',
+      status: 'ready',
+      timeZone: 'Europe/Berlin',
+    })
+
+    render(<Board />, { queryClient })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
+
+    expect(await screen.findByText('Planning tomorrow')).toBeInTheDocument()
+    expect(toast.error).toHaveBeenCalledWith('Could not complete day')
+  })
+
   it('shows an undismissable Migration Recap dialog over a blurred board when migration is required', async () => {
     const pendingBucket = createBucket({
       id: 7,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     mockedGetMigrationStep.mockResolvedValue({
@@ -275,7 +317,7 @@ describe('Board lifecycle controls', () => {
       todos: [],
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: tomorrowBuckets,
       pendingMigrationBuckets: [pendingBucket],
       planningDate: '2026-07-04',
@@ -298,6 +340,7 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByRole('button', { name: 'Continue to migration' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument()
     expect(document.querySelector('[data-todo-board]')).toHaveClass('blur-sm')
+    expect(mockedGetMigrationStep).toHaveBeenCalledWith({ data: { sourceBucketId: 7 } })
     expect(mockedConfirmMigrationStep).not.toHaveBeenCalled()
   })
 
@@ -305,7 +348,6 @@ describe('Board lifecycle controls', () => {
     const pendingBucket = createBucket({
       id: 7,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     mockedGetMigrationStep.mockRejectedValueOnce(new Error('Network unavailable')).mockResolvedValue({
@@ -323,7 +365,7 @@ describe('Board lifecycle controls', () => {
       todos: [],
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: tomorrowBuckets,
       pendingMigrationBuckets: [pendingBucket],
       planningDate: '2026-07-04',
@@ -342,19 +384,10 @@ describe('Board lifecycle controls', () => {
   })
 })
 
-function createBucket({
-  id,
-  period,
-  status = 'active',
-  type,
-}: Pick<Bucket, 'id' | 'period' | 'type'> & { status?: BucketDb['status'] }): BucketDb {
-  return {
-    archivedAt: null,
-    createdAt: new Date('2026-07-03T08:00:00.000Z'),
-    id,
-    period,
-    status,
-    type,
-    userId: 'user-1',
-  }
+function createBucket(bucket: Bucket): Bucket {
+  return bucket
+}
+
+function setBoard(queryClient: QueryClient, board: CanonicalBoard) {
+  queryClient.setQueryData(getBoardQueryOptions.queryKey, board)
 }

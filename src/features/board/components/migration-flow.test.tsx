@@ -1,17 +1,28 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { Suspense } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
+import type { CanonicalBoard } from '@/features/board/cache'
 import { MigrationFlow } from '@/features/board/components/migration-flow'
+import { MigrationRouteContent } from '@/features/board/components/migration-route-content'
 import { storeMigrationFlowStarted } from '@/features/board/lib/migration-flow-started'
-import type { BucketDb } from '@/server/db/types'
-import { confirmMigrationStep, getMigrationStep } from '@/server/functions/board'
-import { render } from '@/test'
+import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
+import type { Bucket } from '@/lib/types/Bucket'
+import { confirmMigrationStep, getBoard, getMigrationStep } from '@/server/functions/board'
+import { createTestQueryClient, operationErrorResponse, render } from '@/test'
 
 vi.mock('@/server/functions/board', () => ({
   confirmMigrationStep: vi.fn(),
+  getBoard: vi.fn(),
   getMigrationStep: vi.fn(),
+  reconcileLifecycle: vi.fn(),
+}))
+
+const navigate = vi.hoisted(() => vi.fn())
+
+vi.mock('@tanstack/react-router', () => ({
+  useNavigate: () => navigate,
 }))
 
 const toast = vi.hoisted(() => ({
@@ -24,6 +35,7 @@ vi.mock('sonner', () => ({
 }))
 
 const mockedConfirmMigrationStep = vi.mocked(confirmMigrationStep)
+const mockedGetBoard = vi.mocked(getBoard)
 const mockedGetMigrationStep = vi.mocked(getMigrationStep)
 let onFlowComplete: ReturnType<typeof vi.fn<() => void>>
 
@@ -32,7 +44,9 @@ describe('MigrationFlow', () => {
     window.sessionStorage.clear()
     onFlowComplete = vi.fn()
     mockedConfirmMigrationStep.mockReset()
+    mockedGetBoard.mockReset()
     mockedGetMigrationStep.mockReset()
+    navigate.mockReset()
     toast.error.mockReset()
   })
 
@@ -40,19 +54,16 @@ describe('MigrationFlow', () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     const weeklyBucket = createBucket({
       id: 11,
       period: '2026-W27',
-      status: 'pending_migration',
       type: 'weekly',
     })
     const monthlyBucket = createBucket({
       id: 12,
       period: '2026-06',
-      status: 'pending_migration',
       type: 'monthly',
     })
     storeMigrationFlowStarted([dailyBucket, weeklyBucket, monthlyBucket])
@@ -78,7 +89,7 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={dailyBucket.id} />
       </Suspense>,
     )
 
@@ -98,13 +109,11 @@ describe('MigrationFlow', () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     const weeklyBucket = createBucket({
       id: 11,
       period: '2026-W27',
-      status: 'pending_migration',
       type: 'weekly',
     })
     storeMigrationFlowStarted([dailyBucket, weeklyBucket])
@@ -159,13 +168,26 @@ describe('MigrationFlow', () => {
       status: 'confirmed',
     })
 
-    const { queryClient } = render(
+    const queryClient = createTestQueryClient()
+    setBoard(queryClient, {
+      buckets: [
+        createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
+        createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+        createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+      ],
+      pendingMigrationBuckets: [dailyBucket, weeklyBucket],
+      planningDate: '2026-07-04',
+      status: 'migration_required',
+      timeZone: 'Europe/Berlin',
+    })
+
+    render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationRouteContent />
       </Suspense>,
+      { queryClient },
     )
-    queryClient.setQueryData(boardCacheKeys.todos(dailyBucket.id), [])
-    queryClient.setQueryData(boardCacheKeys.todos(5), [])
 
     expect(
       await screen.findByRole('heading', { name: 'Decide what moves on from Daily 2026-07-03.' }),
@@ -182,24 +204,20 @@ describe('MigrationFlow', () => {
     expect(screen.getByText('This is the last Pending Migration Bucket.')).toBeInTheDocument()
     expect(screen.getByText('Weekly move')).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
-    expect(onFlowComplete).not.toHaveBeenCalled()
-    await waitFor(() => {
-      expect(queryClient.getQueryState(boardCacheKeys.todos(dailyBucket.id))?.isInvalidated).toBe(true)
-      expect(queryClient.getQueryState(boardCacheKeys.todos(5))?.isInvalidated).toBe(true)
-    })
+    expect(screen.queryByText('Loading migration')).not.toBeInTheDocument()
+    expect(navigate).not.toHaveBeenCalled()
+    expect(mockedGetMigrationStep).toHaveBeenLastCalledWith({ data: { sourceBucketId: weeklyBucket.id } })
   })
 
   it('resumes after refresh at the next unresolved Migration Step without repeating the Completion Recap', async () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     const weeklyBucket = createBucket({
       id: 11,
       period: '2026-W27',
-      status: 'pending_migration',
       type: 'weekly',
     })
     mockedGetMigrationStep.mockResolvedValueOnce({
@@ -239,7 +257,7 @@ describe('MigrationFlow', () => {
 
     const { unmount } = render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={dailyBucket.id} />
       </Suspense>,
     )
 
@@ -278,7 +296,7 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={weeklyBucket.id} />
       </Suspense>,
     )
 
@@ -289,11 +307,53 @@ describe('MigrationFlow', () => {
     expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
   })
 
+  it('shows the refreshed Migration Step after confirming a stale one', async () => {
+    const dailyBucket = createBucket({
+      id: 10,
+      period: '2026-07-03',
+      type: 'daily',
+    })
+    const step = {
+      carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
+      completedCount: 0,
+      flowRecap: {
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, incompleteCount: 1 }],
+        completedCount: 0,
+        incompleteCount: 1,
+      },
+      incompleteCount: 1,
+      moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
+      pendingMigrationBuckets: [dailyBucket],
+      sourceBucket: dailyBucket,
+      todos: [createTodo({ bucketId: dailyBucket.id, id: 20, title: 'Known leftover' })],
+    }
+    mockedGetMigrationStep.mockResolvedValueOnce(step).mockResolvedValue({
+      ...step,
+      incompleteCount: 2,
+      todos: [...step.todos, createTodo({ bucketId: dailyBucket.id, id: 21, title: 'Added from another tab' })],
+    })
+    mockedConfirmMigrationStep.mockRejectedValue(
+      operationErrorResponse(409, 'CONFLICT', 'The Migration Step changed; refresh and try again'),
+    )
+
+    render(
+      <Suspense fallback={<p>Loading migration</p>}>
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={dailyBucket.id} />
+      </Suspense>,
+    )
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Carry forward' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm choices' }))
+
+    expect(await screen.findByText('Added from another tab')).toBeInTheDocument()
+    expect(toast.error).toHaveBeenCalledWith('Could not confirm migration')
+    expect(onFlowComplete).not.toHaveBeenCalled()
+  })
+
   it('confirms Move all back only after the bulk confirmation dialog is accepted', async () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
 
@@ -332,7 +392,7 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={dailyBucket.id} />
       </Suspense>,
     )
 
@@ -370,7 +430,6 @@ describe('MigrationFlow', () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
 
@@ -406,7 +465,7 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={dailyBucket.id} />
       </Suspense>,
     )
 
@@ -425,7 +484,6 @@ describe('MigrationFlow', () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
 
@@ -462,7 +520,7 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={dailyBucket.id} />
       </Suspense>,
     )
 
@@ -482,7 +540,6 @@ describe('MigrationFlow', () => {
     const weeklyBucket = createBucket({
       id: 11,
       period: '2026-W27',
-      status: 'pending_migration',
       type: 'weekly',
     })
 
@@ -521,7 +578,7 @@ describe('MigrationFlow', () => {
 
     render(
       <Suspense fallback={<p>Loading migration</p>}>
-        <MigrationFlow onFlowComplete={onFlowComplete} />
+        <MigrationFlow onFlowComplete={onFlowComplete} sourceBucketId={weeklyBucket.id} />
       </Suspense>,
     )
 
@@ -556,21 +613,8 @@ describe('MigrationFlow', () => {
   })
 })
 
-function createBucket({
-  id,
-  period,
-  status = 'active',
-  type,
-}: Pick<BucketDb, 'id' | 'period' | 'type'> & { status?: BucketDb['status'] }): BucketDb {
-  return {
-    archivedAt: null,
-    createdAt: new Date('2026-07-03T08:00:00.000Z'),
-    id,
-    period,
-    status,
-    type,
-    userId: 'user-1',
-  }
+function createBucket(bucket: Bucket): Bucket {
+  return bucket
 }
 
 function createTodo({ bucketId, id, title }: { bucketId: number; id: number; title: string }) {
@@ -587,4 +631,8 @@ function createTodo({ bucketId, id, title }: { bucketId: number; id: number; tit
     title,
     userId: 'user-1',
   }
+}
+
+function setBoard(queryClient: QueryClient, board: CanonicalBoard) {
+  queryClient.setQueryData(getBoardQueryOptions.queryKey, board)
 }

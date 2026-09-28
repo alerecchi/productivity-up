@@ -1,11 +1,10 @@
-import { queryOptions, useQuery } from '@tanstack/react-query'
+import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 
 import { BucketLifecycleRecapDialog } from '@/features/board/components/bucket-lifecycle-recap-dialog'
 import { storeMigrationFlowStarted } from '@/features/board/lib/migration-flow-started'
-import { MIGRATION_STEP_QUERY_KEY } from '@/features/board/queries/query-keys'
+import { getMigrationStepQueryOptions } from '@/features/board/queries/migration-queries'
 import type { Bucket } from '@/lib/types/Bucket'
-import { getMigrationStep } from '@/server/functions/board'
 
 export type MigrationRecap = {
   bucketBreakdown: Array<{
@@ -57,19 +56,10 @@ export function MigrationRecapDialog({
   )
 }
 
-export function PendingMigrationRecapDialog() {
+/** Recaps the pending Migration Flow; `sourceBucketId` is the canonical board's next Pending Migration Bucket. */
+export function PendingMigrationRecapDialog({ sourceBucketId }: { sourceBucketId: number }) {
   const navigate = useNavigate()
-  const {
-    data: step,
-    isError,
-    isPending,
-    refetch,
-  } = useQuery(
-    queryOptions({
-      queryKey: [MIGRATION_STEP_QUERY_KEY],
-      queryFn: () => getMigrationStep({ data: {} }),
-    }),
-  )
+  const { data: step, isError, isPending, refetch } = useQuery(getMigrationStepQueryOptions(sourceBucketId))
 
   if (isError) {
     return (

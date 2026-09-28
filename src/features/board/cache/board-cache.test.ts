@@ -2,14 +2,16 @@ import { QueryClient, QueryObserver } from '@tanstack/react-query'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createBoardCache } from '@/features/board/cache'
+import type { CanonicalBoard } from '@/features/board/cache'
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import {
   BOARD_QUERY_KEY,
   BUCKETS_QUERY_KEY,
   CATEGORIES_QUERY_KEY,
-  MIGRATION_STEP_QUERY_KEY,
   TAGS_QUERY_KEY,
   TODOS_QUERY_KEY,
 } from '@/features/board/queries/query-keys'
+import type { Bucket } from '@/lib/types/Bucket'
 import type { Todo } from '@/lib/types/Todo'
 
 describe('board cache', () => {
@@ -276,7 +278,7 @@ describe('board cache', () => {
       [BOARD_QUERY_KEY],
       [BUCKETS_QUERY_KEY],
       [CATEGORIES_QUERY_KEY],
-      [MIGRATION_STEP_QUERY_KEY],
+      boardCacheKeys.migrationStep(20),
       [TAGS_QUERY_KEY],
       [TODOS_QUERY_KEY, 10],
     ].map((queryKey) => ({ queryFn: vi.fn().mockResolvedValue(queryKey), queryKey, staleTime: Infinity }))
@@ -348,23 +350,28 @@ describe('board cache', () => {
     expect(tagsQuery.queryFn).toHaveBeenCalledTimes(1)
   })
 
-  it('synchronizes the live Migration Step query', async () => {
+  it('synchronizes only the live Migration Step of the named source Bucket', async () => {
     const queryClient = createQueryClient()
     const cache = createBoardCache(queryClient)
-    const queryFn = vi.fn().mockResolvedValue({ status: 'pending' })
-    const observer = new QueryObserver(queryClient, {
-      queryFn,
-      queryKey: [MIGRATION_STEP_QUERY_KEY],
-      staleTime: Infinity,
-    })
-    const unsubscribe = observer.subscribe(() => undefined)
+    const [sourceObserver, otherObserver] = [20, 21].map(
+      (sourceBucketId) =>
+        new QueryObserver(queryClient, {
+          queryFn: vi.fn().mockResolvedValue({ sourceBucketId }),
+          queryKey: boardCacheKeys.migrationStep(sourceBucketId),
+          staleTime: Infinity,
+        }),
+    )
+    const unsubscribes = [sourceObserver, otherObserver].map((observer) => observer.subscribe(() => undefined))
 
-    await observer.refetch()
-    await cache.sync({ type: 'migration-step' })
+    await Promise.all([sourceObserver.refetch(), otherObserver.refetch()])
+    await cache.sync({ sourceBucketId: 20, type: 'migration-step' })
 
-    expect(queryFn).toHaveBeenCalledTimes(2)
+    expect(sourceObserver.options.queryFn).toHaveBeenCalledTimes(2)
+    expect(otherObserver.options.queryFn).toHaveBeenCalledTimes(1)
 
-    unsubscribe()
+    for (const unsubscribe of unsubscribes) {
+      unsubscribe()
+    }
   })
 
   it('cancels an affected fetch before applying an optimistic change', async () => {
@@ -643,6 +650,184 @@ describe('board cache failure reconciliation', () => {
   })
 })
 
+describe('board cache lifecycle consequences', () => {
+  it('writes the canonical board and removes Todo projections for retired Buckets', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const activeTodo = createTodo({ bucketId: 10, id: 1 })
+    const retiredTodo = createTodo({ bucketId: 11, id: 2 })
+    const board = createBoard({ buckets: [createBucket({ id: 10 }), createBucket({ id: 12, period: '2026-09-21' })] })
+
+    queryClient.setQueryData(boardCacheKeys.todos(10), [activeTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(11), [retiredTodo])
+
+    await cache.apply({ board, type: 'lifecycle-committed' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.board())).toEqual(board)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([activeTodo])
+    expect(queryClient.getQueryState(boardCacheKeys.todos(11))).toBeUndefined()
+  })
+
+  it('removes Migration Steps whose source Bucket is no longer pending', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const board: CanonicalBoard = {
+      ...createBoard(),
+      completionRecap: undefined,
+      pendingMigrationBuckets: [createBucket({ id: 21, period: '2026-W38', type: 'weekly' })],
+      status: 'migration_required',
+    }
+
+    queryClient.setQueryData(boardCacheKeys.migrationStep(20), { sourceBucketId: 20 })
+    queryClient.setQueryData(boardCacheKeys.migrationStep(21), { sourceBucketId: 21 })
+
+    await cache.apply({ board, type: 'lifecycle-committed' })
+
+    expect(queryClient.getQueryState(boardCacheKeys.migrationStep(20))).toBeUndefined()
+    expect(queryClient.getQueryData(boardCacheKeys.migrationStep(21))).toEqual({ sourceBucketId: 21 })
+  })
+
+  it('invalidates a confirmed Migration Step while keeping it on screen without refetching its retired source', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const queryFn = vi.fn().mockResolvedValue({ sourceBucketId: 20 })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.migrationStep(20) })
+    const unsubscribe = observer.subscribe(() => undefined)
+
+    await observer.refetch()
+    await cache.apply({
+      board: createBoard(),
+      destinationBucketIds: [10],
+      sourceBucketId: 20,
+      type: 'migration-step-confirmed',
+    })
+
+    expect(queryClient.getQueryData(boardCacheKeys.migrationStep(20))).toEqual({ sourceBucketId: 20 })
+    expect(queryClient.getQueryState(boardCacheKeys.migrationStep(20))?.isInvalidated).toBe(true)
+    expect(queryFn).toHaveBeenCalledTimes(1)
+
+    unsubscribe()
+  })
+
+  it('refetches destination Todos and refreshes the remaining Migration Steps after a Migration Step commits', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const movedTodo = createTodo({ bucketId: 10, id: 7 })
+    const destinationQueryFn = vi.fn().mockResolvedValueOnce([]).mockResolvedValue([movedTodo])
+    const nextStepQueryFn = vi.fn().mockResolvedValue({ sourceBucketId: 21 })
+    const observers = [
+      new QueryObserver(queryClient, { queryFn: destinationQueryFn, queryKey: boardCacheKeys.todos(10) }),
+      new QueryObserver(queryClient, {
+        queryFn: nextStepQueryFn,
+        queryKey: boardCacheKeys.migrationStep(21),
+        staleTime: Infinity,
+      }),
+    ]
+    const unsubscribes = observers.map((observer) => observer.subscribe(() => undefined))
+    const board: CanonicalBoard = {
+      ...createBoard({
+        buckets: [createBucket({ id: 10 }), createBucket({ id: 12, period: '2026-W38', type: 'weekly' })],
+      }),
+      completionRecap: undefined,
+      pendingMigrationBuckets: [createBucket({ id: 21, period: '2026-09', type: 'monthly' })],
+      status: 'migration_required',
+    }
+
+    await Promise.all(observers.map((observer) => observer.refetch()))
+    queryClient.setQueryData(boardCacheKeys.todos(20), [createTodo({ bucketId: 20, id: 7 })])
+    queryClient.setQueryData(boardCacheKeys.migrationStep(20), { sourceBucketId: 20 })
+
+    await cache.apply({ board, destinationBucketIds: [10, 12], sourceBucketId: 20, type: 'migration-step-confirmed' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.board())).toEqual(board)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([movedTodo])
+    expect(queryClient.getQueryState(boardCacheKeys.todos(12))).toBeUndefined()
+    expect(queryClient.getQueryState(boardCacheKeys.todos(20))).toBeUndefined()
+    expect(queryClient.getQueryState(boardCacheKeys.migrationStep(20))).toBeUndefined()
+    expect(nextStepQueryFn).toHaveBeenCalledTimes(2)
+
+    for (const unsubscribe of unsubscribes) {
+      unsubscribe()
+    }
+  })
+
+  it.each([{ type: 'board' }, { type: 'all' }] as const)(
+    'removes retired Todo projections after a $type synchronization refetches the board',
+    async (scope) => {
+      const queryClient = createQueryClient()
+      const cache = createBoardCache(queryClient)
+      const refetchedBoard = createBoard({ buckets: [createBucket({ id: 12, period: '2026-09-21' })] })
+      const observer = new QueryObserver(queryClient, {
+        queryFn: vi.fn().mockResolvedValueOnce(createBoard()).mockResolvedValue(refetchedBoard),
+        queryKey: boardCacheKeys.board(),
+      })
+      const unsubscribe = observer.subscribe(() => undefined)
+
+      await observer.refetch()
+      queryClient.setQueryData(boardCacheKeys.todos(10), [createTodo()])
+
+      await cache.sync(scope)
+
+      expect(queryClient.getQueryData(boardCacheKeys.board())).toEqual(refetchedBoard)
+      expect(queryClient.getQueryState(boardCacheKeys.todos(10))).toBeUndefined()
+
+      unsubscribe()
+    },
+  )
+
+  it('fully synchronizes board data after receiving a malformed lifecycle consequence', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const queryFn = vi.fn().mockResolvedValue([createTodo()])
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
+    const unsubscribe = observer.subscribe(() => undefined)
+
+    await observer.refetch()
+    await cache.apply({ board: { status: 'ready' }, type: 'lifecycle-committed' } as never)
+
+    expect(queryFn).toHaveBeenCalledTimes(2)
+    expect(queryClient.getQueryState(boardCacheKeys.board())).toBeUndefined()
+
+    unsubscribe()
+  })
+
+  it('refetches the board and the stale Migration Step after a Migration Step conflicts', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const [boardObserver, stepObserver, otherStepObserver] = [
+      boardCacheKeys.board(),
+      boardCacheKeys.migrationStep(20),
+      boardCacheKeys.migrationStep(21),
+    ].map(
+      (queryKey) =>
+        new QueryObserver<unknown>(queryClient, {
+          queryFn: vi.fn().mockResolvedValue(null),
+          queryKey,
+          staleTime: Infinity,
+        }),
+    )
+    const observers = [boardObserver, stepObserver, otherStepObserver]
+    const unsubscribes = observers.map((observer) => observer.subscribe(() => undefined))
+
+    await Promise.all(observers.map((observer) => observer.refetch()))
+
+    await expect(
+      cache.recover(new Response(null, { status: 409 }), [
+        { type: 'board' },
+        { sourceBucketId: 20, type: 'migration-step' },
+      ]),
+    ).resolves.toBe('conflict')
+
+    expect(boardObserver.options.queryFn).toHaveBeenCalledTimes(2)
+    expect(stepObserver.options.queryFn).toHaveBeenCalledTimes(2)
+    expect(otherStepObserver.options.queryFn).toHaveBeenCalledTimes(1)
+
+    for (const unsubscribe of unsubscribes) {
+      unsubscribe()
+    }
+  })
+})
+
 describe('board cache overlapping optimistic changes', () => {
   it('keeps a pending toggle visible when an earlier toggle of the same Todo confirms', async () => {
     const queryClient = createQueryClient()
@@ -824,6 +1009,22 @@ function createTodo(overrides: Partial<Todo> = {}): Todo {
     position: 1024,
     tags: [],
     title: 'Todo',
+    ...overrides,
+  }
+}
+
+function createBucket(overrides: Partial<Bucket> = {}): Bucket {
+  return { id: 10, period: '2026-09-20', type: 'daily', ...overrides }
+}
+
+function createBoard(
+  overrides: Partial<Extract<CanonicalBoard, { status: 'ready' }>> = {},
+): Extract<CanonicalBoard, { status: 'ready' }> {
+  return {
+    buckets: [createBucket()],
+    planningDate: '2026-09-20',
+    status: 'ready',
+    timeZone: 'Europe/Rome',
     ...overrides,
   }
 }

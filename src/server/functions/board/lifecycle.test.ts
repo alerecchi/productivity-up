@@ -168,6 +168,41 @@ describe('getBoardForUser', () => {
       status: 'migration_required',
     })
   })
+
+  test('lists Pending Migration Buckets in the order Migration Steps take them', async () => {
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ id: 2, period: '2026', type: 'yearly' }),
+        createBucket({ id: 3, period: '2026-08', type: 'monthly' }),
+        createBucket({ id: 4, period: '2026-W32', type: 'weekly' }),
+        createBucket({ id: 5, period: '2026-08-03', type: 'daily' }),
+        createBucket({ id: 6, period: '2026-07', status: 'pending_migration', type: 'monthly' }),
+        createBucket({ id: 7, period: '2026-07-31', status: 'pending_migration', type: 'daily' }),
+      ],
+      todos: [
+        createTodo({ bucketId: 6, completed: false, id: 1, title: 'Monthly leftover' }),
+        createTodo({ bucketId: 7, completed: false, id: 2, title: 'Daily leftover' }),
+      ],
+      user: { planningDate: '2026-08-03', timeZone: BERLIN },
+    })
+
+    const board = await getBoardForUser({
+      now: () => new Date('2026-08-03T07:30:00.000Z'),
+      repository: readOnly(repository),
+      userId: 'user-1',
+    })
+    const firstStep = await getMigrationStepForUser({ data: {}, repository, userId: 'user-1' })
+
+    expect(board).toMatchObject({
+      pendingMigrationBuckets: [
+        { id: 7, period: '2026-07-31', type: 'daily' },
+        { id: 6, period: '2026-07', type: 'monthly' },
+      ],
+      status: 'migration_required',
+    })
+    expect(firstStep.sourceBucket.id).toBe(7)
+  })
 })
 
 describe('reconcileLifecycleForUser', () => {

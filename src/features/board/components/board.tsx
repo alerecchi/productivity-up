@@ -1,9 +1,9 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { CheckCircle2 } from 'lucide-react'
-import { useState } from 'react'
 import { toast } from 'sonner'
 
+import { useBoardCache } from '@/features/board/cache'
 import { BucketColumn } from '@/features/board/components/bucket-column'
 import { BucketLifecycleRecapDialog } from '@/features/board/components/bucket-lifecycle-recap-dialog'
 import { LifecycleReconciliationStatus } from '@/features/board/components/lifecycle-reconciliation-status'
@@ -11,11 +11,9 @@ import {
   MigrationRecapDialog,
   PendingMigrationRecapDialog,
 } from '@/features/board/components/pending-migration-recap-dialog'
-import type { MigrationRecap } from '@/features/board/components/pending-migration-recap-dialog'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
 import { useReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
 import type { ReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
-import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
 import { Button } from '@/features/shared/components/ui/button'
 import { getTodayLocalDate, isFutureBucket } from '@/lib/periods'
 import type { Bucket } from '@/lib/types/Bucket'
@@ -40,37 +38,37 @@ export function Board() {
 
 function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
-  const [completionRecap, setCompletionRecap] = useState<CompletionRecap | null>(null)
-  const [migrationRecap, setMigrationRecap] = useState<ManualMigrationRecap | null>(null)
+  const cache = useBoardCache()
   const completeDayMutation = useMutation({
     mutationFn: () => completeDay({ data: { planningDate: board.planningDate } }),
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not complete day')
+      void cache.recover(error, { type: 'board' })
     },
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
       if (result.status === 'migration_required') {
-        queryClient.setQueryData([BOARD_QUERY_KEY], result)
-        setMigrationRecap({
-          pendingMigrationBuckets: result.pendingMigrationBuckets,
-          recap: result.migrationRecap,
+        const { migrationRecap, ...nextBoard } = result
+        await cache.apply({
+          board: { ...nextBoard, completionRecap: migrationRecap },
+          type: 'lifecycle-committed',
         })
         return
       }
 
-      queryClient.setQueryData([BOARD_QUERY_KEY], {
-        buckets: result.buckets,
-        planningDate: result.planningDate,
-        status: 'ready',
-        timeZone: result.timeZone,
+      await cache.apply({
+        board: {
+          buckets: result.buckets,
+          completionRecap: {
+            ...result.recap,
+            completedPlanningDate: board.planningDate,
+            nextPlanningDate: result.planningDate,
+          },
+          planningDate: result.planningDate,
+          status: 'ready',
+          timeZone: result.timeZone,
+        },
+        type: 'lifecycle-committed',
       })
-
-      setCompletionRecap({
-        ...result.recap,
-        completedPlanningDate: board.planningDate,
-        nextPlanningDate: result.planningDate,
-      })
-      setMigrationRecap(null)
     },
   })
 
@@ -131,42 +129,31 @@ function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
           </div>
         </TodoDragDropProvider>
       </div>
-      {isMigrationRequired && migrationRecap === null ? <PendingMigrationRecapDialog /> : null}
-      {migrationRecap ? (
+      {board.status === 'migration_required' && !board.completionRecap ? (
+        <PendingMigrationRecapDialog sourceBucketId={board.pendingMigrationBuckets[0].id} />
+      ) : null}
+      {board.status === 'migration_required' && board.completionRecap ? (
         <MigrationRecapDialog
           onContinue={() => navigate({ to: '/migration' })}
-          pendingMigrationBuckets={migrationRecap.pendingMigrationBuckets}
-          recap={migrationRecap.recap}
+          pendingMigrationBuckets={board.pendingMigrationBuckets}
+          recap={board.completionRecap}
         />
       ) : null}
-      {completionRecap ? (
+      {board.status === 'ready' && board.completionRecap ? (
         <BucketLifecycleRecapDialog
           actionLabel='Close and plan tomorrow'
-          completedCount={completionRecap.completedCount}
-          headline={`${completionRecap.completedPlanningDate} is wrapped`}
-          incompleteCount={completionRecap.incompleteCount}
+          completedCount={board.completionRecap.completedCount}
+          headline={`${board.completionRecap.completedPlanningDate} is wrapped`}
+          incompleteCount={board.completionRecap.incompleteCount}
           migrationStepDetail='All todos are completed, so this step is skipped.'
           migrationStepTitle='No migration needed'
-          onAction={() => setCompletionRecap(null)}
+          onAction={() => cache.dismissCompletionRecap()}
           open
           showCloseButton
         />
       ) : null}
     </>
   )
-}
-
-type CompletionRecap = {
-  completedPlanningDate: string
-  completedCount: number
-  incompleteCount: 0
-  kind: 'all_complete'
-  nextPlanningDate: string
-}
-
-type ManualMigrationRecap = {
-  pendingMigrationBuckets: Array<Pick<Bucket, 'id'>>
-  recap: MigrationRecap
 }
 
 function addDaysToDateKey(dateKey: string, days: number): string {

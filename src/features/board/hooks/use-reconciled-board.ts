@@ -16,9 +16,12 @@ export function useReconciledBoard() {
   const { data } = useSuspenseQuery(getBoardQueryOptions)
   const cache = useBoardCache()
   const { isError, isPending, mutate } = useMutation({
-    mutationFn: async () => {
-      await reconcileLifecycle({ data: { timeZone: getBrowserTimeZone() } })
-      await cache.sync({ type: 'board' })
+    mutationFn: () => reconcileLifecycle({ data: { timeZone: getBrowserTimeZone() } }),
+    onError: (error) => {
+      void cache.recover(error, { type: 'board' })
+    },
+    onSuccess: async (board) => {
+      await cache.apply({ board, type: 'lifecycle-committed' })
     },
   })
   const isReconciliationRequired = data.status === 'reconciliation_required'
