@@ -9,7 +9,7 @@ import { BOARD_QUERY_KEY, TODOS_QUERY_KEY } from '@/features/board/queries/query
 import type { Bucket } from '@/lib/types/Bucket'
 import type { Todo } from '@/lib/types/Todo'
 import { getTodos, moveTodo } from '@/server/functions/todos'
-import { createTestQueryClient, render } from '@/test'
+import { createTestQueryClient, realtimeOriginHeaders, render } from '@/test'
 
 const dnd = vi.hoisted(() => ({
   activeDropTargetId: null as string | null,
@@ -170,6 +170,7 @@ describe('Todo reordering within a Bucket', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           afterTodoId: todos[0].id,
           id: todos[1].id,
@@ -205,6 +206,7 @@ describe('Todo reordering within a Bucket', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           afterTodoId: todos[2].id,
           beforeTodoId: todos[1].id,
@@ -249,6 +251,7 @@ describe('Todo reordering within a Bucket', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           beforeTodoId: todos[2].id,
           id: todos[0].id,
@@ -442,6 +445,7 @@ describe('Todo reordering within a Bucket', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           beforeTodoId: todos[2].id,
           id: todos[1].id,
@@ -604,6 +608,7 @@ describe('Todo movement across Buckets', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           afterTodoId: destinationTodos[1].id,
           beforeTodoId: destinationTodos[0].id,
@@ -946,6 +951,7 @@ describe('Todo movement across Buckets', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           id: todos[0].id,
           targetBucketId: destinationBucket.id,
@@ -993,6 +999,7 @@ describe('Todo movement across Buckets', () => {
 
     await waitFor(() => {
       expect(mockedMoveTodo).toHaveBeenCalledWith({
+        headers: realtimeOriginHeaders(queryClient),
         data: {
           beforeTodoId: destinationTodos[1].id,
           id: todos[1].id,

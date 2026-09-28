@@ -1,4 +1,7 @@
+import { useQueryClient } from '@tanstack/react-query'
 import type { QueryClient } from '@tanstack/react-query'
+
+import { CLIENT_INSTANCE_ID_HEADER } from '@/lib/realtime'
 
 const clientInstanceIds = new WeakMap<QueryClient, string>()
 
@@ -15,4 +18,9 @@ export function getClientInstanceId(queryClient: QueryClient) {
   }
 
   return clientInstanceId
+}
+
+/** Request headers that name this QueryClient as a mutation's origin, so the realtime hints it causes skip it. */
+export function useRealtimeOriginHeaders() {
+  return { [CLIENT_INSTANCE_ID_HEADER]: getClientInstanceId(useQueryClient()) }
 }

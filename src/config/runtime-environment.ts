@@ -5,7 +5,11 @@ export type RuntimeQueue = {
 }
 
 export type RuntimeDurableObjectNamespace = {
-  getByName: (name: string) => { fetch: (request: Request) => Promise<Response> }
+  getByName: (name: string) => {
+    fetch: (request: Request) => Promise<Response>
+    /** Durable Object RPC to `UserRealtimeDurableObject.publish`. */
+    publish: (hints: ReadonlyArray<unknown>, options: { originClientInstanceId?: string }) => Promise<void>
+  }
 }
 
 export type RuntimeEnvironment = {
