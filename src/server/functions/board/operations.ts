@@ -4,7 +4,7 @@ import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
 import { errorResponse } from '@/server/core/errors'
 import type { BucketDb, TodoDbSelect, UserDb } from '@/server/db/types'
-import { toBoardState } from '@/server/functions/board/lifecycle'
+import { sortMigrationBuckets, toBoardState } from '@/server/functions/board/lifecycle'
 import type { BoardBucket, BoardSnapshot, LifecycleRepository } from '@/server/functions/board/lifecycle'
 
 const ENABLED_BUCKET_HORIZONS = ['yearly', 'monthly', 'weekly', 'daily'] as const
@@ -303,16 +303,4 @@ function getNearestBroaderBucketType(sourceType: BucketType): BucketType {
   }
 
   return ENABLED_BUCKET_HORIZONS[sourceIndex - 1]
-}
-
-function sortMigrationBuckets(buckets: Array<BucketDb>) {
-  const priority: Record<BucketType, number> = {
-    daily: 0,
-    inbox: 5,
-    monthly: 2,
-    weekly: 1,
-    yearly: 3,
-  }
-
-  return buckets.toSorted((a, b) => priority[a.type] - priority[b.type] || a.id - b.id)
 }

@@ -46,8 +46,17 @@ const MigrationRecapResponse = z.object({
   incompleteCount: z.int().nonnegative(),
 })
 
+const AllCompleteRecapResponse = z.object({
+  completedCount: z.int().nonnegative(),
+  completedPlanningDate: PlanningDateSchema,
+  incompleteCount: z.literal(0),
+  kind: z.literal('all_complete'),
+  nextPlanningDate: PlanningDateSchema,
+})
+
 const ReadyBoardResponse = z.object({
   buckets: BucketsResponse,
+  completionRecap: AllCompleteRecapResponse.optional(),
   planningDate: PlanningDateSchema,
   status: z.literal('ready'),
   timeZone: UserTimeZoneSchema,
@@ -55,6 +64,7 @@ const ReadyBoardResponse = z.object({
 
 const MigrationRequiredBoardResponse = z.object({
   buckets: BucketsResponse,
+  completionRecap: MigrationRecapResponse.optional(),
   pendingMigrationBuckets: BucketsResponse,
   planningDate: PlanningDateSchema,
   status: z.literal('migration_required'),

@@ -13,7 +13,7 @@ export function MigrationRouteContent() {
   }
 
   if (board.status === 'migration_required') {
-    return <MigrationFlow />
+    return <MigrationFlow sourceBucketId={board.pendingMigrationBuckets[0].id} />
   }
 
   return (

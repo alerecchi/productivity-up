@@ -4,6 +4,10 @@ import { z } from 'zod'
 import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import { TodoSchema } from '@/lib/types/Todo'
 import type { Todo } from '@/lib/types/Todo'
+import { ReconcileLifecycleResponse } from '@/server/functions/board/schemas'
+
+/** The canonical board: the sole projection of Planning Date, User Timezone, lifecycle status, and active Buckets. */
+export type CanonicalBoard = z.output<typeof ReconcileLifecycleResponse>
 
 type OptimisticTodoEdit = {
   bucketId: number
@@ -48,9 +52,38 @@ type TodoMoved = {
   type: 'todo-moved'
 }
 
-export type CommittedBoardChange = TodoCreated | TodoDeleted | TodoMoved | TodoUpdated
+/** Lifecycle Reconciliation or Complete Day committed `board`. */
+type LifecycleCommitted = {
+  board: CanonicalBoard
+  type: 'lifecycle-committed'
+}
+
+/** A Migration Step committed: its source Bucket retired and its Todos moved into the destination Buckets. */
+type MigrationStepConfirmed = {
+  board: CanonicalBoard
+  destinationBucketIds: Array<number>
+  sourceBucketId: number
+  type: 'migration-step-confirmed'
+}
+
+export type CommittedBoardChange =
+  | LifecycleCommitted
+  | MigrationStepConfirmed
+  | TodoCreated
+  | TodoDeleted
+  | TodoMoved
+  | TodoUpdated
 
 const CommittedBoardChangeSchema = z.discriminatedUnion('type', [
+  z.object({ board: ReconcileLifecycleResponse, type: z.literal('lifecycle-committed') }).strict(),
+  z
+    .object({
+      board: ReconcileLifecycleResponse,
+      destinationBucketIds: z.array(z.int()),
+      sourceBucketId: z.int(),
+      type: z.literal('migration-step-confirmed'),
+    })
+    .strict(),
   z.object({ todo: TodoSchema, type: z.literal('todo-created') }).strict(),
   z.object({ previousBucketId: z.int(), todoId: z.int(), type: z.literal('todo-deleted') }).strict(),
   z
@@ -94,12 +127,13 @@ export type BoardCacheScope =
   | { type: 'board' }
   | { type: 'buckets' }
   | { type: 'categories' }
-  | { type: 'migration-step' }
+  | { sourceBucketId: number; type: 'migration-step' }
   | { type: 'tags' }
 
 const BoardCacheScopeSchema: z.ZodType<BoardCacheScope> = z.discriminatedUnion('type', [
   z.object({ bucketIds: z.array(z.int()), type: z.literal('todos') }).strict(),
-  z.object({ type: z.enum(['all', 'board', 'buckets', 'categories', 'migration-step', 'tags']) }).strict(),
+  z.object({ sourceBucketId: z.int(), type: z.literal('migration-step') }).strict(),
+  z.object({ type: z.enum(['all', 'board', 'buckets', 'categories', 'tags']) }).strict(),
 ])
 
 /**
@@ -217,15 +251,32 @@ export function createBoardCache(queryClient: QueryClient) {
         predicate: (query) => BOARD_QUERY_ROOTS.has(query.queryKey[0]),
         refetchType,
       })
+      removeProjectionsRetiredByLoadedBoard()
       reapplyPendingChanges('all')
       return
     }
 
     await queryClient.invalidateQueries({
       exact: true,
-      queryKey: getQueryKeyForScope(validScope),
+      queryKey:
+        validScope.type === 'migration-step'
+          ? boardCacheKeys.migrationStep(validScope.sourceBucketId)
+          : getQueryKeyForScope(validScope),
       refetchType,
     })
+
+    if (validScope.type === 'board') {
+      removeProjectionsRetiredByLoadedBoard()
+    }
+  }
+
+  // A refetched board may have retired Buckets since their projections were loaded.
+  const removeProjectionsRetiredByLoadedBoard = () => {
+    const board = ReconcileLifecycleResponse.safeParse(queryClient.getQueryData(boardCacheKeys.board()))
+
+    if (board.success) {
+      removeRetiredProjections(queryClient, board.data)
+    }
   }
 
   const apply = async (change: CommittedBoardChange) => {
@@ -246,6 +297,27 @@ export function createBoardCache(queryClient: QueryClient) {
     )
 
     switch (committedChange.type) {
+      case 'lifecycle-committed':
+        await applyCanonicalBoard(committedChange.board)
+        break
+      case 'migration-step-confirmed':
+        await applyCanonicalBoard(committedChange.board)
+        await Promise.all([
+          sync({ bucketIds: affectedBucketIds, type: 'todos' }),
+          // The displayed source is retired, so mark it stale without refetching a step that no longer exists.
+          queryClient.invalidateQueries({
+            exact: true,
+            queryKey: boardCacheKeys.migrationStep(committedChange.sourceBucketId),
+            refetchType: 'none',
+          }),
+          // Every remaining Migration Step embeds the flow recap this step just changed.
+          queryClient.invalidateQueries({
+            predicate: ({ queryKey: [root, sourceBucketId] }) =>
+              root === boardCacheKeys.migrationStepRoot()[0] &&
+              getPendingBucketIds(committedChange.board).has(sourceBucketId),
+          }),
+        ])
+        break
       case 'todo-created':
         updateLoadedTodos(queryClient, boardCacheKeys.todos(committedChange.todo.bucketId), (todos) =>
           [...todos.filter((todo) => todo.id !== committedChange.todo.id), committedChange.todo].toSorted(
@@ -273,6 +345,12 @@ export function createBoardCache(queryClient: QueryClient) {
     reapplyPendingChanges(affectedBucketIds)
   }
 
+  const applyCanonicalBoard = async (board: CanonicalBoard) => {
+    await queryClient.cancelQueries({ exact: true, queryKey: boardCacheKeys.board() })
+    queryClient.setQueryData(boardCacheKeys.board(), board)
+    removeRetiredProjections(queryClient, board)
+  }
+
   // Returns the scope it refetched, if any.
   const reconcileFailure = async (failure: MutationFailure, scope: BoardCacheScope) => {
     const syncedScope: BoardCacheScope | undefined =
@@ -287,6 +365,18 @@ export function createBoardCache(queryClient: QueryClient) {
 
   return {
     apply,
+    dismissCompletionRecap() {
+      queryClient.setQueryData(boardCacheKeys.board(), (current: unknown) => {
+        const parsed = ReconcileLifecycleResponse.safeParse(current)
+
+        if (!parsed.success || !parsed.data.completionRecap) {
+          return current
+        }
+
+        const { completionRecap: _completionRecap, ...board } = parsed.data
+        return board
+      })
+    },
     async begin(change: OptimisticBoardChange) {
       const affectedBucketIds =
         change.type === 'todo-edited' ? [change.bucketId] : [...new Set([change.sourceBucketId, change.targetBucketId])]
@@ -347,10 +437,16 @@ export function createBoardCache(queryClient: QueryClient) {
         },
       }
     },
-    /** Reconciles a failed non-optimistic mutation: conflicts refetch `scope`, uncertain outcomes resync the board. */
-    async recover(error: unknown, scope: BoardCacheScope) {
+    /** Reconciles a failed non-optimistic mutation: conflicts refetch `scopes`, uncertain outcomes resync the board. */
+    async recover(error: unknown, scopes: BoardCacheScope | Array<BoardCacheScope>) {
       const failure = getMutationFailure(error)
-      await reconcileFailure(failure, scope)
+
+      if (failure === 'conflict') {
+        await Promise.all([scopes].flat().map((scope) => sync(scope)))
+      } else if (failure === 'uncertain') {
+        await sync({ type: 'all' })
+      }
+
       return failure
     },
     sync,
@@ -377,6 +473,10 @@ function applyCommittedTodoUpdate(queryClient: QueryClient, change: TodoUpdated)
 
 function getAffectedBucketIds(change: CommittedBoardChange) {
   switch (change.type) {
+    case 'lifecycle-committed':
+      return []
+    case 'migration-step-confirmed':
+      return [...new Set([change.sourceBucketId, ...change.destinationBucketIds])]
     case 'todo-created':
       return [change.todo.bucketId]
     case 'todo-deleted':
@@ -388,16 +488,42 @@ function getAffectedBucketIds(change: CommittedBoardChange) {
   }
 }
 
+// Removes Todo projections for Buckets the canonical board no longer lists as active, and unobserved Migration Steps
+// whose source Bucket is no longer pending. A displayed Migration Step stays until its view moves on, then expires.
+function removeRetiredProjections(queryClient: QueryClient, board: CanonicalBoard) {
+  const activeBucketIds = new Set<unknown>(board.buckets.map((bucket) => bucket.id))
+  const pendingBucketIds = getPendingBucketIds(board)
+
+  queryClient.removeQueries({
+    predicate: (query) => {
+      const [root, bucketId] = query.queryKey
+
+      return (
+        (root === boardCacheKeys.todosRoot()[0] && !activeBucketIds.has(bucketId)) ||
+        (root === boardCacheKeys.migrationStepRoot()[0] &&
+          !pendingBucketIds.has(bucketId) &&
+          query.getObserversCount() === 0)
+      )
+    },
+  })
+}
+
+function getPendingBucketIds(board: CanonicalBoard) {
+  return new Set<unknown>(
+    board.status === 'migration_required' ? board.pendingMigrationBuckets.map((bucket) => bucket.id) : [],
+  )
+}
+
 const STATIC_SCOPE_QUERY_KEYS = {
   board: boardCacheKeys.board(),
   buckets: boardCacheKeys.buckets(),
   categories: boardCacheKeys.categories(),
-  'migration-step': boardCacheKeys.migrationStep(),
   tags: boardCacheKeys.tags(),
 } as const
 
 const BOARD_QUERY_ROOTS = new Set<unknown>([
   ...Object.values(STATIC_SCOPE_QUERY_KEYS).map((queryKey) => queryKey[0]),
+  boardCacheKeys.migrationStepRoot()[0],
   boardCacheKeys.todosRoot()[0],
 ])
 

@@ -1,4 +1,4 @@
-import { queryOptions, useMutation, useQueryClient, useSuspenseQuery } from '@tanstack/react-query'
+import { useMutation, useSuspenseQuery } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import {
   ArrowDownToLine,
@@ -10,15 +10,15 @@ import {
   Route as RouteIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useEffect, useState } from 'react'
+import { useDeferredValue, useEffect, useState } from 'react'
 import { toast } from 'sonner'
 
-import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
+import { useBoardCache } from '@/features/board/cache'
 import {
   clearStoredMigrationFlowStarted,
   getStoredMigrationFlowBucketIds,
 } from '@/features/board/lib/migration-flow-started'
-import { BOARD_QUERY_KEY, MIGRATION_STEP_QUERY_KEY } from '@/features/board/queries/query-keys'
+import { getMigrationStepQueryOptions } from '@/features/board/queries/migration-queries'
 import { Badge } from '@/features/shared/components/ui/badge'
 import { Button } from '@/features/shared/components/ui/button'
 import {
@@ -31,7 +31,7 @@ import {
 } from '@/features/shared/components/ui/dialog'
 import { cn } from '@/features/shared/utils/tailwind'
 import type { Bucket } from '@/lib/types/Bucket'
-import { confirmMigrationStep, getMigrationStep } from '@/server/functions/board'
+import { confirmMigrationStep } from '@/server/functions/board'
 
 type MigrationDecision = 'carry_forward' | 'move_back'
 type BulkMigrationAction = {
@@ -40,18 +40,25 @@ type BulkMigrationAction = {
   title: string
 } | null
 
-export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promise<void> | void }) {
+/**
+ * Walks the Migration Step for `sourceBucketId`, the canonical board's next Pending Migration Bucket. The current step
+ * stays visible while the next one loads.
+ */
+export function MigrationFlow({
+  onFlowComplete,
+  sourceBucketId,
+}: {
+  onFlowComplete?: () => Promise<void> | void
+  sourceBucketId: number
+}) {
   const navigate = useNavigate()
-  const queryClient = useQueryClient()
+  const cache = useBoardCache()
   const [bulkAction, setBulkAction] = useState<BulkMigrationAction>(null)
   const [decisions, setDecisions] = useState<Partial<Record<number, MigrationDecision>>>({})
   const [isLeavingFlow, setIsLeavingFlow] = useState(false)
-  const { data: step } = useSuspenseQuery(
-    queryOptions({
-      queryKey: [MIGRATION_STEP_QUERY_KEY],
-      queryFn: () => getMigrationStep({ data: {} }),
-    }),
-  )
+  const displayedSourceBucketId = useDeferredValue(sourceBucketId)
+  const isLoadingNextStep = displayedSourceBucketId !== sourceBucketId
+  const { data: step } = useSuspenseQuery(getMigrationStepQueryOptions(displayedSourceBucketId))
   const confirmMutation = useMutation({
     mutationFn: (bulkDecision?: MigrationDecision) =>
       confirmMigrationStep({
@@ -64,22 +71,21 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
       }),
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not confirm migration')
+      void cache.recover(error, [{ type: 'board' }, { sourceBucketId: step.sourceBucket.id, type: 'migration-step' }])
     },
     onSuccess: async (result) => {
-      const affectedBucketIds = [...new Set([result.sourceBucketId, ...result.destinationBucketIds])]
-
-      await Promise.all(
-        affectedBucketIds.map((bucketId) =>
-          queryClient.invalidateQueries({
-            exact: true,
-            queryKey: boardCacheKeys.todos(bucketId),
-          }),
-        ),
-      )
-
       if (result.board.status === 'ready') {
         clearStoredMigrationFlowStarted()
-        queryClient.setQueryData([BOARD_QUERY_KEY], result.board)
+      }
+
+      await cache.apply({
+        board: result.board,
+        destinationBucketIds: result.destinationBucketIds,
+        sourceBucketId: result.sourceBucketId,
+        type: 'migration-step-confirmed',
+      })
+
+      if (result.board.status === 'ready') {
         try {
           setIsLeavingFlow(true)
           await (onFlowComplete ? onFlowComplete() : navigate({ to: '/board' }))
@@ -90,11 +96,10 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
         return
       }
 
-      queryClient.setQueryData([BOARD_QUERY_KEY], result.board)
-      queryClient.invalidateQueries({ queryKey: [MIGRATION_STEP_QUERY_KEY] })
       setBulkAction(null)
     },
   })
+  const isConfirmDisabled = confirmMutation.isPending || isLoadingNextStep
   const hasAllDecisions = step.todos.every((todo) => decisions[todo.id] !== undefined)
   const migrationFlowBucketIds = getMigrationFlowBucketIds(step.pendingMigrationBuckets, step.sourceBucket)
   const currentStepIndex = getMigrationStepIndex(migrationFlowBucketIds, step.sourceBucket)
@@ -243,7 +248,7 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
           <div className='flex flex-wrap items-center justify-end gap-2'>
             <Button
               className='border-violet-200 text-violet-800 hover:bg-violet-50 hover:text-violet-900'
-              disabled={confirmMutation.isPending}
+              disabled={isConfirmDisabled}
               onClick={() =>
                 setBulkAction({
                   confirmLabel: 'Confirm move all back',
@@ -260,7 +265,7 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
             </Button>
             <Button
               className='border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:text-emerald-900'
-              disabled={confirmMutation.isPending}
+              disabled={isConfirmDisabled}
               onClick={() =>
                 setBulkAction({
                   confirmLabel: 'Confirm carry all forward',
@@ -276,7 +281,7 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
               Carry all forward
             </Button>
             <Button
-              disabled={!hasAllDecisions || confirmMutation.isPending}
+              disabled={!hasAllDecisions || isConfirmDisabled}
               onClick={() => confirmMutation.mutate(undefined)}
               size='sm'
             >
@@ -296,16 +301,11 @@ export function MigrationFlow({ onFlowComplete }: { onFlowComplete?: () => Promi
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button
-              disabled={confirmMutation.isPending}
-              onClick={() => setBulkAction(null)}
-              type='button'
-              variant='outline'
-            >
+            <Button disabled={isConfirmDisabled} onClick={() => setBulkAction(null)} type='button' variant='outline'>
               Cancel
             </Button>
             <Button
-              disabled={confirmMutation.isPending}
+              disabled={isConfirmDisabled}
               onClick={() => {
                 if (bulkAction) {
                   confirmMutation.mutate(bulkAction.decision)

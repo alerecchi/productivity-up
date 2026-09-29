@@ -297,10 +297,27 @@ export function toBoardState(snapshot: BoardSnapshot): BoardState {
   }
 
   if (snapshot.pendingMigrationBuckets.length > 0) {
-    return { ...board, pendingMigrationBuckets: snapshot.pendingMigrationBuckets, status: 'migration_required' }
+    return {
+      ...board,
+      pendingMigrationBuckets: sortMigrationBuckets(snapshot.pendingMigrationBuckets),
+      status: 'migration_required',
+    }
   }
 
   return { ...board, status: 'ready' }
+}
+
+/** Orders Pending Migration Buckets the way Migration Steps take them: shortest horizon first, then oldest. */
+export function sortMigrationBuckets<TBucket extends Pick<BoardBucket, 'id' | 'type'>>(buckets: Array<TBucket>) {
+  const priority: Record<BucketType, number> = {
+    daily: 0,
+    inbox: 5,
+    monthly: 2,
+    weekly: 1,
+    yearly: 3,
+  }
+
+  return buckets.toSorted((a, b) => priority[a.type] - priority[b.type] || a.id - b.id)
 }
 
 function hasCurrentBuckets(snapshot: BoardSnapshot): boolean {

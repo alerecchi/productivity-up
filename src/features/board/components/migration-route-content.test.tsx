@@ -1,9 +1,12 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { screen } from '@testing-library/react'
 import { Suspense } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { CanonicalBoard } from '@/features/board/cache'
 import { MigrationRouteContent } from '@/features/board/components/migration-route-content'
-import { BOARD_QUERY_KEY } from '@/features/board/queries/query-keys'
+import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
+import type { Bucket } from '@/lib/types/Bucket'
 import { getMigrationStep } from '@/server/functions/board'
 import { createTestQueryClient, render } from '@/test'
 
@@ -19,16 +22,6 @@ vi.mock('@/server/functions/todos', () => ({
   getTodos: vi.fn(),
 }))
 
-type TestBucket = {
-  archivedAt: Date | null
-  createdAt: Date
-  id: number
-  period: string
-  status: 'active' | 'pending_migration'
-  type: 'daily' | 'inbox' | 'weekly'
-  userId: string
-}
-
 const mockedGetMigrationStep = vi.mocked(getMigrationStep)
 
 describe('MigrationRouteContent', () => {
@@ -38,7 +31,7 @@ describe('MigrationRouteContent', () => {
 
   it('shows a quiet empty state with a link back to the board when no Migration Flow is pending', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: [
         createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
         createBucket({ id: 2, period: '2026-07-04', type: 'daily' }),
@@ -59,7 +52,6 @@ describe('MigrationRouteContent', () => {
     const pendingBucket = createBucket({
       id: 7,
       period: '2026-07-03',
-      status: 'pending_migration',
       type: 'daily',
     })
     mockedGetMigrationStep.mockResolvedValue({
@@ -77,7 +69,7 @@ describe('MigrationRouteContent', () => {
       todos: [],
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], {
+    setBoard(queryClient, {
       buckets: [
         createBucket({ id: 1, period: 'inbox', type: 'inbox' }),
         createBucket({ id: 2, period: '2026-07-04', type: 'daily' }),
@@ -101,19 +93,10 @@ describe('MigrationRouteContent', () => {
   })
 })
 
-function createBucket({
-  id,
-  period,
-  status = 'active',
-  type,
-}: Pick<TestBucket, 'id' | 'period' | 'type'> & { status?: TestBucket['status'] }): TestBucket {
-  return {
-    archivedAt: null,
-    createdAt: new Date('2026-07-03T08:00:00.000Z'),
-    id,
-    period,
-    status,
-    type,
-    userId: 'user-1',
-  }
+function createBucket(bucket: Bucket): Bucket {
+  return bucket
+}
+
+function setBoard(queryClient: QueryClient, board: CanonicalBoard) {
+  queryClient.setQueryData(getBoardQueryOptions.queryKey, board)
 }
