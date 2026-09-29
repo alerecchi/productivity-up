@@ -1,11 +1,11 @@
 import { z } from 'zod'
 
-export type RuntimeQueue = {
-  send: (message: unknown) => Promise<void>
-}
-
 export type RuntimeDurableObjectNamespace = {
-  getByName: (name: string) => { fetch: (request: Request) => Promise<Response> }
+  getByName: (name: string) => {
+    fetch: (request: Request) => Promise<Response>
+    /** Durable Object RPC to `UserRealtimeDurableObject.publish`. */
+    publish: (hints: ReadonlyArray<unknown>, options: { originClientInstanceId?: string }) => Promise<void>
+  }
 }
 
 export type RuntimeEnvironment = {
@@ -26,25 +26,14 @@ export type RuntimeEnvironment = {
   realtime: {
     userRealtime: RuntimeDurableObjectNamespace
   }
+  deployment: 'development' | 'production' | 'staging'
   version: string
-} & (
-  | {
-      deployment: 'development'
-    }
-  | {
-      bindings: {
-        authEmailDeadLetterQueue: RuntimeQueue
-        authEmailQueue: RuntimeQueue
-      }
-      deployment: 'production' | 'staging'
-    }
-)
+}
 
 const absoluteHttpUrl = z.string().refine((value) => hasProtocol(value, ['http:', 'https:']))
 
 const postgresUrl = z.string().refine((value) => hasProtocol(value, ['postgres:', 'postgresql:']))
 
-const queueSchema = z.custom<RuntimeQueue>(hasCallableProperty('send'))
 const durableObjectNamespaceSchema = z.custom<RuntimeDurableObjectNamespace>(hasCallableProperty('getByName'))
 
 const commonSchema = z.object({
@@ -61,8 +50,6 @@ const developmentSchema = commonSchema.extend({
 })
 
 const cloudflareSchema = commonSchema.extend({
-  AUTH_EMAIL_DEAD_LETTER_QUEUE: queueSchema,
-  AUTH_EMAIL_QUEUE: queueSchema,
   ENVIRONMENT: z.enum(['production', 'staging']),
   HYPERDRIVE: z.object({ connectionString: postgresUrl }),
   VERSION_METADATA: z.object({ id: z.string().trim().min(1) }),
@@ -91,10 +78,6 @@ export function parseCloudflareRuntimeEnvironment(source: unknown): RuntimeEnvir
 
   return {
     ...commonEnvironment(environment),
-    bindings: {
-      authEmailDeadLetterQueue: environment.AUTH_EMAIL_DEAD_LETTER_QUEUE,
-      authEmailQueue: environment.AUTH_EMAIL_QUEUE,
-    },
     database: { connectionString: environment.HYPERDRIVE.connectionString },
     deployment: environment.ENVIRONMENT,
     version: environment.VERSION_METADATA.id,

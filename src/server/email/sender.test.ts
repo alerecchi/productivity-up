@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { sendEmailConfirmation, sendResetPassword } from '@/server/email/sender'
+import { EmailDeliveryError, sendAuthEmail } from '@/server/email/sender'
 
 const { sendEmailMock } = vi.hoisted(() => {
   return { sendEmailMock: vi.fn() }
@@ -24,21 +24,18 @@ afterEach(() => {
 })
 
 describe('authentication email delivery', () => {
-  it('sends verification email to the requested recipient without application logging', async () => {
+  it('sends verification email to the requested recipient', async () => {
     const consoleSpies = spyOnConsole()
     const recipient = 'verification-recipient@example.test'
     const verificationUrl = 'https://example.test/verify-email?token=verification-secret'
     sendEmailMock.mockResolvedValue({ data: { id: 'email-id' }, error: null, headers: null })
 
-    await sendEmailConfirmation(
-      {
-        to: recipient,
-        userName: 'Verification User',
-        url: verificationUrl,
-      },
+    const result = await sendAuthEmail(
+      { actionUrl: verificationUrl, kind: 'email_verification', recipient, recipientName: 'Verification User' },
       emailConfiguration,
     )
 
+    expect(result).toEqual({ providerMessageId: 'email-id' })
     expect(sendEmailMock).toHaveBeenCalledWith({
       from: 'noreply@example.test',
       to: recipient,
@@ -49,18 +46,14 @@ describe('authentication email delivery', () => {
     expectNoApplicationLogs(consoleSpies)
   })
 
-  it('sends password-reset email to the requested recipient without application logging', async () => {
+  it('sends password-reset email to the requested recipient', async () => {
     const consoleSpies = spyOnConsole()
     const recipient = 'password-reset-recipient@example.test'
     const resetUrl = 'https://example.test/reset-password/reset-secret?callbackURL=%2Flogin'
     sendEmailMock.mockResolvedValue({ data: { id: 'email-id' }, error: null, headers: null })
 
-    await sendResetPassword(
-      {
-        to: recipient,
-        userName: 'Password Reset User',
-        url: resetUrl,
-      },
+    await sendAuthEmail(
+      { actionUrl: resetUrl, kind: 'password_reset', recipient, recipientName: 'Password Reset User' },
       emailConfiguration,
     )
 
@@ -74,7 +67,7 @@ describe('authentication email delivery', () => {
     expectNoApplicationLogs(consoleSpies)
   })
 
-  it('replaces a provider error response with a safe failure', async () => {
+  it('replaces a provider error response with a safe failure carrying the provider code', async () => {
     const consoleSpies = spyOnConsole()
     const recipient = 'rejected-recipient@example.test'
     const resetUrl = 'https://example.test/reset-password/rejected-secret?callbackURL=%2Flogin'
@@ -88,11 +81,33 @@ describe('authentication email delivery', () => {
       headers: { authorization: 'provider-credential' },
     })
 
-    await expect(sendResetPassword({ to: recipient, url: resetUrl }, emailConfiguration)).rejects.toThrow(
-      /^Email delivery failed$/,
-    )
+    const failure = await sendAuthEmail(
+      { actionUrl: resetUrl, kind: 'password_reset', recipient },
+      emailConfiguration,
+    ).catch((error: unknown) => error)
 
+    expect(failure).toBeInstanceOf(EmailDeliveryError)
+    expect(failure).toMatchObject({ message: 'Email delivery failed', providerErrorCode: 'validation_error' })
     expectNoApplicationLogs(consoleSpies)
+  })
+
+  it('reports an unrecognized provider error name as a generic provider error', async () => {
+    sendEmailMock.mockResolvedValue({
+      data: null,
+      error: { message: 'unexpected', name: 'person@example.test', statusCode: 500 },
+      headers: null,
+    })
+
+    await expect(
+      sendAuthEmail(
+        {
+          actionUrl: 'https://example.test/verify-email?token=secret',
+          kind: 'email_verification',
+          recipient: 'a@b.test',
+        },
+        emailConfiguration,
+      ),
+    ).rejects.toMatchObject({ providerErrorCode: 'provider_error' })
   })
 
   it('replaces a thrown provider error with a safe failure', async () => {
@@ -101,9 +116,9 @@ describe('authentication email delivery', () => {
     const verificationUrl = 'https://example.test/verify-email?token=network-secret'
     sendEmailMock.mockRejectedValue(new Error(`Provider exposed ${recipient}, ${verificationUrl}, and api-key-secret`))
 
-    await expect(sendEmailConfirmation({ to: recipient, url: verificationUrl }, emailConfiguration)).rejects.toThrow(
-      /^Email delivery failed$/,
-    )
+    await expect(
+      sendAuthEmail({ actionUrl: verificationUrl, kind: 'email_verification', recipient }, emailConfiguration),
+    ).rejects.toMatchObject({ message: 'Email delivery failed', providerErrorCode: 'provider_unreachable' })
 
     expectNoApplicationLogs(consoleSpies)
   })

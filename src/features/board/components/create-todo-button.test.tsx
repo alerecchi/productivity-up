@@ -6,7 +6,7 @@ import { CATEGORIES_QUERY_KEY, TAGS_QUERY_KEY, TODOS_QUERY_KEY } from '@/feature
 import { createCategory, deleteCategory, listCategories, updateCategory } from '@/server/functions/categories'
 import { createTag, deleteTag, listTags, updateTag } from '@/server/functions/tags'
 import { createTodo, updateTodo } from '@/server/functions/todos'
-import { createTestQueryClient, operationErrorResponse, render } from '@/test'
+import { createTestQueryClient, operationErrorResponse, realtimeOriginHeaders, render } from '@/test'
 
 vi.mock('@/server/functions/categories', () => ({
   createCategory: vi.fn(),
@@ -189,6 +189,7 @@ describe('CreateTodoButton', () => {
       expect(screen.queryByRole('heading', { name: 'Add New Task' })).not.toBeInTheDocument()
     })
     expect(mockedCreateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: realtimeOriginHeaders(queryClient),
       data: {
         bucketId: 1,
         categoryId: null,
@@ -240,6 +241,7 @@ describe('CreateTodoButton', () => {
       expect(screen.queryByRole('heading', { name: 'Add New Task' })).not.toBeInTheDocument()
     })
     expect(mockedCreateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: realtimeOriginHeaders(queryClient),
       data: {
         bucketId: 2,
         categoryId: null,
@@ -295,6 +297,7 @@ describe('CreateTodoButton', () => {
       },
     })
     expect(mockedCreateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: expect.any(Object),
       data: {
         bucketId: 1,
         categoryId: createdCategory.id,
@@ -337,6 +340,7 @@ describe('CreateTodoButton', () => {
       expect(mockedCreateTodo).toHaveBeenCalled()
     })
     expect(mockedCreateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: expect.any(Object),
       data: {
         bucketId: 1,
         categoryId: null,
@@ -388,6 +392,7 @@ describe('CreateTodoButton', () => {
       },
     })
     expect(mockedCreateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: realtimeOriginHeaders(queryClient),
       data: {
         bucketId: 1,
         categoryId: null,
@@ -566,6 +571,7 @@ describe('CreateTodoButton', () => {
       expect(mockedCreateTodo).toHaveBeenCalled()
     })
     expect(mockedCreateTodo.mock.calls[0]?.[0]).toEqual({
+      headers: realtimeOriginHeaders(queryClient),
       data: {
         bucketId: 1,
         categoryId: null,

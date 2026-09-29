@@ -50,12 +50,22 @@ class FakeSocket {
 
 const connections: Array<ReturnType<typeof createRealtimeConnection>> = []
 
-function setup(handleHints?: (hints: ReadonlyArray<unknown>) => Promise<void>) {
+function setup() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
   const boardQueryFn = vi.fn(() => Promise.resolve({ status: 'ready' }))
   queryClient.setQueryData(boardCacheKeys.board(), { status: 'ready' })
   const observer = new QueryObserver(queryClient, { queryFn: boardQueryFn, queryKey: boardCacheKeys.board() })
   const unsubscribe = observer.subscribe(() => undefined)
+  const todoQueryFns = new Map(
+    [1, 2, 3].map((bucketId) => {
+      const todosQueryFn = vi.fn(() => Promise.resolve([]))
+      queryClient.setQueryData(boardCacheKeys.todos(bucketId), [])
+      new QueryObserver(queryClient, { queryFn: todosQueryFn, queryKey: boardCacheKeys.todos(bucketId) }).subscribe(
+        () => undefined,
+      )
+      return [bucketId, todosQueryFn]
+    }),
+  )
   const sockets: Array<FakeSocket> = []
   const connection = createRealtimeConnection({
     cache: createBoardCache(queryClient),
@@ -65,7 +75,6 @@ function setup(handleHints?: (hints: ReadonlyArray<unknown>) => Promise<void>) {
       sockets.push(socket)
       return socket as unknown as WebSocket
     },
-    handleHints,
     random: () => 1,
     url: URL,
   })
@@ -74,6 +83,7 @@ function setup(handleHints?: (hints: ReadonlyArray<unknown>) => Promise<void>) {
   return {
     connection,
     resyncCount: () => boardQueryFn.mock.calls.length,
+    todoRefetchCounts: () => [...todoQueryFns.values()].map((queryFn) => queryFn.mock.calls.length),
     socket: () => sockets.at(-1)!,
     sockets,
     unsubscribe,
@@ -116,17 +126,70 @@ describe('realtime connection', () => {
     expect(resyncCount()).toBe(2)
   })
 
-  it('hands well-formed hints to a provided handler', async () => {
-    const handleHints = vi.fn(() => Promise.resolve())
-    const { connection, resyncCount, socket } = setup(handleHints)
+  it('refetches only the Todo Buckets named by known hints, once per Bucket', async () => {
+    const { connection, resyncCount, socket, todoRefetchCounts } = setup()
     connection.start()
     socket().open()
-
-    socket().receive(JSON.stringify({ hints: [{ type: 'known' }, { type: 'known' }] }))
     await flush()
 
-    expect(handleHints).toHaveBeenCalledExactlyOnceWith([{ type: 'known' }, { type: 'known' }])
+    socket().receive(
+      JSON.stringify({
+        hints: [
+          { bucketIds: [1, 2], type: 'todo-moved' },
+          { bucketIds: [2], type: 'todo-updated' },
+        ],
+      }),
+    )
+    await flush()
+
+    expect(todoRefetchCounts()).toEqual([2, 2, 1])
     expect(resyncCount()).toBe(1)
+  })
+
+  it('treats a repeated hint as a harmless refetch of the same Bucket only', async () => {
+    const { connection, resyncCount, socket, todoRefetchCounts } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+    const message = JSON.stringify({ hints: [{ bucketIds: [3], type: 'todo-created' }] })
+
+    socket().receive(message)
+    socket().receive(message)
+    await flush()
+
+    const [firstBucket, secondBucket, hintedBucket] = todoRefetchCounts()
+    expect([firstBucket, secondBucket]).toEqual([1, 1])
+    expect(hintedBucket).toBeGreaterThan(1)
+    expect(resyncCount()).toBe(1)
+  })
+
+  it('does nothing for a message without hints', async () => {
+    const { connection, resyncCount, socket, todoRefetchCounts } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+
+    socket().receive(JSON.stringify({ hints: [] }))
+    await flush()
+
+    expect(todoRefetchCounts()).toEqual([1, 1, 1])
+    expect(resyncCount()).toBe(1)
+  })
+
+  it.each([
+    ['an unknown hint type', { bucketIds: [2], type: 'category-renamed' }],
+    ['a hint without Buckets', { bucketIds: [], type: 'todo-deleted' }],
+    ['a hint with an unknown field', { bucketIds: [2], type: 'todo-deleted', userId: 'user-1' }],
+  ])('fully resynchronizes when one hint in a message is %s', async (_case, unknownHint) => {
+    const { connection, resyncCount, socket } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+
+    socket().receive(JSON.stringify({ hints: [{ bucketIds: [1], type: 'todo-created' }, unknownHint] }))
+    await flush()
+
+    expect(resyncCount()).toBe(2)
   })
 
   it.each([

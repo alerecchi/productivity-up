@@ -12,8 +12,8 @@ import type { AuthRateLimitStorage } from '@/server/auth/rate-limit'
 import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
-import { enqueueAuthEmail } from '@/server/email/queue'
-import type { AuthEmailMessage } from '@/server/email/queue'
+import { createAuthEmailDispatcher } from '@/server/email/auth-email'
+import type { AuthEmail } from '@/server/email/auth-email'
 import { provisionInitialBoard } from '@/server/functions/board/lifecycle'
 
 export type AuthRuntimeConfiguration = {
@@ -28,8 +28,8 @@ export type AuthDependencies = {
   provisionInitialBoard: (user: { id: string; timeZone: string }) => Promise<void>
   /** Rate-limit state shared by every Worker isolate. */
   rateLimitStorage: AuthRateLimitStorage
-  /** Durably queues verification and password-reset email for delivery. */
-  enqueueAuthEmail: (message: AuthEmailMessage) => Promise<void>
+  /** Sends verification and password-reset email on a best-effort basis; must never reject. */
+  dispatchAuthEmail: (email: AuthEmail, requestId: string) => Promise<void>
 }
 
 export type Auth = ReturnType<typeof buildAuth>
@@ -53,7 +53,7 @@ export function createAuth(
           userId: id,
         })
       },
-      enqueueAuthEmail,
+      dispatchAuthEmail: createAuthEmailDispatcher(),
       rateLimitStorage: createAuthRateLimitStorage(createNeonRateLimitCounter(db)),
     },
     configuration,
@@ -97,8 +97,16 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       enabled: true,
       requireEmailVerification: true,
       revokeSessionsOnPasswordReset: true,
-      sendResetPassword: ({ user, url }) => {
-        return dependencies.enqueueAuthEmail({ to: user.email, type: 'password-reset', url, userName: user.name })
+      sendResetPassword: ({ user, url }, request) => {
+        return dependencies.dispatchAuthEmail(
+          {
+            actionUrl: url,
+            kind: 'password_reset',
+            recipient: user.email,
+            recipientName: user.name,
+          },
+          request?.headers.get('X-Request-ID') ?? crypto.randomUUID(),
+        )
       },
     },
     session: {
@@ -122,8 +130,16 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       sendOnSignUp: true,
       sendOnSignIn: true,
       autoSignInAfterVerification: true,
-      sendVerificationEmail: ({ user, url }) => {
-        return dependencies.enqueueAuthEmail({ to: user.email, type: 'verification', url, userName: user.name })
+      sendVerificationEmail: ({ user, url }, request) => {
+        return dependencies.dispatchAuthEmail(
+          {
+            actionUrl: url,
+            kind: 'email_verification',
+            recipient: user.email,
+            recipientName: user.name,
+          },
+          request?.headers.get('X-Request-ID') ?? crypto.randomUUID(),
+        )
       },
     },
     hooks: {

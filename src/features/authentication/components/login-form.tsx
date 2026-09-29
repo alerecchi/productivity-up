@@ -44,7 +44,11 @@ export default function Login() {
             return { form: 'Invalid Email or Password' }
           } else if (result.error.code === 'EMAIL_NOT_VERIFIED') {
             // Since I have the page I'm using it, also a simple error would have been enough
-            throw navigate({ to: '/email-confirmation' })
+            // Signing in to an unverified account sends a new verification email.
+            throw navigate({
+              to: '/email-confirmation',
+              state: { verificationEmail: data.email, verificationEmailSentAt: Date.now() },
+            })
           }
           return { form: 'There was a problem with your login, please refresh the page and try again' }
         }

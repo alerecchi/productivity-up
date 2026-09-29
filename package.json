@@ -16,6 +16,7 @@
     "cf:typegen": "CLOUDFLARE_ENV=staging CLOUDFLARE_LOAD_DEV_VARS_FROM_DOT_ENV=false wrangler types --include-runtime false && oxfmt worker-configuration.d.ts",
     "seed": "tsx scripts/seed.ts",
     "test": "vitest run",
+    "test:staging-email": "node --env-file=.env.deploy.local --env-file-if-exists=.env.cloudflare-setup.local scripts/test-staging-email.mjs",
     "test:public-contract": "vitest run --config vitest.public-contract.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",

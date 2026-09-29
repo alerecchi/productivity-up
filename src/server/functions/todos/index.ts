@@ -10,6 +10,7 @@ import {
   moveTodoForUser,
   updateTodoForUser,
 } from '@/server/functions/todos/operations'
+import { todoHints } from '@/server/functions/todos/realtime-hints'
 import {
   CreateTodoInput,
   DeleteTodoInput,
@@ -24,7 +25,7 @@ import {
 } from '@/server/functions/todos/schemas'
 
 export const createTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'todos.create', response: TodoResponse })])
+  .middleware([createPrivateOperation({ hints: todoHints.create, operation: 'todos.create', response: TodoResponse })])
   .validator(validateInput(CreateTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof TodoResponse>> => {
     return createTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
@@ -38,21 +39,25 @@ export const getTodos = createServerFn({ method: 'GET' })
   })
 
 export const updateTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'todos.update', response: UpdateTodoResponse })])
+  .middleware([
+    createPrivateOperation({ hints: todoHints.update, operation: 'todos.update', response: UpdateTodoResponse }),
+  ])
   .validator(validateInput(UpdateTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof UpdateTodoResponse>> => {
     return updateTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
   })
 
 export const moveTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'todos.move', response: MoveTodoResponse })])
+  .middleware([createPrivateOperation({ hints: todoHints.move, operation: 'todos.move', response: MoveTodoResponse })])
   .validator(validateInput(MoveTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof MoveTodoResponse>> => {
     return moveTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
   })
 
 export const deleteTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'todos.delete', response: DeleteTodoResponse })])
+  .middleware([
+    createPrivateOperation({ hints: todoHints.delete, operation: 'todos.delete', response: DeleteTodoResponse }),
+  ])
   .validator(validateInput(DeleteTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof DeleteTodoResponse>> => {
     return deleteTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })

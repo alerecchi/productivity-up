@@ -105,8 +105,12 @@ export function SignUpForm() {
         return undefined // Everything went well and the user is registered
       },
     },
-    onSubmit: () => {
-      router.navigate({ to: '/email-confirmation', search: { from: 'signup' } })
+    onSubmit: ({ value }) => {
+      router.navigate({
+        to: '/email-confirmation',
+        search: { from: 'signup' },
+        state: { verificationEmail: value.email, verificationEmailSentAt: Date.now() },
+      })
     },
   })
   const formId = 'sign-up-form'

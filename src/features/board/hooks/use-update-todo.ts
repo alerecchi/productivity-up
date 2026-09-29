@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { useBoardCache } from '@/features/board/cache'
+import { useRealtimeOriginHeaders } from '@/features/board/realtime'
 import type { Todo } from '@/lib/types/Todo'
 import { updateTodo } from '@/server/functions/todos'
 
@@ -12,9 +13,10 @@ type UpdateTodoVariables = Parameters<typeof updateTodo>[0] & {
 /** Saves Todo edits from the dialog; the cache changes only after the server commits. */
 export function useUpdateTodo() {
   const cache = useBoardCache()
+  const headers = useRealtimeOriginHeaders()
 
   return useMutation({
-    mutationFn: (variables: UpdateTodoVariables) => updateTodo({ data: variables.data }),
+    mutationFn: (variables: UpdateTodoVariables) => updateTodo({ data: variables.data, headers }),
     onError: (error, variables) => {
       void cache.recover(error, {
         bucketIds: [...new Set([variables.sourceBucketId, variables.data.bucketId ?? variables.sourceBucketId])],
@@ -30,9 +32,10 @@ export function useUpdateTodo() {
 /** Flips a Todo's completion optimistically. */
 export function useToggleTodo() {
   const cache = useBoardCache()
+  const headers = useRealtimeOriginHeaders()
 
   return useMutation({
-    mutationFn: (todo: Todo) => updateTodo({ data: { completed: !todo.completed, id: todo.id } }),
+    mutationFn: (todo: Todo) => updateTodo({ data: { completed: !todo.completed, id: todo.id }, headers }),
     onMutate: async (todo) => ({
       pendingChange: await cache.begin({
         bucketId: todo.bucketId,

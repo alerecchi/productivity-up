@@ -1,5 +1,5 @@
 import type { createBoardCache } from '@/features/board/cache'
-import { RealtimeMessageSchema } from '@/lib/realtime'
+import { RealtimeHintSchema, RealtimeMessageSchema } from '@/lib/realtime'
 
 const HEARTBEAT_INTERVAL_MS = 25_000
 const HEARTBEAT_TIMEOUT_MS = 10_000
@@ -12,8 +12,6 @@ export type RealtimeConnectionOptions = {
   cache: BoardCache
   clientInstanceId: string
   createSocket?: (url: string) => WebSocket
-  /** Applies hints from a well-formed message. Defaults to treating every hint as unknown. */
-  handleHints?: (hints: ReadonlyArray<unknown>) => Promise<void>
   random?: () => number
   url: string
 }
@@ -26,7 +24,6 @@ export function createRealtimeConnection({
   cache,
   clientInstanceId,
   createSocket = (socketUrl) => new WebSocket(socketUrl),
-  handleHints = () => cache.sync({ type: 'all' }),
   random = Math.random,
   url,
 }: RealtimeConnectionOptions) {
@@ -63,7 +60,26 @@ export function createRealtimeConnection({
 
     const message = RealtimeMessageSchema.safeParse(typeof data === 'string' ? parseJson(data) : undefined)
 
-    void (message.success ? handleHints(message.data.hints) : cache.sync({ type: 'all' }))
+    void (message.success ? applyHints(message.data.hints) : cache.sync({ type: 'all' }))
+  }
+
+  // Hints are refetched rather than patched, so duplicates are harmless; any unknown hint needs a full resync.
+  const applyHints = async (hints: ReadonlyArray<unknown>) => {
+    const bucketIds = new Set<number>()
+
+    for (const hint of hints) {
+      const knownHint = RealtimeHintSchema.safeParse(hint)
+
+      if (!knownHint.success) {
+        return cache.sync({ type: 'all' })
+      }
+
+      knownHint.data.bucketIds.forEach((bucketId) => bucketIds.add(bucketId))
+    }
+
+    if (bucketIds.size > 0) {
+      await cache.sync({ bucketIds: [...bucketIds], type: 'todos' })
+    }
   }
 
   const checkLiveness = () => {
