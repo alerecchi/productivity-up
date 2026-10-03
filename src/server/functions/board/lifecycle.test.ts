@@ -1,11 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import {
-  completeDayForUser,
-  getBoardForUser,
-  provisionInitialBoard,
-  reconcileLifecycleForUser,
-} from '@/server/functions/board/lifecycle'
+import { completeDayForUser, getBoardForUser, reconcileLifecycleForUser } from '@/server/functions/board/lifecycle'
 import { getMigrationStepForUser } from '@/server/functions/board/operations'
 import { createBucket, createInMemoryBoardRepository, createTodo, readOnly } from '@/test/in-memory-board-repository'
 
@@ -20,46 +15,6 @@ function createCurrentBoard(planningDate = '2026-07-03') {
     createBucket({ id: 5, period: planningDate, type: 'daily' }),
   ]
 }
-
-describe('provisionInitialBoard', () => {
-  test('commits the User Planning Date, User Timezone, and canonical active Buckets', async () => {
-    const commits: Array<
-      Parameters<Parameters<typeof provisionInitialBoard>[0]['repository']['commitInitialBoardState']>[0]
-    > = []
-
-    const result = await provisionInitialBoard({
-      now: () => new Date('2026-07-03T21:30:00.000Z'),
-      repository: {
-        commitInitialBoardState(state) {
-          commits.push(state)
-          return Promise.resolve()
-        },
-      },
-      timeZone: 'Europe/Berlin',
-      userId: 'user-1',
-    })
-
-    expect(result).toEqual({
-      planningDate: '2026-07-03',
-      timeZone: 'Europe/Berlin',
-    })
-    expect(commits).toEqual([
-      {
-        buckets: [
-          { period: 'inbox', type: 'inbox' },
-          { period: '2026', type: 'yearly' },
-          { period: '2026-07', type: 'monthly' },
-          { period: '2026-W27', type: 'weekly' },
-          { period: '2026-07-03', type: 'daily' },
-        ],
-        createdAt: new Date('2026-07-03T21:30:00.000Z'),
-        planningDate: '2026-07-03',
-        timeZone: 'Europe/Berlin',
-        userId: 'user-1',
-      },
-    ])
-  })
-})
 
 describe('getBoardForUser', () => {
   test('asks for Lifecycle Reconciliation without writing when the Planning Date is behind today', async () => {
@@ -78,15 +33,19 @@ describe('getBoardForUser', () => {
     expect(result).toEqual({ status: 'reconciliation_required' })
   })
 
-  test('asks for Lifecycle Reconciliation when the board was never initialized', async () => {
+  test('asks for initial board creation without writing when the board was never initialized', async () => {
     const repository = createInMemoryBoardRepository({
       buckets: [],
       user: { planningDate: null, timeZone: BERLIN },
     })
 
     await expect(
-      getBoardForUser({ now: () => new Date('2026-07-03T08:00:00.000Z'), repository, userId: 'user-1' }),
-    ).resolves.toEqual({ status: 'reconciliation_required' })
+      getBoardForUser({
+        now: () => new Date('2026-07-03T08:00:00.000Z'),
+        repository: readOnly(repository),
+        userId: 'user-1',
+      }),
+    ).resolves.toEqual({ status: 'initialization_required' })
   })
 
   test('asks for reconciliation without writing when a current Bucket is missing', async () => {
@@ -404,6 +363,22 @@ describe('reconcileLifecycleForUser', () => {
       status: 'ready',
       timeZone: BERLIN,
     })
+  })
+
+  test('revisiting a newly initialized board preserves its Buckets and Planning Date', async () => {
+    const repository = createInMemoryBoardRepository({
+      buckets: [],
+      user: { planningDate: null, timeZone: BERLIN },
+    })
+    const now = () => new Date('2026-07-03T21:30:00.000Z')
+    const initialized = await reconcileLifecycleForUser({ now, repository, userId: 'user-1' })
+
+    await expect(
+      reconcileLifecycleForUser({ now, repository: readOnly(repository), userId: 'user-1' }),
+    ).resolves.toEqual(initialized)
+    await expect(getBoardForUser({ now, repository: readOnly(repository), userId: 'user-1' })).resolves.toEqual(
+      initialized,
+    )
   })
 
   test('turns an expired Future Bucket into the Migration Step source after a gap', async () => {

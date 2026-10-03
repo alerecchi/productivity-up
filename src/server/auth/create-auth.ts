@@ -9,12 +9,10 @@ import { AUTH_USER_FIELDS, UserTimeZoneSchema } from '@/lib/auth-user-fields'
 import { authorizeAccountOperation } from '@/server/auth-operation-access'
 import { AUTH_RATE_LIMIT_RULES, createAuthRateLimitStorage, createNeonRateLimitCounter } from '@/server/auth/rate-limit'
 import type { AuthRateLimitStorage } from '@/server/auth/rate-limit'
-import { createBoardRepository } from '@/server/db/board-repository'
 import type { Database } from '@/server/db/client'
 import * as schema from '@/server/db/schema'
 import { createAuthEmailDispatcher } from '@/server/email/auth-email'
 import type { AuthEmail } from '@/server/email/auth-email'
-import { provisionInitialBoard } from '@/server/functions/board/lifecycle'
 
 export type AuthRuntimeConfiguration = {
   baseUrl: string
@@ -24,8 +22,6 @@ export type AuthRuntimeConfiguration = {
 export type AuthDependencies = {
   /** Better Auth persistence; production uses Drizzle over the invocation's database connection. */
   database: NonNullable<BetterAuthOptions['database']>
-  /** Creates the initial board state for a newly created User. */
-  provisionInitialBoard: (user: { id: string; timeZone: string }) => Promise<void>
   /** Rate-limit state shared by every Worker isolate. */
   rateLimitStorage: AuthRateLimitStorage
   /** Sends verification and password-reset email on a best-effort basis; must never reject. */
@@ -46,13 +42,6 @@ export function createAuth(
         schema,
         usePlural: true,
       }),
-      provisionInitialBoard: async ({ id, timeZone }) => {
-        await provisionInitialBoard({
-          repository: createBoardRepository(db),
-          timeZone,
-          userId: id,
-        })
-      },
       dispatchAuthEmail: createAuthEmailDispatcher(),
       rateLimitStorage: createAuthRateLimitStorage(createNeonRateLimitCounter(db)),
     },
@@ -65,6 +54,17 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
   return betterAuth({
     baseURL: configuration.baseUrl,
     secret: configuration.secret,
+    // Library messages and error arguments can contain credentials or database values.
+    logger: {
+      log: (level) => {
+        const record = { operation: 'auth.library', level }
+        if (level === 'error') {
+          console.error(record)
+        } else if (level === 'warn') {
+          console.warn(record)
+        }
+      },
+    },
     advanced: {
       database: {
         joins: true,
@@ -77,22 +77,6 @@ export function buildAuth(dependencies: AuthDependencies, configuration: AuthRun
       },
     },
     database: dependencies.database,
-    databaseHooks: {
-      user: {
-        create: {
-          after: async (user, context) => {
-            try {
-              await dependencies.provisionInitialBoard({
-                id: user.id,
-                timeZone: UserTimeZoneSchema.parse(user.timeZone),
-              })
-            } catch (error) {
-              context?.context.logger.error('Failed to provision initial board after User creation', error)
-            }
-          },
-        },
-      },
-    },
     emailAndPassword: {
       enabled: true,
       requireEmailVerification: true,

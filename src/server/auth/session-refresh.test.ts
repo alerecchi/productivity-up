@@ -28,7 +28,6 @@ describe('session refresh over HTTP', () => {
           if (email.kind === 'email_verification') verificationUrl = email.actionUrl
           return Promise.resolve()
         },
-        provisionInitialBoard: () => Promise.resolve(),
         rateLimitStorage: createAuthRateLimitStorage((_key, _windowMs, now) =>
           Promise.resolve({ count: 1, windowStartedAt: now }),
         ),

@@ -91,6 +91,10 @@ export type CompletedDayMigrationState = MigrationRequiredBoardState & {
   migrationRecap: MigrationFlowRecap
 }
 
+export type InitializationRequiredBoardState = {
+  status: 'initialization_required'
+}
+
 export type ReconciliationRequiredBoardState = {
   status: 'reconciliation_required'
 }
@@ -127,7 +131,7 @@ type ReconcileLifecycleDependencies = {
 }
 
 /** Idempotently commits the initial Planning Date, User Timezone, Inbox, and current Buckets for a new User. */
-export async function provisionInitialBoard({
+async function provisionInitialBoard({
   now = () => new Date(),
   repository,
   timeZone,
@@ -157,11 +161,14 @@ export async function getBoardForUser({
   now = () => new Date(),
   repository,
   userId,
-}: GetBoardDependencies): Promise<BoardState | ReconciliationRequiredBoardState> {
+}: GetBoardDependencies): Promise<BoardState | InitializationRequiredBoardState | ReconciliationRequiredBoardState> {
   const snapshot = await requireSnapshot(repository, userId)
 
+  if (!snapshot.planningDate) {
+    return { status: 'initialization_required' }
+  }
+
   if (
-    !snapshot.planningDate ||
     !snapshot.timeZone ||
     snapshot.planningDate < getTodayLocalDate(now(), snapshot.timeZone) ||
     !hasCurrentBuckets(snapshot)

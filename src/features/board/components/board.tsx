@@ -4,6 +4,7 @@ import { CheckCircle2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { useBoardCache } from '@/features/board/cache'
+import { BoardInitializationStatus } from '@/features/board/components/board-initialization-status'
 import { BucketColumn } from '@/features/board/components/bucket-column'
 import { BucketLifecycleRecapDialog } from '@/features/board/components/bucket-lifecycle-recap-dialog'
 import { LifecycleReconciliationStatus } from '@/features/board/components/lifecycle-reconciliation-status'
@@ -30,7 +31,11 @@ export function Board() {
   const { board, reconciliation } = useReconciledBoard()
 
   if (!board) {
-    return <LifecycleReconciliationStatus {...reconciliation} />
+    return reconciliation.isInitializing ? (
+      <BoardInitializationStatus {...reconciliation} />
+    ) : (
+      <LifecycleReconciliationStatus {...reconciliation} />
+    )
   }
 
   return <ReconciledBoardView board={board} />

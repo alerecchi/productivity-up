@@ -1,5 +1,6 @@
 import { ArrowLeft, Route as RouteIcon } from 'lucide-react'
 
+import { BoardInitializationStatus } from '@/features/board/components/board-initialization-status'
 import { LifecycleReconciliationStatus } from '@/features/board/components/lifecycle-reconciliation-status'
 import { MigrationFlow } from '@/features/board/components/migration-flow'
 import { useReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
@@ -9,7 +10,11 @@ export function MigrationRouteContent() {
   const { board, reconciliation } = useReconciledBoard()
 
   if (!board) {
-    return <LifecycleReconciliationStatus {...reconciliation} />
+    return reconciliation.isInitializing ? (
+      <BoardInitializationStatus {...reconciliation} />
+    ) : (
+      <LifecycleReconciliationStatus {...reconciliation} />
+    )
   }
 
   if (board.status === 'migration_required') {
