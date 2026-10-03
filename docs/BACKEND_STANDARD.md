@@ -22,7 +22,7 @@ This registry makes the mandatory rules reviewable. The detailed sections below 
 | Canonical DTOs and changes       | Prevents persistence leakage and client guesses                        | Server responses and mutation results   | Domain response mapper                                          | Public response-shape tests                                                    |
 | Cache reconciliation             | Prevents optimistic and derived-cache drift                            | TanStack Query state                    | One cache-reconciliation module                                 | Success, rollback, absent-cache, conflict, and resynchronization tests         |
 | Per-User realtime hints          | Prevents cross-User leakage and pre-commit publication                 | Realtime invalidation                   | Authenticated gateway after commit                              | Multi-client isolation and publication-order tests                             |
-| Authentication controls          | Prevents session reuse, enumeration, and abuse                         | Better Auth flows                       | Better Auth configuration, Neon-backed limits, and route policy | Session, reset, rate-limit, and enumeration tests                              |
+| Authentication controls          | Prevents session reuse and distributed abuse                           | Better Auth flows                       | Better Auth configuration, Neon-backed limits, and route policy | Session, reset, rate-limit, and generic-response tests                         |
 | Recoverable email delivery       | Keeps lost verification and reset messages recoverable                 | Authentication email                    | Sanitized send records and user-requested resend                | Provider failure, safe logging, and resend tests                               |
 | Telemetry allow-list             | Prevents sensitive-data leakage while preserving diagnosis             | Completion records and logs             | Typed completion record and Cloudflare redaction config         | Required-field and forbidden-field tests plus staging inspection               |
 | Local validation gate            | Prevents formatting, test, type, and build regressions                 | Every backend change                    | `pnpm validate`                                                 | Clean-checkout validation run; zero-tests failure test                         |
@@ -52,13 +52,15 @@ Authenticated but unverified Users MUST be limited to verification, verification
 
 Server operations fall into three authorization classes:
 
-- Public authentication operations establish identity or begin account recovery. They do not require a session and MUST preserve anti-enumeration behavior.
+- Public authentication operations establish identity or begin account recovery. They do not require a session and MUST return generic responses for unknown and existing email addresses.
 - Session and verification operations may be used by an authenticated but unverified User only to read session status, verify or resend verification, sign out, or recover the account.
 - Private product-data operations require the shared private-operation middleware and a verified User. Router redirects are navigation behavior and MUST NOT be treated as authorization.
 
 The application MUST keep Better Auth origin, CSRF, and cookie protections. Session cookie caching is allowed only for ordinary session reads and MUST be bypassed for sensitive account operations. Password reset MUST revoke existing sessions.
 
-Authentication limits MUST be stored in Neon so they apply across Worker isolates. Route-specific limits cover sign-up, sign-in, password-reset request and completion, and verification resend. Responses MUST NOT reveal whether an email address exists. Only Cloudflare's connecting-IP header may be trusted for the client IP at the edge.
+Authentication limits MUST be stored in Neon so they apply across Worker isolates. Route-specific limits cover sign-up, sign-in, password-reset request and completion, and verification resend. Public response content MUST NOT reveal whether an email address exists. Timing behavior follows Better Auth; application response padding and account-independent response timing are not requirements for the current release. Only Cloudflare's connecting-IP header may be trusted for the client IP at the edge.
+
+Initial board state MUST be created on the first verified visit to the board through the existing Lifecycle Reconciliation POST, rather than during registration. The board read stays free of writes and reports when initialization is required. The client shows a dedicated creation state with retry after failure. Initialization MUST remain atomic and retry-safe.
 
 ## Persistence and ownership
 

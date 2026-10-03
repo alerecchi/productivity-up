@@ -105,6 +105,10 @@ pnpm test:staging-email
 
 The check signs up a throwaway `delivered+<id>@resend.dev` User. It waits for the Worker's `auth_email.send` record through `wrangler tail`, then confirms through the Resend API that the email went to that recipient. It also fails if the tailed logs contain the recipient, a verification link, the password, or a credential. It deletes the User afterwards. Run it after a staging deployment that changes authentication email; the deployment command does not run it.
 
+New Users have no board state at registration. Their first verified `/board` visit uses a read-only GET to discover `initialization_required`, then the authenticated Lifecycle Reconciliation POST creates the board. The UI shows “We are creating your board” until it succeeds and offers retry on failure. Existing boards use normal lifecycle reconciliation.
+
+Better Auth warning and error logs use `operation = auth.library` with a severity field. Library messages and raw error arguments are discarded; the dedicated email-send records retain safe delivery diagnostics.
+
 The staging smoke-test account must already exist, have a verified email address, and have a readable board. The smoke test signs in, loads `/board`, and opens the realtime WebSocket at `/api/realtime`. The signed-in connection must answer a heartbeat, while signed-out, foreign-origin, and caller-supplied User ID upgrades must be refused. It does not create, edit, or delete data.
 
 Create or refresh that account without resetting staging data:

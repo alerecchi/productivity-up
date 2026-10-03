@@ -71,12 +71,15 @@ const MigrationRequiredBoardResponse = z.object({
   timeZone: UserTimeZoneSchema,
 })
 
+const InitializationRequiredBoardResponse = z.object({ status: z.literal('initialization_required') })
+
 const ReconciliationRequiredBoardResponse = z.object({ status: z.literal('reconciliation_required') })
 
 export const BoardResponse = z.discriminatedUnion('status', [
   ReadyBoardResponse,
   MigrationRequiredBoardResponse,
   ReconciliationRequiredBoardResponse,
+  InitializationRequiredBoardResponse,
 ])
 
 export const ReconcileLifecycleResponse = z.discriminatedUnion('status', [

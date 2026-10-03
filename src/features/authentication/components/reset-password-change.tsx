@@ -23,7 +23,6 @@ export default function ResetPasswordChange({ token }: ResetPasswordChangeProps)
           newPassword: data.password,
           token: token,
         })
-        console.log(response)
         if (response.error) {
           return { form: 'There was a problem with changing your password, please refresh the page and try again' }
         }

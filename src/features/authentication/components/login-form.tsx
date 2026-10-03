@@ -38,7 +38,6 @@ export default function Login() {
     validators: {
       onSubmitAsync: async ({ value: data }) => {
         const result = await signInMutation(data)
-        console.log(result)
         if (result.error) {
           if (result.error.code === 'INVALID_EMAIL_OR_PASSWORD') {
             return { form: 'Invalid Email or Password' }

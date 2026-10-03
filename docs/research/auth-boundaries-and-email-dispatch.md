@@ -2,13 +2,17 @@
 
 Research date: 2026-09-08
 
+Current product decisions updated: 2026-10-03
+
 ## Decision summary
 
 Configure Better Auth explicitly for Cloudflare rather than accepting runtime-dependent defaults: use shared rate-limit storage, trust only Cloudflare's `cf-connecting-ip`, keep the session cookie cache short, bypass it for sensitive operations, and revoke other sessions after a password reset.
 
 Do not let a GET server function reconcile board lifecycle state. TanStack Start treats server-function GET as read-only even when its automatic same-origin checks are active. Split lazy reconciliation into an idempotent POST followed by a pure GET, or make the whole load operation POST.
 
-For verification and password-reset mail, a floating promise is unsafe and `waitUntil()` is only best-effort. The reliable contract is to await a Cloudflare Queue write, then send from a retrying consumer with an idempotency key. Whether this early-stage product needs that durability now, or can accept `waitUntil()` plus observable failures, is a product choice.
+Verification and password-reset mail use direct Resend delivery through `waitUntil()`, sanitized send records, and user-requested resend. Delivery is best-effort. The current product does not require durable email processing or application response padding.
+
+Initial board state belongs to the first verified board visit. Reuse the Lifecycle Reconciliation POST and show a dedicated creation state with retry; registration only establishes identity.
 
 ## Better Auth rate limiting on Workers
 
@@ -42,7 +46,7 @@ The application boundary should classify the flows as follows:
 - authenticated but unverified, when such a session exists: session/status, sign-out, and recovery paths;
 - authenticated and verified: board and Todo operations.
 
-The first two groups still require rate limits and generic responses that do not reveal whether an address exists. Whether verification should automatically create a session is a product choice; Better Auth's `autoSignInAfterVerification` supports it. The current repository enables automatic sign-in and sends verification on both sign-up and unverified sign-in.
+Public authentication requests require shared rate limits and generic response content for existing and missing addresses. Response timing follows Better Auth without application-level equalization. Whether verification should automatically create a session is a product choice; Better Auth's `autoSignInAfterVerification` supports it. The current repository enables automatic sign-in and sends verification on both sign-up and unverified sign-in.
 
 ## GET mutations and same-origin protection
 
@@ -54,18 +58,11 @@ These checks do not make a mutating GET safe. SameSite cookies also do not repla
 
 In the current repository, `getBoard` uses the default GET method but calls lifecycle-loading code that may create, archive, or transition buckets. The recommended seam is an idempotent `POST reconcileBoardLifecycle`, followed by a pure GET for board data. A single POST that reconciles and returns the board is also correct but gives up normal read semantics and caching. A scheduled reconciliation job is a third product option if lifecycle transitions must happen without a board visit.
 
-## Reliable email dispatch
+## Best-effort email dispatch
 
-Better Auth advises against awaiting verification and reset delivery in the auth callback because response timing can leak account state. On serverless platforms it recommends `waitUntil()` or an equivalent background mechanism. [Better Auth email verification](https://better-auth.com/docs/concepts/email) [Better Auth email and password](https://better-auth.com/docs/authentication/email-password)
+Use direct provider sending through Cloudflare `waitUntil()`. The callback handles failures and emits a sanitized outcome; it does not wait for provider completion when request context is available. Outside a Worker request, the local path awaits the send. [Better Auth email verification](https://better-auth.com/docs/concepts/email) [Better Auth email and password](https://better-auth.com/docs/authentication/email-password)
 
-Cloudflare requires asynchronous work to be awaited or registered with `ctx.waitUntil()`. `waitUntil()` can continue after the response but has a shared 30-second extension; unfinished work is then canceled. Cloudflare recommends Queues when work needs reliable delivery or retries. [Workers execution context](https://developers.cloudflare.com/workers/runtime-apis/context/) [Workers best practices](https://developers.cloudflare.com/workers/best-practices/workers-best-practices/)
-
-There are two valid service levels:
-
-1. Early-stage, best-effort: call the provider through `waitUntil()`, return a generic accepted response, and record a sanitized failure that can be retried by the user. This removes timing coupling but does not guarantee delivery.
-2. Durable: await `EMAIL_QUEUE.send()` before returning accepted, consume with retries and a dead-letter queue, and use a provider idempotency key because Queues are at-least-once. [Queues JavaScript API](https://developers.cloudflare.com/queues/configuration/javascript-apis/) [Queue delivery guarantees](https://developers.cloudflare.com/queues/reference/delivery-guarantees/) [Dead-letter queues](https://developers.cloudflare.com/queues/configuration/dead-letter-queues/)
-
-For the durable design, enqueue an opaque command or user identifier rather than an address, token, or complete callback URL. Cloudflare's own email-queue tutorial recommends identifiers instead of email addresses in queue messages. [Cloudflare queue rate-limit tutorial](https://developers.cloudflare.com/queues/tutorials/handle-rate-limits/)
+Cloudflare requires asynchronous work to be awaited or registered with `ctx.waitUntil()`. Background work can be canceled when its execution lifetime expires. The product accepts this delivery limitation and provides user-requested resend with a 60-second UI cooldown and authoritative server limits. A provider failure does not change the public accepted response. [Workers execution context](https://developers.cloudflare.com/workers/runtime-apis/context/)
 
 ## Low-noise logging and redaction
 
@@ -75,12 +72,12 @@ Cloudflare heuristically redacts sensitive Tail request headers and URL material
 
 Keep API keys and auth tokens in Workers secrets, not plaintext variables, and never commit local `.dev.vars` or `.env` files. [Workers secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
 
-The current email sender logs both its input and provider result. That can expose recipient addresses and reset or verification URLs, so those statements should be replaced by the allow-listed outcome record when implementation work begins.
+The email sender records only allow-listed outcomes. Better Auth logging must also discard raw messages and arguments, and auth forms must not log their responses.
 
-## Product choices still open
+## Current product decisions
 
-1. Shared rate-limit storage: reuse Neon now or provision secondary storage.
-2. Exact per-route rate-limit thresholds and recovery UX after a limit.
-3. Verification behavior: automatic sign-in after success or an explicit sign-in.
-4. Lifecycle trigger: lazy POST reconciliation on board entry, a single POST load command, or scheduled reconciliation.
-5. Email delivery contract: best-effort `waitUntil()` now or durable Queue immediately.
+1. Shared rate-limit storage: Neon, with atomic counters across Worker isolates.
+2. Per-route limits and `Retry-After` remain the authoritative abuse controls.
+3. Successful verification signs in automatically.
+4. Board entry reads through GET, then uses the Lifecycle Reconciliation POST for initial creation or current-period changes.
+5. Email delivery: best-effort `waitUntil()`, safe failure records, and manual resend recovery.

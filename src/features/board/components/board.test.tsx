@@ -1,5 +1,5 @@
 import type { QueryClient } from '@tanstack/react-query'
-import { fireEvent, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -209,6 +209,48 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByLabelText('monthly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
     expect(screen.getByLabelText('weekly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
     expect(screen.getByLabelText('daily Bucket')).toHaveAttribute('data-planning-bucket', 'true')
+  })
+
+  it('shows a dedicated creation state until the first board is ready', async () => {
+    let finishCreation = () => {}
+    const creationPending = new Promise<void>((resolve) => {
+      finishCreation = resolve
+    })
+    mockedReconcileLifecycle.mockImplementation(async () => {
+      await creationPending
+      return { buckets: todayBuckets, planningDate: '2026-07-03', status: 'ready', timeZone: 'Europe/Berlin' }
+    })
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(getBoardQueryOptions.queryKey, { status: 'initialization_required' })
+
+    render(<Board />, { queryClient })
+
+    expect(await screen.findByText('We are creating your board')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Complete day' })).not.toBeInTheDocument()
+    await act(() => {
+      finishCreation()
+    })
+    expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
+    expect(screen.queryByText('We are creating your board')).not.toBeInTheDocument()
+  })
+
+  it('offers creation-specific recovery after a failed first board attempt', async () => {
+    mockedReconcileLifecycle.mockRejectedValueOnce(new Error('Network connection lost')).mockResolvedValue({
+      buckets: todayBuckets,
+      planningDate: '2026-07-03',
+      status: 'ready',
+      timeZone: 'Europe/Berlin',
+    })
+    mockedGetBoard.mockResolvedValue({ status: 'initialization_required' })
+    const queryClient = createTestQueryClient()
+    queryClient.setQueryData(getBoardQueryOptions.queryKey, { status: 'initialization_required' })
+
+    render(<Board />, { queryClient })
+
+    expect(await screen.findByRole('alert')).toHaveTextContent('We could not create your board. Please try again.')
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
 
   it('runs Lifecycle Reconciliation when the board asks for it and shows the reconciled board', async () => {

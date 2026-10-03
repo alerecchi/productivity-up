@@ -24,7 +24,8 @@ export function useReconciledBoard() {
       await cache.apply({ board, type: 'lifecycle-committed' })
     },
   })
-  const isReconciliationRequired = data.status === 'reconciliation_required'
+  const isInitializing = data.status === 'initialization_required'
+  const isReconciliationRequired = isInitializing || data.status === 'reconciliation_required'
 
   useEffect(() => {
     if (isReconciliationRequired && !isPending && !isError) {
@@ -34,6 +35,6 @@ export function useReconciledBoard() {
 
   return {
     board: isReconciliationRequired ? null : data,
-    reconciliation: { isFailed: isError, retry: () => mutate() },
+    reconciliation: { isFailed: isError, isInitializing, retry: () => mutate() },
   }
 }

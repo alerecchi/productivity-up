@@ -48,7 +48,6 @@ function createTestAuth(
     {
       database: memoryAdapter(state.tables),
       dispatchAuthEmail,
-      provisionInitialBoard: () => Promise.resolve(),
       rateLimitStorage: createAuthRateLimitStorage(state.counter, () => state.now),
     },
     { baseUrl: BASE_URL, secret: 'handle-auth-request-test-secret-with-32-chars' },
@@ -67,6 +66,83 @@ function authRequest(path: string, body: Record<string, unknown>, headers: Recor
     method: 'POST',
   })
 }
+
+describe('registration', () => {
+  it('accepts signup and requests verification without a board-provisioning dependency', async () => {
+    const state = createSharedState()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const verificationEmails: Array<string> = []
+    const auth = buildAuth(
+      {
+        database: memoryAdapter(state.tables),
+        dispatchAuthEmail: (email) => {
+          verificationEmails.push(email.recipient)
+          return Promise.resolve()
+        },
+        rateLimitStorage: createAuthRateLimitStorage(state.counter, () => state.now),
+      },
+      { baseUrl: BASE_URL, secret: 'registration-test-secret-with-32-chars' },
+    )
+
+    const response = await handleAuthRequest(
+      authRequest('/sign-up/email', {
+        email: 'new@example.test',
+        name: 'New User',
+        password: 'password-123',
+        timeZone: 'Europe/Berlin',
+      }),
+      auth,
+    )
+
+    expect(response.status).toBe(200)
+    expect(verificationEmails).toEqual(['new@example.test'])
+    expect(errors).not.toHaveBeenCalled()
+  })
+})
+
+describe('safe authentication logging', () => {
+  it('records database failures without raw errors, submitted credentials, or provider data', async () => {
+    const state = createSharedState()
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const privateFailure = 'private@example.test password-secret token-secret postgres://private-database'
+    const memory = memoryAdapter(state.tables)
+    const auth = buildAuth(
+      {
+        database: (options: Parameters<typeof memory>[0]) => {
+          const adapter = memory(options)
+          const failingAdapter: typeof adapter = {
+            ...adapter,
+            create: () => Promise.reject(new Error(privateFailure)),
+          }
+          failingAdapter.transaction = async (operation) => operation(failingAdapter)
+          return failingAdapter
+        },
+        dispatchAuthEmail: () => Promise.resolve(),
+        rateLimitStorage: createAuthRateLimitStorage(state.counter, () => state.now),
+      },
+      { baseUrl: BASE_URL, secret: 'safe-logging-test-secret-with-32-chars' },
+    )
+
+    const response = await handleAuthRequest(
+      authRequest('/sign-up/email', {
+        email: 'private@example.test',
+        name: 'Private User',
+        password: 'password-secret',
+        timeZone: 'Europe/Berlin',
+      }),
+      auth,
+    )
+
+    expect(response.ok).toBe(false)
+    expect(errors).toHaveBeenCalled()
+    const output = JSON.stringify(errors.mock.calls, (_key, value) => (value instanceof Error ? value.message : value))
+    expect(output).not.toContain('private@example.test')
+    expect(output).not.toContain('password-secret')
+    expect(output).not.toContain('token-secret')
+    expect(output).not.toContain('postgres://')
+    expect(errors).toHaveBeenCalledWith({ operation: 'auth.library', level: 'error' })
+  })
+})
 
 describe('public authentication rate limits', () => {
   it('throttles sign-in after ten attempts with safe retry guidance', async () => {
@@ -182,7 +258,7 @@ describe('public authentication rate limits', () => {
   })
 })
 
-describe('public authentication enumeration resistance', () => {
+describe('generic public authentication responses', () => {
   const existingEmail = 'existing@example.test'
   const missingEmail = 'missing@example.test'
 
@@ -267,25 +343,4 @@ describe('public authentication enumeration resistance', () => {
       expect(records.at(-1)).toMatchObject({ outcome: 'failed', providerErrorCode: 'internal_server_error' })
     },
   )
-
-  it('applies the enumeration response hold to normalized trailing-slash paths', async () => {
-    vi.useFakeTimers()
-    try {
-      const auth = {
-        handler: vi.fn(() => Promise.resolve(new Response(null, { status: 200 }))),
-      } as unknown as ReturnType<typeof createTestAuth>
-      const response = handleAuthRequest(authRequest('/request-password-reset/', { email: missingEmail }), auth)
-      let settled = false
-      void response.then(() => {
-        settled = true
-      })
-
-      await Promise.resolve()
-      expect(settled).toBe(false)
-      await vi.advanceTimersByTimeAsync(500)
-      expect((await response).status).toBe(200)
-    } finally {
-      vi.useRealTimers()
-    }
-  })
 })
