@@ -47,7 +47,7 @@ function wrappedUniqueViolation(constraint: string) {
   return new DrizzleQueryError('insert or update', [], cause)
 }
 
-describe('taxonomy repository results', () => {
+describe('Categories and tags repository results', () => {
   const display = { colorKey: 'blue', id: 4, name: 'home' }
 
   it('reads and writes Categories as display data and deletes them by ID only', async () => {
