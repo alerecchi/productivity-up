@@ -65,4 +65,4 @@ This repo uses the default mattpocock/skills triage label vocabulary. See `docs/
 
 ### Domain docs
 
-This repo uses a single-context domain docs layout. See `docs/agents/domain.md`.
+This repo uses a single-context glossary layout. See `docs/agents/domain.md`.
