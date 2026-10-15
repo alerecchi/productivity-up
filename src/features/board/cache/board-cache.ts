@@ -156,6 +156,8 @@ const CommittedBoardChangeSchema = z.discriminatedUnion('type', [
 ])
 
 export type BoardCacheScope =
+  | { type: 'all-todos' }
+  | { type: 'migration-steps' }
   | { bucketIds: Array<number>; type: 'todos' }
   | { type: 'all' }
   | { type: 'board' }
@@ -164,9 +166,10 @@ export type BoardCacheScope =
   | { type: 'tags' }
 
 const BoardCacheScopeSchema: z.ZodType<BoardCacheScope> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('all-todos') }).strict(),
   z.object({ bucketIds: z.array(z.int()), type: z.literal('todos') }).strict(),
   z.object({ sourceBucketId: z.int(), type: z.literal('migration-step') }).strict(),
-  z.object({ type: z.enum(['all', 'board', 'categories', 'tags']) }).strict(),
+  z.object({ type: z.enum(['all', 'board', 'buckets', 'categories', 'migration-steps', 'tags']) }).strict(),
 ])
 
 /**
@@ -276,6 +279,20 @@ export function createBoardCache(queryClient: QueryClient) {
         ),
       )
       reapplyPendingChanges(validScope.bucketIds)
+      return
+    }
+
+    if (validScope.type === 'all-todos') {
+      await queryClient.invalidateQueries({
+        predicate: ({ queryKey: [root] }) => root === boardCacheKeys.todosRoot()[0],
+        refetchType,
+      })
+      reapplyPendingChanges('all')
+      return
+    }
+
+    if (validScope.type === 'migration-steps') {
+      await queryClient.invalidateQueries({ queryKey: boardCacheKeys.migrationStepRoot(), refetchType })
       return
     }
 

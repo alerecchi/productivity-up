@@ -20,7 +20,13 @@ import {
 } from '@/server/functions/tags/schemas'
 
 export const createTag = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'tags.create', response: TagResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: () => [{ type: 'tags-changed' }],
+      operation: 'tags.create',
+      response: TagResponse,
+    }),
+  ])
   .validator(validateInput(CreateTagInput))
   .handler(async ({ data, context }): Promise<z.output<typeof TagResponse>> => {
     return createTagForUser({ data, repository: createTagRepository(context.db), userId: context.user.id })
@@ -34,14 +40,26 @@ export const listTags = createServerFn({ method: 'GET' })
   })
 
 export const updateTag = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'tags.update', response: TagResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: () => [{ type: 'tags-changed' }],
+      operation: 'tags.update',
+      response: TagResponse,
+    }),
+  ])
   .validator(validateInput(UpdateTagInput))
   .handler(async ({ data, context }): Promise<z.output<typeof TagResponse>> => {
     return updateTagForUser({ data, repository: createTagRepository(context.db), userId: context.user.id })
   })
 
 export const deleteTag = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'tags.delete', response: DeleteTagResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: () => [{ type: 'tags-changed' }],
+      operation: 'tags.delete',
+      response: DeleteTagResponse,
+    }),
+  ])
   .validator(validateInput(DeleteTagInput))
   .handler(async ({ data, context }): Promise<z.output<typeof DeleteTagResponse>> => {
     return deleteTagForUser({ data, repository: createTagRepository(context.db), userId: context.user.id })

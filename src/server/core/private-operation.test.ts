@@ -153,6 +153,21 @@ describe('private operation public request contract', () => {
     })
   })
 
+  it('publishes multiple committed consequences in one atomic payload', async () => {
+    const { dependencies, publish } = createDependencies({ emailVerified: true, id: 'user-1' })
+
+    await invokeOperation(
+      'board.confirmMigrationStep',
+      dependencies,
+      vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: 7 }))),
+      () => [{ type: 'board-changed' }, { type: 'tags-changed' }],
+    )
+
+    expect(publish).toHaveBeenCalledExactlyOnceWith('user-1', [{ type: 'board-changed' }, { type: 'tags-changed' }], {
+      originClientInstanceId: undefined,
+    })
+  })
+
   it.each([
     ['the command fails', vi.fn(() => Promise.reject(new OperationError(409, 'CONFLICT', 'Refresh and retry')))],
     ['the response is not a valid DTO', vi.fn(({ context }) => Promise.resolve(middlewareResult(context, { id: -1 })))],
