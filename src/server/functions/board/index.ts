@@ -7,13 +7,11 @@ import { completeDayForUser, getBoardForUser, reconcileLifecycleForUser } from '
 import { confirmMigrationStepForUser, getMigrationStepForUser } from '@/server/functions/board/operations'
 import {
   BoardResponse,
-  BucketsResponse,
   CompleteDayInput,
   CompleteDayResponse,
   ConfirmMigrationStepInput,
   ConfirmMigrationStepResponse,
   GetBoardInput,
-  GetBucketsInput,
   GetMigrationStepInput,
   MigrationStepResponse,
   ReconcileLifecycleInput,
@@ -74,12 +72,4 @@ export const confirmMigrationStep = createServerFn({ method: 'POST' })
       repository: createBoardRepository(context.db),
       userId: context.user.id,
     })
-  })
-
-// Temporary #98 exception: standalone Bucket access is removed when board consequences replace it.
-export const getBuckets = createServerFn({ method: 'GET' })
-  .middleware([createPrivateOperation({ operation: 'board.getBuckets', response: BucketsResponse })])
-  .validator(validateInput(GetBucketsInput))
-  .handler(async ({ context }): Promise<z.output<typeof BucketsResponse>> => {
-    return createBoardRepository(context.db).getActiveBuckets(context.user.id)
   })

@@ -1,8 +1,8 @@
 import { act, fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import CreateTodoButton from '@/features/board/components/create-todo-button'
-import { CATEGORIES_QUERY_KEY, TAGS_QUERY_KEY, TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import { createCategory, deleteCategory, listCategories, updateCategory } from '@/server/functions/categories'
 import { createTag, deleteTag, listTags, updateTag } from '@/server/functions/tags'
 import { createTodo, updateTodo } from '@/server/functions/todos'
@@ -73,21 +73,18 @@ const createdCategory = {
   colorKey: 'blue',
   id: 7,
   name: 'home admin',
-  userId: 'user-1',
 } as const
 
 const existingTag = {
   colorKey: 'rose',
   id: 11,
   name: 'urgent',
-  userId: 'user-1',
 } as const
 
 const createdTag = {
   colorKey: 'blue',
   id: 12,
   name: 'focus',
-  userId: 'user-1',
 } as const
 
 const mockedCreateTodo = vi.mocked(createTodo)
@@ -176,8 +173,8 @@ describe('CreateTodoButton', () => {
       animationFrameCallbacks.push(callback)
       return animationFrameCallbacks.length
     })
-    queryClient.setQueryData([TODOS_QUERY_KEY, 1], [existingTodo])
-    queryClient.setQueryData([TODOS_QUERY_KEY, 2], [])
+    queryClient.setQueryData(boardCacheKeys.todos(1), [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(2), [])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -198,8 +195,8 @@ describe('CreateTodoButton', () => {
         title: 'Plan review',
       },
     })
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 1])).toEqual([existingTodo, createdCurrentBucketTodo])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 2])).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(1))).toEqual([existingTodo, createdCurrentBucketTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(2))).toEqual([])
     await waitFor(() => {
       expect(animationFrameCallbacks.length).toBeGreaterThan(0)
     })
@@ -226,8 +223,8 @@ describe('CreateTodoButton', () => {
       callback(0)
       return 1
     })
-    queryClient.setQueryData([TODOS_QUERY_KEY, 1], [existingTodo])
-    queryClient.setQueryData([TODOS_QUERY_KEY, 2], [])
+    queryClient.setQueryData(boardCacheKeys.todos(1), [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(2), [])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -250,8 +247,8 @@ describe('CreateTodoButton', () => {
         title: 'Plan review',
       },
     })
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 1])).toEqual([existingTodo])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 2])).toEqual([createdTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(1))).toEqual([existingTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(2))).toEqual([createdTodo])
     expect(scrollTo).toHaveBeenCalledWith({ behavior: 'smooth', top: 640 })
 
     bucketList.remove()
@@ -364,7 +361,7 @@ describe('CreateTodoButton', () => {
       ],
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TAGS_QUERY_KEY], [])
+    queryClient.setQueryData(boardCacheKeys.tags(), [])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -408,42 +405,35 @@ describe('CreateTodoButton', () => {
       colorKey: 'green',
       id: existingTag.id,
       name: 'next_up',
-      userId: 'user-1',
     } as const
     mockedListTags.mockResolvedValue([existingTag])
     mockedUpdateTag.mockResolvedValue(updatedTag)
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TAGS_QUERY_KEY], [existingTag])
-    queryClient.setQueryData(
-      [TODOS_QUERY_KEY, 1],
-      [
-        {
-          ...existingTodo,
-          tags: [
-            {
-              colorKey: existingTag.colorKey,
-              id: existingTag.id,
-              name: existingTag.name,
-            },
-          ],
-        },
-      ],
-    )
-    queryClient.setQueryData(
-      [TODOS_QUERY_KEY, 2],
-      [
-        {
-          ...createdTodo,
-          tags: [
-            {
-              colorKey: existingTag.colorKey,
-              id: existingTag.id,
-              name: existingTag.name,
-            },
-          ],
-        },
-      ],
-    )
+    queryClient.setQueryData(boardCacheKeys.tags(), [existingTag])
+    queryClient.setQueryData(boardCacheKeys.todos(1), [
+      {
+        ...existingTodo,
+        tags: [
+          {
+            colorKey: existingTag.colorKey,
+            id: existingTag.id,
+            name: existingTag.name,
+          },
+        ],
+      },
+    ])
+    queryClient.setQueryData(boardCacheKeys.todos(2), [
+      {
+        ...createdTodo,
+        tags: [
+          {
+            colorKey: existingTag.colorKey,
+            id: existingTag.id,
+            name: existingTag.name,
+          },
+        ],
+      },
+    ])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -468,8 +458,8 @@ describe('CreateTodoButton', () => {
     expect(mockedCreateTodo).not.toHaveBeenCalled()
     closeTopDialog()
     expect(screen.getByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([TAGS_QUERY_KEY])).toEqual([updatedTag])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 1])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.tags())).toEqual([updatedTag])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(1))).toEqual([
       expect.objectContaining({
         tags: [
           {
@@ -480,7 +470,7 @@ describe('CreateTodoButton', () => {
         ],
       }),
     ])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 2])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.todos(2))).toEqual([
       expect.objectContaining({
         tags: [
           {
@@ -520,22 +510,19 @@ describe('CreateTodoButton', () => {
     })
     mockedCreateTodo.mockResolvedValue(createdTodo)
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TAGS_QUERY_KEY], [existingTag])
-    queryClient.setQueryData(
-      [TODOS_QUERY_KEY, 1],
-      [
-        {
-          ...existingTodo,
-          tags: [
-            {
-              colorKey: existingTag.colorKey,
-              id: existingTag.id,
-              name: existingTag.name,
-            },
-          ],
-        },
-      ],
-    )
+    queryClient.setQueryData(boardCacheKeys.tags(), [existingTag])
+    queryClient.setQueryData(boardCacheKeys.todos(1), [
+      {
+        ...existingTodo,
+        tags: [
+          {
+            colorKey: existingTag.colorKey,
+            id: existingTag.id,
+            name: existingTag.name,
+          },
+        ],
+      },
+    ])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -557,8 +544,8 @@ describe('CreateTodoButton', () => {
       },
     })
     expect(mockedCreateTodo).not.toHaveBeenCalled()
-    expect(queryClient.getQueryData([TAGS_QUERY_KEY])).toEqual([])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 1])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.tags())).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(1))).toEqual([
       expect.objectContaining({
         tags: [],
       }),
@@ -626,40 +613,33 @@ describe('CreateTodoButton', () => {
       colorKey: 'green',
       id: createdCategory.id,
       name: 'life admin',
-      userId: 'user-1',
     } as const
     mockedListCategories.mockResolvedValue([createdCategory])
     mockedUpdateCategory.mockResolvedValue(updatedCategory)
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([CATEGORIES_QUERY_KEY], [createdCategory])
-    queryClient.setQueryData(
-      [TODOS_QUERY_KEY, 1],
-      [
-        {
-          ...existingTodo,
-          category: {
-            colorKey: createdCategory.colorKey,
-            id: createdCategory.id,
-            name: createdCategory.name,
-          },
-          categoryId: createdCategory.id,
+    queryClient.setQueryData(boardCacheKeys.categories(), [createdCategory])
+    queryClient.setQueryData(boardCacheKeys.todos(1), [
+      {
+        ...existingTodo,
+        category: {
+          colorKey: createdCategory.colorKey,
+          id: createdCategory.id,
+          name: createdCategory.name,
         },
-      ],
-    )
-    queryClient.setQueryData(
-      [TODOS_QUERY_KEY, 2],
-      [
-        {
-          ...createdTodo,
-          category: {
-            colorKey: createdCategory.colorKey,
-            id: createdCategory.id,
-            name: createdCategory.name,
-          },
-          categoryId: createdCategory.id,
+        categoryId: createdCategory.id,
+      },
+    ])
+    queryClient.setQueryData(boardCacheKeys.todos(2), [
+      {
+        ...createdTodo,
+        category: {
+          colorKey: createdCategory.colorKey,
+          id: createdCategory.id,
+          name: createdCategory.name,
         },
-      ],
-    )
+        categoryId: createdCategory.id,
+      },
+    ])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -684,8 +664,8 @@ describe('CreateTodoButton', () => {
     expect(mockedCreateTodo).not.toHaveBeenCalled()
     closeTopDialog()
     expect(screen.getByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([CATEGORIES_QUERY_KEY])).toEqual([updatedCategory])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 1])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.categories())).toEqual([updatedCategory])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(1))).toEqual([
       expect.objectContaining({
         category: {
           colorKey: 'green',
@@ -694,7 +674,7 @@ describe('CreateTodoButton', () => {
         },
       }),
     ])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 2])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.todos(2))).toEqual([
       expect.objectContaining({
         category: {
           colorKey: 'green',
@@ -731,21 +711,18 @@ describe('CreateTodoButton', () => {
       categoryId: createdCategory.id,
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([CATEGORIES_QUERY_KEY], [createdCategory])
-    queryClient.setQueryData(
-      [TODOS_QUERY_KEY, 1],
-      [
-        {
-          ...existingTodo,
-          category: {
-            colorKey: createdCategory.colorKey,
-            id: createdCategory.id,
-            name: createdCategory.name,
-          },
-          categoryId: createdCategory.id,
+    queryClient.setQueryData(boardCacheKeys.categories(), [createdCategory])
+    queryClient.setQueryData(boardCacheKeys.todos(1), [
+      {
+        ...existingTodo,
+        category: {
+          colorKey: createdCategory.colorKey,
+          id: createdCategory.id,
+          name: createdCategory.name,
         },
-      ],
-    )
+        categoryId: createdCategory.id,
+      },
+    ])
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
@@ -769,8 +746,8 @@ describe('CreateTodoButton', () => {
     expect(mockedCreateTodo).not.toHaveBeenCalled()
     closeTopDialog()
     expect(screen.getByRole('button', { name: 'No Category' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([CATEGORIES_QUERY_KEY])).toEqual([])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 1])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.categories())).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(1))).toEqual([
       expect.objectContaining({
         category: null,
         categoryId: null,
@@ -831,7 +808,7 @@ describe('CreateTodoButton', () => {
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: 'Add New Task' })).not.toBeInTheDocument()
     })
-    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 2])).toBeUndefined()
+    expect(queryClient.getQueryState(boardCacheKeys.todos(2))).toBeUndefined()
   })
 
   it('keeps the dialog open and shows feedback when saving fails', async () => {

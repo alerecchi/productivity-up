@@ -1,9 +1,9 @@
 import { queryOptions } from '@tanstack/react-query'
 
-import { TAGS_QUERY_KEY } from '@/features/board/queries/query-keys'
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import { listTags } from '@/server/functions/tags'
 
 export const getTagsQueryOptions = queryOptions({
-  queryKey: [TAGS_QUERY_KEY],
+  queryKey: boardCacheKeys.tags(),
   queryFn: () => listTags(),
 })

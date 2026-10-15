@@ -232,12 +232,6 @@ export function createBoardRepository(db: Database): BoardRepository {
         where: and(eq(buckets.userId, userId), eq(buckets.type, type), eq(buckets.period, period)),
       })
     },
-    async getActiveBuckets(userId) {
-      return db
-        .select()
-        .from(buckets)
-        .where(and(eq(buckets.userId, userId), eq(buckets.status, 'active')))
-    },
     async getPendingMigrationBuckets(userId) {
       return db
         .select()

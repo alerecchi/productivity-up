@@ -36,7 +36,6 @@ vi.mock('@/server/functions/board', () => ({
   confirmMigrationStep: vi.fn(),
   completeDay: vi.fn(),
   getBoard: vi.fn(),
-  getBuckets: vi.fn(),
   getMigrationStep: vi.fn(),
   reconcileLifecycle: vi.fn(),
 }))

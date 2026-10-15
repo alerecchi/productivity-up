@@ -15,7 +15,6 @@ export const PlanningDateSchema = z.iso.date()
 export const GetBoardInput = EmptyInputSchema
 export const ReconcileLifecycleInput = strictInput({ timeZone: UserTimeZoneSchema.optional() }).default({})
 export const CompleteDayInput = strictInput({ planningDate: PlanningDateSchema })
-export const GetBucketsInput = EmptyInputSchema
 export const GetMigrationStepInput = strictInput({ sourceBucketId: PositiveIdSchema.optional() })
 export const ConfirmMigrationStepInput = strictInput({
   decisions: z

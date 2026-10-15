@@ -4,13 +4,6 @@ import { describe, expect, it, vi } from 'vitest'
 import { createBoardCache } from '@/features/board/cache'
 import type { CanonicalBoard } from '@/features/board/cache'
 import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
-import {
-  BOARD_QUERY_KEY,
-  BUCKETS_QUERY_KEY,
-  CATEGORIES_QUERY_KEY,
-  TAGS_QUERY_KEY,
-  TODOS_QUERY_KEY,
-} from '@/features/board/queries/query-keys'
 import type { Bucket } from '@/lib/types/Bucket'
 import type { Todo } from '@/lib/types/Todo'
 
@@ -20,7 +13,7 @@ describe('board cache', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo({ id: 1, title: 'Original title' })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, todo.bucketId], [todo])
+    queryClient.setQueryData(boardCacheKeys.todos(todo.bucketId), [todo])
 
     const pendingChange = await cache.begin({
       bucketId: todo.bucketId,
@@ -29,11 +22,13 @@ describe('board cache', () => {
       type: 'todo-edited',
     })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, todo.bucketId])).toEqual([{ ...todo, title: 'Optimistic title' }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(todo.bucketId))).toEqual([
+      { ...todo, title: 'Optimistic title' },
+    ])
 
     await pendingChange.rollback()
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, todo.bucketId])).toEqual([todo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(todo.bucketId))).toEqual([todo])
   })
 
   it('confirms an optimistic edit with the canonical Todo', async () => {
@@ -42,7 +37,7 @@ describe('board cache', () => {
     const todo = createTodo({ id: 1, title: 'Original title' })
     const canonicalTodo = createTodo({ id: 1, title: 'Server title' })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, todo.bucketId], [todo])
+    queryClient.setQueryData(boardCacheKeys.todos(todo.bucketId), [todo])
 
     const pendingChange = await cache.begin({
       bucketId: todo.bucketId,
@@ -57,7 +52,7 @@ describe('board cache', () => {
       type: 'todo-updated',
     })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, todo.bucketId])).toEqual([canonicalTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(todo.bucketId))).toEqual([canonicalTodo])
   })
 
   it('preserves a newer confirmed edit when an older optimistic edit rolls back', async () => {
@@ -69,7 +64,7 @@ describe('board cache', () => {
     const queryFn = vi.fn().mockResolvedValueOnce([firstTodo, secondTodo]).mockResolvedValue(canonicalTodos)
     const observer = new QueryObserver(queryClient, {
       queryFn,
-      queryKey: [TODOS_QUERY_KEY, 10],
+      queryKey: boardCacheKeys.todos(10),
     })
     const unsubscribe = observer.subscribe(() => undefined)
 
@@ -95,7 +90,7 @@ describe('board cache', () => {
     })
     await firstChange.rollback()
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual(canonicalTodos)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual(canonicalTodos)
     expect(queryFn).toHaveBeenCalledTimes(2)
 
     unsubscribe()
@@ -107,8 +102,8 @@ describe('board cache', () => {
     const movedTodo = createTodo({ bucketId: 10, id: 1, position: 1024 })
     const destinationTodo = createTodo({ bucketId: 20, id: 2, position: 1024 })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [movedTodo])
-    queryClient.setQueryData([TODOS_QUERY_KEY, 20], [destinationTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [movedTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [destinationTodo])
 
     const pendingChange = await cache.begin({
       beforeTodoId: destinationTodo.id,
@@ -118,13 +113,16 @@ describe('board cache', () => {
       type: 'todo-moved',
     })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 20])).toEqual([destinationTodo, { ...movedTodo, bucketId: 20 }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([
+      destinationTodo,
+      { ...movedTodo, bucketId: 20 },
+    ])
 
     await pendingChange.rollback()
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([movedTodo])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 20])).toEqual([destinationTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([movedTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([destinationTodo])
   })
 
   it('confirms an optimistic Todo move with canonical positions', async () => {
@@ -135,8 +133,8 @@ describe('board cache', () => {
     const lastTodo = createTodo({ bucketId: 20, id: 3, position: 3072 })
     const canonicalMovedTodo = { ...movedTodo, bucketId: 20 }
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [movedTodo])
-    queryClient.setQueryData([TODOS_QUERY_KEY, 20], [firstTodo, lastTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [movedTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [firstTodo, lastTodo])
 
     const pendingChange = await cache.begin({
       beforeTodoId: firstTodo.id,
@@ -157,8 +155,8 @@ describe('board cache', () => {
       type: 'todo-moved',
     })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 20])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([
       { ...firstTodo, position: 0 },
       canonicalMovedTodo,
       { ...lastTodo, position: 2048 },
@@ -172,8 +170,8 @@ describe('board cache', () => {
     const firstTodo = createTodo({ bucketId: 20, id: 2, position: 1024 })
     const lastTodo = createTodo({ bucketId: 20, id: 3, position: 3072 })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [{ ...movedTodo, bucketId: 10 }])
-    queryClient.setQueryData([TODOS_QUERY_KEY, 20], [lastTodo, firstTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [{ ...movedTodo, bucketId: 10 }])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [lastTodo, firstTodo])
 
     await cache.apply({
       affectedBucketIds: [10, 20],
@@ -186,8 +184,8 @@ describe('board cache', () => {
       type: 'todo-moved',
     })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 20])).toEqual([
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([
       { ...firstTodo, position: 0 },
       movedTodo,
       { ...lastTodo, position: 2048 },
@@ -199,7 +197,7 @@ describe('board cache', () => {
     const cache = createBoardCache(queryClient)
     const movedTodo = createTodo({ bucketId: 20, id: 1 })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [{ ...movedTodo, bucketId: 10 }])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [{ ...movedTodo, bucketId: 10 }])
 
     await cache.apply({
       affectedBucketIds: [10, 20],
@@ -209,8 +207,8 @@ describe('board cache', () => {
       type: 'todo-moved',
     })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([])
-    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 20])).toBeUndefined()
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([])
+    expect(queryClient.getQueryState(boardCacheKeys.todos(20))).toBeUndefined()
   })
 
   it('refetches an active Todo projection when a position patch names an unloaded Todo', async () => {
@@ -223,11 +221,11 @@ describe('board cache', () => {
     const boardQueryFn = vi.fn().mockResolvedValue({ status: 'ready' })
     const observer = new QueryObserver(queryClient, {
       queryFn,
-      queryKey: [TODOS_QUERY_KEY, 20],
+      queryKey: boardCacheKeys.todos(20),
     })
     const boardObserver = new QueryObserver(queryClient, {
       queryFn: boardQueryFn,
-      queryKey: [BOARD_QUERY_KEY],
+      queryKey: boardCacheKeys.board(),
     })
     const unsubscribe = observer.subscribe(() => undefined)
     const unsubscribeBoard = boardObserver.subscribe(() => undefined)
@@ -245,7 +243,7 @@ describe('board cache', () => {
 
     expect(queryFn).toHaveBeenCalledTimes(2)
     expect(boardQueryFn).toHaveBeenCalledTimes(1)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 20])).toEqual(canonicalTodos)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual(canonicalTodos)
 
     unsubscribe()
     unsubscribeBoard()
@@ -257,7 +255,7 @@ describe('board cache', () => {
     const queryFn = vi.fn().mockResolvedValue([createTodo()])
     const queryOptions = {
       queryFn,
-      queryKey: [TODOS_QUERY_KEY, 10] as const,
+      queryKey: boardCacheKeys.todos(10),
       staleTime: Number.POSITIVE_INFINITY,
     }
 
@@ -275,12 +273,11 @@ describe('board cache', () => {
     const queryClient = createQueryClient()
     const cache = createBoardCache(queryClient)
     const boardQueryFns = [
-      [BOARD_QUERY_KEY],
-      [BUCKETS_QUERY_KEY],
-      [CATEGORIES_QUERY_KEY],
+      boardCacheKeys.board(),
+      boardCacheKeys.categories(),
       boardCacheKeys.migrationStep(20),
-      [TAGS_QUERY_KEY],
-      [TODOS_QUERY_KEY, 10],
+      boardCacheKeys.tags(),
+      boardCacheKeys.todos(10),
     ].map((queryKey) => ({ queryFn: vi.fn().mockResolvedValue(queryKey), queryKey, staleTime: Infinity }))
     const unrelatedQuery = {
       queryFn: vi.fn().mockResolvedValue({ user: { id: 'user-1' } }),
@@ -307,7 +304,7 @@ describe('board cache', () => {
     const cache = createBoardCache(queryClient)
     const boardQuery = {
       queryFn: vi.fn().mockResolvedValue({ status: 'ready' }),
-      queryKey: [BOARD_QUERY_KEY],
+      queryKey: boardCacheKeys.board(),
       staleTime: Infinity,
     }
     const unrelatedQuery = {
@@ -331,12 +328,12 @@ describe('board cache', () => {
     const cache = createBoardCache(queryClient)
     const categoriesQuery = {
       queryFn: vi.fn().mockResolvedValue([]),
-      queryKey: [CATEGORIES_QUERY_KEY],
+      queryKey: boardCacheKeys.categories(),
       staleTime: Infinity,
     }
     const tagsQuery = {
       queryFn: vi.fn().mockResolvedValue([]),
-      queryKey: [TAGS_QUERY_KEY],
+      queryKey: boardCacheKeys.tags(),
       staleTime: Infinity,
     }
 
@@ -389,9 +386,9 @@ describe('board cache', () => {
         }),
     )
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, todo.bucketId], [todo])
+    queryClient.setQueryData(boardCacheKeys.todos(todo.bucketId), [todo])
     const fetching = queryClient
-      .fetchQuery({ queryFn, queryKey: [TODOS_QUERY_KEY, todo.bucketId] })
+      .fetchQuery({ queryFn, queryKey: boardCacheKeys.todos(todo.bucketId) })
       .catch(() => undefined)
 
     await vi.waitFor(() => expect(queryFn).toHaveBeenCalledOnce())
@@ -406,7 +403,9 @@ describe('board cache', () => {
     await fetching
 
     expect(wasAborted).toBe(true)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, todo.bucketId])).toEqual([{ ...todo, title: 'Optimistic title' }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(todo.bucketId))).toEqual([
+      { ...todo, title: 'Optimistic title' },
+    ])
 
     await pendingChange.rollback()
   })
@@ -422,11 +421,11 @@ describe('board cache', () => {
       type: 'todo-edited',
     })
 
-    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 10])).toBeUndefined()
+    expect(queryClient.getQueryState(boardCacheKeys.todos(10))).toBeUndefined()
 
     await pendingChange.rollback()
 
-    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 10])).toBeUndefined()
+    expect(queryClient.getQueryState(boardCacheKeys.todos(10))).toBeUndefined()
   })
 
   it('applies a committed Todo creation to a loaded Bucket', async () => {
@@ -435,11 +434,11 @@ describe('board cache', () => {
     const laterTodo = createTodo({ id: 2, position: 2048 })
     const createdTodo = createTodo({ id: 1, position: 1024 })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [laterTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [laterTodo])
 
     await cache.apply({ todo: createdTodo, type: 'todo-created' })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([createdTodo, laterTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([createdTodo, laterTodo])
   })
 
   it('cancels an older Todo fetch before applying a committed edit', async () => {
@@ -460,8 +459,8 @@ describe('board cache', () => {
         }),
     )
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [todo])
-    const fetching = queryClient.fetchQuery({ queryFn, queryKey: [TODOS_QUERY_KEY, 10] }).catch(() => undefined)
+    queryClient.setQueryData(boardCacheKeys.todos(10), [todo])
+    const fetching = queryClient.fetchQuery({ queryFn, queryKey: boardCacheKeys.todos(10) }).catch(() => undefined)
     await vi.waitFor(() => expect(queryFn).toHaveBeenCalledOnce())
 
     await cache.apply({ previousBucketId: 10, todo: canonicalTodo, type: 'todo-updated' })
@@ -469,7 +468,7 @@ describe('board cache', () => {
     await fetching
 
     expect(wasAborted).toBe(true)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([canonicalTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([canonicalTodo])
   })
 
   it('applies a committed Todo deletion to its previous Bucket', async () => {
@@ -478,11 +477,11 @@ describe('board cache', () => {
     const deletedTodo = createTodo({ id: 1 })
     const remainingTodo = createTodo({ id: 2 })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [deletedTodo, remainingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [deletedTodo, remainingTodo])
 
     await cache.apply({ previousBucketId: 10, todoId: deletedTodo.id, type: 'todo-deleted' })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([remainingTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([remainingTodo])
   })
 
   it('removes an updated Todo from its previous Bucket without creating an unloaded destination', async () => {
@@ -490,12 +489,12 @@ describe('board cache', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo({ bucketId: 10 })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [todo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [todo])
 
     await cache.apply({ previousBucketId: 10, todo: { ...todo, bucketId: 20 }, type: 'todo-updated' })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([])
-    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 20])).toBeUndefined()
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([])
+    expect(queryClient.getQueryState(boardCacheKeys.todos(20))).toBeUndefined()
   })
 
   it('does not create a Todo projection when deleting from an unloaded Bucket', async () => {
@@ -504,7 +503,7 @@ describe('board cache', () => {
 
     await cache.apply({ previousBucketId: 10, todoId: 1, type: 'todo-deleted' })
 
-    expect(queryClient.getQueryState([TODOS_QUERY_KEY, 10])).toBeUndefined()
+    expect(queryClient.getQueryState(boardCacheKeys.todos(10))).toBeUndefined()
   })
 
   it('fully synchronizes board data after receiving a malformed committed change', async () => {
@@ -513,7 +512,7 @@ describe('board cache', () => {
     const queryFn = vi.fn().mockResolvedValue({ status: 'ready' })
     const observer = new QueryObserver(queryClient, {
       queryFn,
-      queryKey: [BOARD_QUERY_KEY],
+      queryKey: boardCacheKeys.board(),
     })
     const unsubscribe = observer.subscribe(() => undefined)
 
@@ -532,7 +531,7 @@ describe('board cache', () => {
     const queryFn = vi.fn().mockResolvedValue({ status: 'ready' })
     const observer = new QueryObserver(queryClient, {
       queryFn,
-      queryKey: [BOARD_QUERY_KEY],
+      queryKey: boardCacheKeys.board(),
     })
     const unsubscribe = observer.subscribe(() => undefined)
 
@@ -559,7 +558,7 @@ describe('board cache failure reconciliation', () => {
     const todo = createTodo({ title: 'Original title' })
     const canonicalTodos = [{ ...todo, title: 'Server title' }]
     const queryFn = vi.fn().mockResolvedValueOnce([todo]).mockResolvedValue(canonicalTodos)
-    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
     const unsubscribe = observer.subscribe(() => undefined)
 
     await observer.refetch()
@@ -574,7 +573,7 @@ describe('board cache failure reconciliation', () => {
     await expect(pendingChange.rollback(new Response(null, { status: 409 }))).resolves.toBe('conflict')
 
     expect(queryFn).toHaveBeenCalledTimes(2)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual(canonicalTodos)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual(canonicalTodos)
 
     unsubscribe()
   })
@@ -584,11 +583,11 @@ describe('board cache failure reconciliation', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo({ completed: false })
     const boardQueryFn = vi.fn().mockResolvedValue({ status: 'ready' })
-    const boardObserver = new QueryObserver(queryClient, { queryFn: boardQueryFn, queryKey: [BOARD_QUERY_KEY] })
+    const boardObserver = new QueryObserver(queryClient, { queryFn: boardQueryFn, queryKey: boardCacheKeys.board() })
     const unsubscribe = boardObserver.subscribe(() => undefined)
 
     await boardObserver.refetch()
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [todo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [todo])
 
     const pendingChange = await cache.begin({
       bucketId: 10,
@@ -600,7 +599,7 @@ describe('board cache failure reconciliation', () => {
     await expect(pendingChange.rollback(new TypeError('Failed to fetch'))).resolves.toBe('uncertain')
 
     expect(boardQueryFn).toHaveBeenCalledTimes(2)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([todo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([todo])
 
     unsubscribe()
   })
@@ -610,7 +609,7 @@ describe('board cache failure reconciliation', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo({ completed: false })
     const queryFn = vi.fn().mockResolvedValue([todo])
-    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
     const unsubscribe = observer.subscribe(() => undefined)
 
     await observer.refetch()
@@ -625,7 +624,7 @@ describe('board cache failure reconciliation', () => {
     await expect(pendingChange.rollback(new Response(null, { status: 400 }))).resolves.toBe('rejected')
 
     expect(queryFn).toHaveBeenCalledTimes(1)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([todo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([todo])
 
     unsubscribe()
   })
@@ -635,7 +634,7 @@ describe('board cache failure reconciliation', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo()
     const queryFn = vi.fn().mockResolvedValueOnce([todo]).mockResolvedValue([])
-    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
     const unsubscribe = observer.subscribe(() => undefined)
 
     await observer.refetch()
@@ -644,7 +643,7 @@ describe('board cache failure reconciliation', () => {
       'conflict',
     )
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([])
 
     unsubscribe()
   })
@@ -834,7 +833,7 @@ describe('board cache overlapping optimistic changes', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo({ completed: false })
 
-    queryClient.setQueryData([TODOS_QUERY_KEY, 10], [todo])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [todo])
 
     const firstToggle = await cache.begin({
       bucketId: 10,
@@ -846,7 +845,7 @@ describe('board cache overlapping optimistic changes', () => {
 
     await firstToggle.confirm({ previousBucketId: 10, todo: { ...todo, completed: true }, type: 'todo-updated' })
 
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([{ ...todo, completed: false }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([{ ...todo, completed: false }])
   })
 
   it('refetches shared Buckets once after the last overlapping change settles', async () => {
@@ -860,8 +859,14 @@ describe('board cache overlapping optimistic changes', () => {
       .fn()
       .mockResolvedValueOnce([])
       .mockResolvedValue([{ ...canonicalMovedTodo, completed: true }])
-    const sourceObserver = new QueryObserver(queryClient, { queryFn: sourceQueryFn, queryKey: [TODOS_QUERY_KEY, 10] })
-    const targetObserver = new QueryObserver(queryClient, { queryFn: targetQueryFn, queryKey: [TODOS_QUERY_KEY, 20] })
+    const sourceObserver = new QueryObserver(queryClient, {
+      queryFn: sourceQueryFn,
+      queryKey: boardCacheKeys.todos(10),
+    })
+    const targetObserver = new QueryObserver(queryClient, {
+      queryFn: targetQueryFn,
+      queryKey: boardCacheKeys.todos(20),
+    })
     const unsubscribeSource = sourceObserver.subscribe(() => undefined)
     const unsubscribeTarget = targetObserver.subscribe(() => undefined)
 
@@ -894,7 +899,7 @@ describe('board cache overlapping optimistic changes', () => {
 
     expect(sourceQueryFn).toHaveBeenCalledTimes(2)
     expect(targetQueryFn).toHaveBeenCalledTimes(2)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 20])).toEqual([{ ...canonicalMovedTodo, completed: true }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([{ ...canonicalMovedTodo, completed: true }])
 
     unsubscribeSource()
     unsubscribeTarget()
@@ -906,7 +911,7 @@ describe('board cache overlapping optimistic changes', () => {
     const firstTodo = createTodo({ id: 1, title: 'First' })
     const secondTodo = createTodo({ completed: false, id: 2, position: 2048 })
     const queryFn = vi.fn().mockResolvedValue([firstTodo, secondTodo])
-    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
     const unsubscribe = observer.subscribe(() => undefined)
 
     await observer.refetch()
@@ -917,7 +922,7 @@ describe('board cache overlapping optimistic changes', () => {
     await rename.rollback(new Response(null, { status: 409 }))
 
     expect(queryFn).toHaveBeenCalledTimes(2)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([firstTodo, { ...secondTodo, completed: true }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([firstTodo, { ...secondTodo, completed: true }])
 
     unsubscribe()
   })
@@ -929,7 +934,7 @@ describe('board cache overlapping optimistic changes', () => {
     const secondTodo = createTodo({ completed: false, id: 2, position: 2048 })
     const canonicalTodos = [firstTodo, { ...secondTodo, completed: true }]
     const queryFn = vi.fn().mockResolvedValueOnce([firstTodo, secondTodo]).mockResolvedValue(canonicalTodos)
-    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
     const unsubscribe = observer.subscribe(() => undefined)
 
     await observer.refetch()
@@ -952,7 +957,7 @@ describe('board cache overlapping optimistic changes', () => {
     await rejectedChange.rollback(new Response(null, { status: 400 }))
 
     expect(queryFn).toHaveBeenCalledTimes(2)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual(canonicalTodos)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual(canonicalTodos)
   })
 
   it('does not refetch after optimistic changes that settle one after another', async () => {
@@ -960,7 +965,7 @@ describe('board cache overlapping optimistic changes', () => {
     const cache = createBoardCache(queryClient)
     const todo = createTodo({ completed: false })
     const queryFn = vi.fn().mockResolvedValue([todo])
-    const observer = new QueryObserver(queryClient, { queryFn, queryKey: [TODOS_QUERY_KEY, 10] })
+    const observer = new QueryObserver(queryClient, { queryFn, queryKey: boardCacheKeys.todos(10) })
     const unsubscribe = observer.subscribe(() => undefined)
 
     await observer.refetch()
@@ -981,10 +986,290 @@ describe('board cache overlapping optimistic changes', () => {
     await secondToggle.confirm({ previousBucketId: 10, todo, type: 'todo-updated' })
 
     expect(queryFn).toHaveBeenCalledTimes(1)
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, 10])).toEqual([todo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([todo])
 
     unsubscribe()
   })
+})
+
+describe('board cache taxonomy consequences', () => {
+  it('upserts a saved Category into the loaded Categories in name order', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const home = { colorKey: 'blue', id: 1, name: 'Home' } as const
+    const work = { colorKey: 'green', id: 2, name: 'Work' } as const
+
+    queryClient.setQueryData(boardCacheKeys.categories(), [work])
+
+    await cache.apply({ category: home, type: 'category-saved' })
+    await cache.apply({ category: { ...work, name: 'Admin' }, type: 'category-saved' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.categories())).toEqual([{ ...work, name: 'Admin' }, home])
+  })
+
+  it('does not create a partial Categories projection when none is loaded', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+
+    await cache.apply({ category: { colorKey: 'blue', id: 1, name: 'Home' }, type: 'category-saved' })
+
+    expect(queryClient.getQueryState(boardCacheKeys.categories())).toBeUndefined()
+  })
+
+  it('patches a saved Category into every loaded Todo projection that displays it', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const work = { colorKey: 'green', id: 2, name: 'Work' } as const
+    const home = { colorKey: 'blue', id: 1, name: 'Home' } as const
+    const workTodo = createTodo({ bucketId: 10, category: work, categoryId: work.id, id: 1 })
+    const homeTodo = createTodo({ bucketId: 10, category: home, categoryId: home.id, id: 2, position: 2048 })
+    const laterWorkTodo = createTodo({ bucketId: 20, category: work, categoryId: work.id, id: 3 })
+    const renamedWork = { colorKey: 'red', id: 2, name: 'Office' } as const
+
+    queryClient.setQueryData(boardCacheKeys.todos(10), [workTodo, homeTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [laterWorkTodo])
+
+    await cache.apply({ category: renamedWork, type: 'category-saved' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([
+      { ...workTodo, category: renamedWork },
+      homeTodo,
+    ])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([{ ...laterWorkTodo, category: renamedWork }])
+    expect(queryClient.getQueryState(boardCacheKeys.todos(30))).toBeUndefined()
+  })
+
+  it('removes a deleted Category from the Categories and every Todo that displayed it', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const work = { colorKey: 'green', id: 2, name: 'Work' } as const
+    const home = { colorKey: 'blue', id: 1, name: 'Home' } as const
+    const workTodo = createTodo({ bucketId: 10, category: work, categoryId: work.id, id: 1 })
+    const homeTodo = createTodo({ bucketId: 20, category: home, categoryId: home.id, id: 2 })
+
+    queryClient.setQueryData(boardCacheKeys.categories(), [home, work])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [workTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [homeTodo])
+
+    await cache.apply({ categoryId: work.id, type: 'category-deleted' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.categories())).toEqual([home])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([
+      { ...workTodo, category: null, categoryId: null },
+    ])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([homeTodo])
+  })
+
+  it('upserts a saved Tag into the loaded Tags and every Todo that displays it, in name order', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const urgent = { colorKey: 'red', id: 1, name: 'Urgent' } as const
+    const calls = { colorKey: 'blue', id: 2, name: 'Calls' } as const
+    const renamedUrgent = { colorKey: 'orange', id: 1, name: 'ASAP' } as const
+    const taggedTodo = createTodo({ bucketId: 10, id: 1, tags: [calls, urgent] })
+    const laterTaggedTodo = createTodo({ bucketId: 20, id: 2, tags: [urgent] })
+
+    queryClient.setQueryData(boardCacheKeys.tags(), [calls, urgent])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [taggedTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [laterTaggedTodo])
+
+    await cache.apply({ tag: renamedUrgent, type: 'tag-saved' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.tags())).toEqual([renamedUrgent, calls])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([
+      { ...taggedTodo, tags: [renamedUrgent, calls] },
+    ])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([{ ...laterTaggedTodo, tags: [renamedUrgent] }])
+  })
+
+  it('removes a deleted Tag from the Tags and every Todo that displayed it', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const urgent = { colorKey: 'red', id: 1, name: 'Urgent' } as const
+    const calls = { colorKey: 'blue', id: 2, name: 'Calls' } as const
+    const taggedTodo = createTodo({ bucketId: 10, id: 1, tags: [calls, urgent] })
+    const laterTaggedTodo = createTodo({ bucketId: 20, id: 2, tags: [urgent] })
+
+    queryClient.setQueryData(boardCacheKeys.tags(), [calls, urgent])
+    queryClient.setQueryData(boardCacheKeys.todos(10), [taggedTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(20), [laterTaggedTodo])
+
+    await cache.apply({ tagId: urgent.id, type: 'tag-deleted' })
+
+    expect(queryClient.getQueryData(boardCacheKeys.tags())).toEqual([calls])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(10))).toEqual([{ ...taggedTodo, tags: [calls] }])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(20))).toEqual([{ ...laterTaggedTodo, tags: [] }])
+  })
+
+  it('refetches a Todo projection whose fetch may have read the Category before it changed', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const work = { colorKey: 'green', id: 2, name: 'Work' } as const
+    const renamedWork = { colorKey: 'red', id: 2, name: 'Office' } as const
+    const todo = createTodo({ category: work, categoryId: work.id })
+    let resolveStaleFetch: (todos: Array<Todo>) => void = () => undefined
+    const queryFn = vi
+      .fn<() => Promise<Array<Todo>>>()
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveStaleFetch = resolve)))
+      .mockResolvedValue([{ ...todo, category: renamedWork }])
+
+    queryClient.setQueryData(boardCacheKeys.todos(todo.bucketId), [todo])
+    const unsubscribe = new QueryObserver(queryClient, {
+      queryFn,
+      queryKey: boardCacheKeys.todos(todo.bucketId),
+      staleTime: Infinity,
+    }).subscribe(() => undefined)
+    void queryClient.refetchQueries({ queryKey: boardCacheKeys.todos(todo.bucketId) })
+    await vi.waitFor(() => expect(queryFn).toHaveBeenCalledOnce())
+
+    await cache.apply({ category: renamedWork, type: 'category-saved' })
+    resolveStaleFetch([todo])
+
+    await vi.waitFor(() =>
+      expect(queryClient.getQueryState(boardCacheKeys.todos(todo.bucketId))?.fetchStatus).toBe('idle'),
+    )
+    expect(queryFn).toHaveBeenCalledTimes(2)
+    expect(queryClient.getQueryData(boardCacheKeys.todos(todo.bucketId))).toEqual([{ ...todo, category: renamedWork }])
+
+    unsubscribe()
+  })
+
+  describe.each(['category', 'tag'] as const)('%s fetches crossing a commit', (taxonomy) => {
+    it.each([
+      { active: true, loaded: false, projection: 'todos' },
+      { active: true, loaded: false, projection: 'taxonomy' },
+      { active: false, loaded: false, projection: 'todos' },
+      { active: false, loaded: false, projection: 'taxonomy' },
+      { active: false, loaded: true, projection: 'todos' },
+      { active: false, loaded: true, projection: 'taxonomy' },
+    ] as const)(
+      'protects $projection with active=$active and loaded=$loaded from a pre-commit response',
+      async ({ active, loaded, projection }) => {
+        const queryClient = createQueryClient()
+        const cache = createBoardCache(queryClient)
+        const entry = { colorKey: 'green', id: 2, name: 'Work' } as const
+        const renamedEntry = { ...entry, name: 'Office' }
+        const todo = createTodo(taxonomy === 'category' ? { category: entry, categoryId: entry.id } : { tags: [entry] })
+        const updatedTodo =
+          taxonomy === 'category' ? { ...todo, category: renamedEntry } : { ...todo, tags: [renamedEntry] }
+        const queryKey =
+          projection === 'todos'
+            ? boardCacheKeys.todos(todo.bucketId)
+            : taxonomy === 'category'
+              ? boardCacheKeys.categories()
+              : boardCacheKeys.tags()
+        const staleData = projection === 'todos' ? [todo] : [entry]
+        const canonicalData = projection === 'todos' ? [updatedTodo] : [renamedEntry]
+        let resolveStaleFetch: (data: Array<unknown>) => void = () => undefined
+        // Deliberately ignores AbortSignal: cancellation must still reject the old result.
+        const queryFn = vi
+          .fn<() => Promise<Array<unknown>>>()
+          .mockImplementationOnce(() => new Promise((resolve) => (resolveStaleFetch = resolve)))
+          .mockResolvedValue(canonicalData)
+        const options = { queryFn, queryKey, staleTime: Infinity }
+
+        if (loaded) {
+          queryClient.setQueryData(queryKey, staleData)
+        }
+
+        const observer = new QueryObserver(queryClient, options)
+        const unsubscribe = active ? observer.subscribe(() => undefined) : () => undefined
+        const staleFetch = queryClient.fetchQuery({ ...options, staleTime: 0 }).catch(() => undefined)
+        await vi.waitFor(() => expect(queryFn).toHaveBeenCalledOnce())
+
+        await cache.apply(
+          taxonomy === 'category'
+            ? { category: renamedEntry, type: 'category-saved' }
+            : { tag: renamedEntry, type: 'tag-saved' },
+        )
+        resolveStaleFetch(staleData)
+        await staleFetch
+        await Promise.resolve()
+
+        expect(queryClient.getQueryState(queryKey)?.fetchStatus).toBe('idle')
+        if (active) {
+          expect(queryFn).toHaveBeenCalledTimes(2)
+          expect(observer.getCurrentResult().status).toBe('success')
+          expect(queryClient.getQueryData(queryKey)).toEqual(canonicalData)
+          expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(false)
+        } else {
+          expect(queryFn).toHaveBeenCalledOnce()
+          expect(queryClient.getQueryData(queryKey)).toEqual(loaded ? canonicalData : undefined)
+          expect(queryClient.getQueryState(queryKey)?.isInvalidated).toBe(true)
+          await expect(queryClient.fetchQuery(options)).resolves.toEqual(canonicalData)
+          expect(queryFn).toHaveBeenCalledTimes(2)
+        }
+
+        unsubscribe()
+        queryClient.clear()
+      },
+    )
+  })
+
+  it('keeps a pending Todo edit visible after restarting a fetch for a taxonomy commit', async () => {
+    const queryClient = createQueryClient()
+    const cache = createBoardCache(queryClient)
+    const work = { colorKey: 'green', id: 2, name: 'Work' } as const
+    const renamedWork = { ...work, name: 'Office' }
+    const todo = createTodo({ category: work, categoryId: work.id })
+    let resolveStaleFetch: (todos: Array<Todo>) => void = () => undefined
+    const queryFn = vi
+      .fn<() => Promise<Array<Todo>>>()
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveStaleFetch = resolve)))
+      .mockResolvedValue([{ ...todo, category: renamedWork }])
+    const queryKey = boardCacheKeys.todos(todo.bucketId)
+    queryClient.setQueryData(queryKey, [todo])
+    const unsubscribe = new QueryObserver(queryClient, { queryFn, queryKey, staleTime: Infinity }).subscribe(
+      () => undefined,
+    )
+    await cache.begin({
+      bucketId: todo.bucketId,
+      changes: { title: 'Pending title' },
+      todoId: todo.id,
+      type: 'todo-edited',
+    })
+    const staleFetch = queryClient.refetchQueries({ exact: true, queryKey })
+    await vi.waitFor(() => expect(queryFn).toHaveBeenCalledOnce())
+
+    await cache.apply({ category: renamedWork, type: 'category-saved' })
+    resolveStaleFetch([todo])
+    await staleFetch
+
+    expect(queryFn).toHaveBeenCalledTimes(2)
+    expect(queryClient.getQueryData(queryKey)).toEqual([{ ...todo, category: renamedWork, title: 'Pending title' }])
+
+    unsubscribe()
+    queryClient.clear()
+  })
+
+  it.each([
+    { otherTaxonomyKey: boardCacheKeys.tags(), taxonomyKey: boardCacheKeys.categories(), type: 'categories' },
+    { otherTaxonomyKey: boardCacheKeys.categories(), taxonomyKey: boardCacheKeys.tags(), type: 'tags' },
+  ] as const)(
+    'synchronizes the $type with the Todo projections that display them',
+    async ({ otherTaxonomyKey, taxonomyKey, type }) => {
+      const queryClient = createQueryClient()
+      const cache = createBoardCache(queryClient)
+      const [taxonomyQuery, todosQuery, otherTaxonomyQuery, boardQuery] = [
+        taxonomyKey,
+        boardCacheKeys.todos(10),
+        otherTaxonomyKey,
+        boardCacheKeys.board(),
+      ].map((queryKey) => ({ queryFn: vi.fn().mockResolvedValue([]), queryKey, staleTime: Infinity }))
+      const queries = [taxonomyQuery, todosQuery, otherTaxonomyQuery, boardQuery]
+
+      await Promise.all(queries.map((query) => queryClient.fetchQuery(query)))
+
+      await cache.sync({ type })
+
+      await Promise.all(queries.map((query) => queryClient.fetchQuery(query)))
+
+      expect(taxonomyQuery.queryFn).toHaveBeenCalledTimes(2)
+      expect(todosQuery.queryFn).toHaveBeenCalledTimes(2)
+      expect(otherTaxonomyQuery.queryFn).toHaveBeenCalledTimes(1)
+      expect(boardQuery.queryFn).toHaveBeenCalledTimes(1)
+    },
+  )
 })
 
 function createQueryClient() {

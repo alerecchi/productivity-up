@@ -1,8 +1,8 @@
 import { fireEvent, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import { BucketColumn } from '@/features/board/components/bucket-column'
-import { TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Bucket } from '@/lib/types/Bucket'
 import { listCategories } from '@/server/functions/categories'
 import { listTags } from '@/server/functions/tags'
@@ -140,7 +140,7 @@ describe('Todo card edit dialog', () => {
     mockedListCategories.mockResolvedValue([category])
     mockedListTags.mockResolvedValue([tag])
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -166,7 +166,7 @@ describe('Todo card edit dialog', () => {
       todo: { ...existingTodo, completed: true },
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -187,7 +187,7 @@ describe('Todo card edit dialog', () => {
   it('checks the Todo immediately while the toggle is saving', () => {
     mockedUpdateTodo.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -200,7 +200,7 @@ describe('Todo card edit dialog', () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedUpdateTodo.mockRejectedValue(new Response(null, { status: 400 }))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -234,7 +234,7 @@ describe('Todo card edit dialog', () => {
     mockedListTags.mockResolvedValue([tag, focusTag])
     mockedUpdateTodo.mockResolvedValue({ previousBucketId: existingTodo.bucketId, todo: updatedTodo })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -267,7 +267,7 @@ describe('Todo card edit dialog', () => {
         title: 'Plan async review',
       },
     })
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([updatedTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([updatedTodo])
   })
 
   it('saves a Bucket change from edit mode', async () => {
@@ -292,8 +292,8 @@ describe('Todo card edit dialog', () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedUpdateTodo.mockResolvedValue({ previousBucketId: existingTodo.bucketId, todo: movedTodo })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
-    queryClient.setQueryData([TODOS_QUERY_KEY, buckets[0].id], [laterDestinationTodo, staleMovedTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(buckets[0].id), [laterDestinationTodo, staleMovedTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -315,15 +315,15 @@ describe('Todo card edit dialog', () => {
         },
       })
     })
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, buckets[0].id])).toEqual([movedTodo, laterDestinationTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(buckets[0].id))).toEqual([movedTodo, laterDestinationTodo])
   })
 
   it('keeps edit mode open and shows feedback when saving Todo edits fails', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedUpdateTodo.mockRejectedValue(operationErrorResponse(500, 'INTERNAL_ERROR'))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -334,15 +334,15 @@ describe('Todo card edit dialog', () => {
 
     expect(await screen.findByText('Could not save the todo.')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([existingTodo])
   })
 
   it('keeps edit mode open and leaves caches unchanged when a Bucket move fails', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedUpdateTodo.mockRejectedValue(operationErrorResponse(404, 'RESOURCE_NOT_FOUND', 'Resource not found'))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
-    queryClient.setQueryData([TODOS_QUERY_KEY, buckets[0].id], [])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(buckets[0].id), [])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -353,14 +353,14 @@ describe('Todo card edit dialog', () => {
 
     expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, buckets[0].id])).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([existingTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(buckets[0].id))).toEqual([])
   })
 
   it('discards unsaved Todo field changes when edit mode is cancelled', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -389,7 +389,7 @@ describe('Todo card edit dialog', () => {
       todoId: existingTodo.id,
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -408,14 +408,14 @@ describe('Todo card edit dialog', () => {
         id: existingTodo.id,
       },
     })
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([])
     expect(screen.queryByText(existingTodo.title)).not.toBeInTheDocument()
   })
 
   it('keeps edit mode open and leaves the Todo cached while awaiting delete confirmation', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -426,14 +426,14 @@ describe('Todo card edit dialog', () => {
     expect(screen.getByText('Click Delete todo again to permanently delete it.')).toBeInTheDocument()
     expect(mockedDeleteTodo).not.toHaveBeenCalled()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([existingTodo])
   })
 
   it('keeps edit mode open and shows feedback when deleting a Todo fails', async () => {
     mockedGetTodos.mockResolvedValue([existingTodo])
     mockedDeleteTodo.mockRejectedValue(operationErrorResponse(404, 'RESOURCE_NOT_FOUND', 'Resource not found'))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, existingTodo.bucketId], [existingTodo])
+    queryClient.setQueryData(boardCacheKeys.todos(existingTodo.bucketId), [existingTodo])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
@@ -445,7 +445,7 @@ describe('Todo card edit dialog', () => {
 
     expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Edit Task' })).toBeInTheDocument()
-    expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([existingTodo])
+    expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([existingTodo])
   })
 
   it('refreshes the Bucket when the Todo being deleted no longer exists', async () => {
@@ -462,14 +462,14 @@ describe('Todo card edit dialog', () => {
 
     expect(await screen.findByText('Resource not found')).toBeInTheDocument()
     await waitFor(() => {
-      expect(queryClient.getQueryData([TODOS_QUERY_KEY, existingTodo.bucketId])).toEqual([])
+      expect(queryClient.getQueryData(boardCacheKeys.todos(existingTodo.bucketId))).toEqual([])
     })
   })
 
   it('does not expose Todo deletion in create mode', async () => {
     mockedGetTodos.mockResolvedValue([])
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, buckets[1].id], [])
+    queryClient.setQueryData(boardCacheKeys.todos(buckets[1].id), [])
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
