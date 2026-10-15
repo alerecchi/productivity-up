@@ -292,7 +292,23 @@ export function createBoardCache(queryClient: QueryClient) {
     }
 
     if (validScope.type === 'migration-steps') {
-      await queryClient.invalidateQueries({ queryKey: boardCacheKeys.migrationStepRoot(), refetchType })
+      const board = ReconcileLifecycleResponse.safeParse(queryClient.getQueryData(boardCacheKeys.board()))
+      const pendingBucketIds = board.success ? getPendingBucketIds(board.data) : new Set<unknown>()
+      const queryKey = boardCacheKeys.migrationStepRoot()
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey: [root, sourceBucketId] }) =>
+            root === queryKey[0] && !pendingBucketIds.has(sourceBucketId),
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey: [root, sourceBucketId] }) =>
+            root === queryKey[0] && pendingBucketIds.has(sourceBucketId),
+          queryKey,
+          refetchType,
+        }),
+      ])
       return
     }
 
