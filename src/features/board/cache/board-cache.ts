@@ -156,6 +156,8 @@ const CommittedBoardChangeSchema = z.discriminatedUnion('type', [
 ])
 
 export type BoardCacheScope =
+  | { type: 'all-todos' }
+  | { type: 'migration-steps' }
   | { bucketIds: Array<number>; type: 'todos' }
   | { type: 'all' }
   | { type: 'board' }
@@ -164,9 +166,10 @@ export type BoardCacheScope =
   | { type: 'tags' }
 
 const BoardCacheScopeSchema: z.ZodType<BoardCacheScope> = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('all-todos') }).strict(),
   z.object({ bucketIds: z.array(z.int()), type: z.literal('todos') }).strict(),
   z.object({ sourceBucketId: z.int(), type: z.literal('migration-step') }).strict(),
-  z.object({ type: z.enum(['all', 'board', 'categories', 'tags']) }).strict(),
+  z.object({ type: z.enum(['all', 'board', 'categories', 'migration-steps', 'tags']) }).strict(),
 ])
 
 /**
@@ -276,6 +279,36 @@ export function createBoardCache(queryClient: QueryClient) {
         ),
       )
       reapplyPendingChanges(validScope.bucketIds)
+      return
+    }
+
+    if (validScope.type === 'all-todos') {
+      await queryClient.invalidateQueries({
+        predicate: ({ queryKey: [root] }) => root === boardCacheKeys.todosRoot()[0],
+        refetchType,
+      })
+      reapplyPendingChanges('all')
+      return
+    }
+
+    if (validScope.type === 'migration-steps') {
+      const board = ReconcileLifecycleResponse.safeParse(queryClient.getQueryData(boardCacheKeys.board()))
+      const pendingBucketIds = board.success ? getPendingBucketIds(board.data) : new Set<unknown>()
+      const queryKey = boardCacheKeys.migrationStepRoot()
+
+      await Promise.all([
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey: [root, sourceBucketId] }) =>
+            root === queryKey[0] && !pendingBucketIds.has(sourceBucketId),
+          refetchType: 'none',
+        }),
+        queryClient.invalidateQueries({
+          predicate: ({ queryKey: [root, sourceBucketId] }) =>
+            root === queryKey[0] && pendingBucketIds.has(sourceBucketId),
+          queryKey,
+          refetchType,
+        }),
+      ])
       return
     }
 

@@ -66,6 +66,7 @@ export function createRealtimeConnection({
   // Hints are refetched rather than patched, so duplicates are harmless; any unknown hint needs a full resync.
   const applyHints = async (hints: ReadonlyArray<unknown>) => {
     const bucketIds = new Set<number>()
+    const scopes = new Set<'board' | 'categories' | 'tags'>()
 
     for (const hint of hints) {
       const knownHint = RealtimeHintSchema.safeParse(hint)
@@ -74,12 +75,36 @@ export function createRealtimeConnection({
         return cache.sync({ type: 'all' })
       }
 
-      knownHint.data.bucketIds.forEach((bucketId) => bucketIds.add(bucketId))
+      switch (knownHint.data.type) {
+        case 'board-changed':
+          scopes.add('board')
+          break
+        case 'categories-changed':
+          scopes.add('categories')
+          break
+        case 'tags-changed':
+          scopes.add('tags')
+          break
+        case 'todo-created':
+        case 'todo-deleted':
+        case 'todo-moved':
+        case 'todo-updated':
+          knownHint.data.bucketIds.forEach((bucketId) => bucketIds.add(bucketId))
+          break
+      }
     }
 
-    if (bucketIds.size > 0) {
-      await cache.sync({ bucketIds: [...bucketIds], type: 'todos' })
+    if (scopes.has('board')) {
+      await cache.sync({ type: 'all' })
+      return
     }
+
+    await Promise.all([
+      ...(bucketIds.size > 0 ? [cache.sync({ bucketIds: [...bucketIds], type: 'todos' })] : []),
+      ...(scopes.has('categories') ? [cache.sync({ type: 'categories' })] : []),
+      ...(scopes.has('categories') || scopes.has('tags') ? [cache.sync({ type: 'migration-steps' })] : []),
+      ...(scopes.has('tags') ? [cache.sync({ type: 'tags' })] : []),
+    ])
   }
 
   const checkLiveness = () => {

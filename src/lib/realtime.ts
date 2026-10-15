@@ -17,12 +17,17 @@ export type RealtimeMessage = z.infer<typeof RealtimeMessageSchema>
  * patching, because hints carry no ordering guarantee; a hint may only be patched directly once it carries complete
  * canonical data and an ordering guarantee.
  */
-export const RealtimeHintSchema = z
-  .object({
-    bucketIds: z.array(z.int().positive()).min(1),
-    type: z.enum(['todo-created', 'todo-deleted', 'todo-moved', 'todo-updated']),
-  })
-  .strict()
+export const RealtimeHintSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('board-changed') }).strict(),
+  z.object({ type: z.literal('categories-changed') }).strict(),
+  z.object({ type: z.literal('tags-changed') }).strict(),
+  z
+    .object({
+      bucketIds: z.array(z.int().positive()).min(1),
+      type: z.enum(['todo-created', 'todo-deleted', 'todo-moved', 'todo-updated']),
+    })
+    .strict(),
+])
 
 export type RealtimeHint = z.infer<typeof RealtimeHintSchema>
 

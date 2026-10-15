@@ -19,6 +19,6 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/server/core/public-request.integration.ts'],
+    include: ['src/server/core/*.integration.ts'],
   },
 })

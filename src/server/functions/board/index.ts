@@ -5,6 +5,7 @@ import { createPrivateOperation, validateInput } from '@/server/core'
 import { createBoardRepository } from '@/server/db/board-repository'
 import { completeDayForUser, getBoardForUser, reconcileLifecycleForUser } from '@/server/functions/board/lifecycle'
 import { confirmMigrationStepForUser, getMigrationStepForUser } from '@/server/functions/board/operations'
+import { boardChangedHint } from '@/server/functions/board/realtime-hints'
 import {
   BoardResponse,
   CompleteDayInput,
@@ -29,7 +30,13 @@ export const getBoard = createServerFn({ method: 'GET' })
   })
 
 export const reconcileLifecycle = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'board.reconcileLifecycle', response: ReconcileLifecycleResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: boardChangedHint,
+      operation: 'board.reconcileLifecycle',
+      response: ReconcileLifecycleResponse,
+    }),
+  ])
   .validator(validateInput(ReconcileLifecycleInput))
   .handler(async ({ context, data }): Promise<z.output<typeof ReconcileLifecycleResponse>> => {
     return reconcileLifecycleForUser({
@@ -40,7 +47,9 @@ export const reconcileLifecycle = createServerFn({ method: 'POST' })
   })
 
 export const completeDay = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'board.completeDay', response: CompleteDayResponse })])
+  .middleware([
+    createPrivateOperation({ hints: boardChangedHint, operation: 'board.completeDay', response: CompleteDayResponse }),
+  ])
   .validator(validateInput(CompleteDayInput))
   .handler(async ({ data, context }): Promise<z.output<typeof CompleteDayResponse>> => {
     return completeDayForUser({
@@ -63,7 +72,11 @@ export const getMigrationStep = createServerFn({ method: 'GET' })
 
 export const confirmMigrationStep = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({ operation: 'board.confirmMigrationStep', response: ConfirmMigrationStepResponse }),
+    createPrivateOperation({
+      hints: boardChangedHint,
+      operation: 'board.confirmMigrationStep',
+      response: ConfirmMigrationStepResponse,
+    }),
   ])
   .validator(validateInput(ConfirmMigrationStepInput))
   .handler(async ({ data, context }): Promise<z.output<typeof ConfirmMigrationStepResponse>> => {

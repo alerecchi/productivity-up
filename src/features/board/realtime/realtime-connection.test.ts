@@ -52,10 +52,28 @@ const connections: Array<ReturnType<typeof createRealtimeConnection>> = []
 
 function setup() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } })
-  const boardQueryFn = vi.fn(() => Promise.resolve({ status: 'ready' }))
-  queryClient.setQueryData(boardCacheKeys.board(), { status: 'ready' })
+  const board = {
+    buckets: [1, 2, 3].map((id) => ({ id, period: '2026-09-21', type: 'daily' })),
+    pendingMigrationBuckets: [
+      { id: 6, period: '2026-09', type: 'monthly' },
+      { id: 7, period: '2026-W38', type: 'weekly' },
+    ],
+    planningDate: '2026-09-21',
+    status: 'migration_required',
+    timeZone: 'Europe/Rome',
+  } as const
+  const boardQueryFn = vi.fn(() => Promise.resolve(board))
+  queryClient.setQueryData(boardCacheKeys.board(), board)
   const observer = new QueryObserver(queryClient, { queryFn: boardQueryFn, queryKey: boardCacheKeys.board() })
   const unsubscribe = observer.subscribe(() => undefined)
+  const categoryQueryFn = vi.fn(() => Promise.resolve([]))
+  queryClient.setQueryData(boardCacheKeys.categories(), [])
+  new QueryObserver(queryClient, { queryFn: categoryQueryFn, queryKey: boardCacheKeys.categories() }).subscribe(
+    () => undefined,
+  )
+  const tagQueryFn = vi.fn(() => Promise.resolve([]))
+  queryClient.setQueryData(boardCacheKeys.tags(), [])
+  new QueryObserver(queryClient, { queryFn: tagQueryFn, queryKey: boardCacheKeys.tags() }).subscribe(() => undefined)
   const todoQueryFns = new Map(
     [1, 2, 3].map((bucketId) => {
       const todosQueryFn = vi.fn(() => Promise.resolve([]))
@@ -66,6 +84,26 @@ function setup() {
       return [bucketId, todosQueryFn]
     }),
   )
+  let taxonomyName = 'before'
+  const migrationQueryFn = vi.fn(() =>
+    Promise.resolve({ todos: [{ category: { name: taxonomyName }, tags: [{ name: taxonomyName }] }] }),
+  )
+  queryClient.setQueryData(boardCacheKeys.migrationStep(6), {
+    todos: [{ category: { name: taxonomyName }, tags: [{ name: taxonomyName }] }],
+  })
+  const migrationObserver = new QueryObserver(queryClient, {
+    queryFn: migrationQueryFn,
+    queryKey: boardCacheKeys.migrationStep(6),
+  })
+  migrationObserver.subscribe(() => undefined)
+  const retiredMigrationQueryFn = vi.fn(() => Promise.resolve({ todos: [] }))
+  queryClient.setQueryData(boardCacheKeys.migrationStep(8), { todos: [] })
+  new QueryObserver(queryClient, {
+    queryFn: retiredMigrationQueryFn,
+    queryKey: boardCacheKeys.migrationStep(8),
+  }).subscribe(() => undefined)
+  // Loaded inactive projections must also become stale for their next observer.
+  queryClient.setQueryData(boardCacheKeys.migrationStep(7), { todos: [] })
   const sockets: Array<FakeSocket> = []
   const connection = createRealtimeConnection({
     cache: createBoardCache(queryClient),
@@ -82,7 +120,17 @@ function setup() {
 
   return {
     connection,
+    migrationObserver,
+    migrationRefetchCount: () => migrationQueryFn.mock.calls.length,
+    retiredMigrationRefetchCount: () => retiredMigrationQueryFn.mock.calls.length,
+    retiredMigrationIsStale: () => queryClient.getQueryState(boardCacheKeys.migrationStep(8))?.isInvalidated,
+    inactiveMigrationIsStale: () => queryClient.getQueryState(boardCacheKeys.migrationStep(7))?.isInvalidated,
+    renameTaxonomy: () => {
+      taxonomyName = 'after'
+    },
     resyncCount: () => boardQueryFn.mock.calls.length,
+    categoryRefetchCount: () => categoryQueryFn.mock.calls.length,
+    tagRefetchCount: () => tagQueryFn.mock.calls.length,
     todoRefetchCounts: () => [...todoQueryFns.values()].map((queryFn) => queryFn.mock.calls.length),
     socket: () => sockets.at(-1)!,
     sockets,
@@ -144,6 +192,77 @@ describe('realtime connection', () => {
 
     expect(todoRefetchCounts()).toEqual([2, 2, 1])
     expect(resyncCount()).toBe(1)
+  })
+
+  it('refreshes the Category list and every loaded Todo projection after a Category change', async () => {
+    const { categoryRefetchCount, connection, resyncCount, socket, todoRefetchCounts } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+
+    socket().receive(JSON.stringify({ hints: [{ type: 'categories-changed' }] }))
+    await flush()
+
+    expect(categoryRefetchCount()).toBe(2)
+    expect(todoRefetchCounts()).toEqual([2, 2, 2])
+    expect(resyncCount()).toBe(1)
+  })
+
+  it('refreshes the Tag list and every loaded Todo projection after a Tag change', async () => {
+    const { connection, resyncCount, socket, tagRefetchCount, todoRefetchCounts } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+
+    socket().receive(JSON.stringify({ hints: [{ type: 'tags-changed' }] }))
+    await flush()
+
+    expect(tagRefetchCount()).toBe(2)
+    expect(todoRefetchCounts()).toEqual([2, 2, 2])
+    expect(resyncCount()).toBe(1)
+  })
+
+  it.each(['categories-changed', 'tags-changed'])('refreshes active Migration Steps after %s', async (type) => {
+    const {
+      connection,
+      inactiveMigrationIsStale,
+      migrationObserver,
+      migrationRefetchCount,
+      renameTaxonomy,
+      retiredMigrationIsStale,
+      retiredMigrationRefetchCount,
+      socket,
+    } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+    renameTaxonomy()
+
+    socket().receive(JSON.stringify({ hints: [{ type }] }))
+    await flush()
+
+    expect(migrationRefetchCount()).toBe(2)
+    expect(migrationObserver.getCurrentResult().data).toEqual({
+      todos: [{ category: { name: 'after' }, tags: [{ name: 'after' }] }],
+    })
+    expect(inactiveMigrationIsStale()).toBe(true)
+    expect(retiredMigrationRefetchCount()).toBe(1)
+    expect(retiredMigrationIsStale()).toBe(true)
+  })
+
+  it('fully refreshes the canonical board and all projections after a lifecycle commit', async () => {
+    const { categoryRefetchCount, connection, resyncCount, socket, tagRefetchCount, todoRefetchCounts } = setup()
+    connection.start()
+    socket().open()
+    await flush()
+
+    socket().receive(JSON.stringify({ hints: [{ type: 'board-changed' }] }))
+    await flush()
+
+    expect(resyncCount()).toBe(2)
+    expect(categoryRefetchCount()).toBe(2)
+    expect(tagRefetchCount()).toBe(2)
+    expect(todoRefetchCounts()).toEqual([2, 2, 2])
   })
 
   it('treats a repeated hint as a harmless refetch of the same Bucket only', async () => {

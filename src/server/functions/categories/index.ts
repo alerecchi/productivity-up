@@ -20,7 +20,13 @@ import {
 } from '@/server/functions/categories/schemas'
 
 export const createCategory = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'categories.create', response: CategoryResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: () => [{ type: 'categories-changed' }],
+      operation: 'categories.create',
+      response: CategoryResponse,
+    }),
+  ])
   .validator(validateInput(CreateCategoryInput))
   .handler(async ({ data, context }): Promise<z.output<typeof CategoryResponse>> => {
     return createCategoryForUser({ data, repository: createCategoryRepository(context.db), userId: context.user.id })
@@ -34,14 +40,26 @@ export const listCategories = createServerFn({ method: 'GET' })
   })
 
 export const updateCategory = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'categories.update', response: CategoryResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: () => [{ type: 'categories-changed' }],
+      operation: 'categories.update',
+      response: CategoryResponse,
+    }),
+  ])
   .validator(validateInput(UpdateCategoryInput))
   .handler(async ({ data, context }): Promise<z.output<typeof CategoryResponse>> => {
     return updateCategoryForUser({ data, repository: createCategoryRepository(context.db), userId: context.user.id })
   })
 
 export const deleteCategory = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ operation: 'categories.delete', response: DeleteCategoryResponse })])
+  .middleware([
+    createPrivateOperation({
+      hints: () => [{ type: 'categories-changed' }],
+      operation: 'categories.delete',
+      response: DeleteCategoryResponse,
+    }),
+  ])
   .validator(validateInput(DeleteCategoryInput))
   .handler(async ({ data, context }): Promise<z.output<typeof DeleteCategoryResponse>> => {
     return deleteCategoryForUser({ data, repository: createCategoryRepository(context.db), userId: context.user.id })
