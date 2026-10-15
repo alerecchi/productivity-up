@@ -2,10 +2,10 @@ import { act, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
 import { Board } from '@/features/board/components/board'
 import { BucketColumn } from '@/features/board/components/bucket-column'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
-import { BOARD_QUERY_KEY, TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
 import type { Bucket } from '@/lib/types/Bucket'
 import type { Todo } from '@/lib/types/Todo'
 import { getTodos, moveTodo } from '@/server/functions/todos'
@@ -68,7 +68,6 @@ vi.mock('sonner', () => ({
 
 vi.mock('@/server/functions/board', () => ({
   getBoard: vi.fn(),
-  getBuckets: vi.fn(),
 }))
 
 vi.mock('@/server/functions/categories', () => ({
@@ -144,7 +143,7 @@ describe('Todo reordering within a Bucket', () => {
 
   it('moves a Todo before the first Todo when dropped on the first insertion line', async () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -182,7 +181,7 @@ describe('Todo reordering within a Bucket', () => {
 
   it('moves a Todo between neighboring Todos when dropped on a middle insertion line', async () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -219,7 +218,7 @@ describe('Todo reordering within a Bucket', () => {
 
   it('moves a Todo after the last Todo when dropped on the final insertion line', async () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
     const bucketList = screen.getByRole('list', { name: 'Wednesday 24 Todos' })
@@ -266,7 +265,7 @@ describe('Todo reordering within a Bucket', () => {
 
   it('does not move a Todo when dropped on the insertion line immediately before itself', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -289,7 +288,7 @@ describe('Todo reordering within a Bucket', () => {
     })
 
     expect(mockedMoveTodo).not.toHaveBeenCalled()
-    expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+    expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
       todos[0].id,
       todos[1].id,
       todos[2].id,
@@ -298,7 +297,7 @@ describe('Todo reordering within a Bucket', () => {
 
   it('does not move a Todo when dropped on the insertion line immediately after itself', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -321,7 +320,7 @@ describe('Todo reordering within a Bucket', () => {
     })
 
     expect(mockedMoveTodo).not.toHaveBeenCalled()
-    expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+    expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
       todos[0].id,
       todos[1].id,
       todos[2].id,
@@ -336,7 +335,7 @@ describe('Todo reordering within a Bucket', () => {
       }),
     )
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -359,7 +358,7 @@ describe('Todo reordering within a Bucket', () => {
     })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[1].id,
         todos[0].id,
         todos[2].id,
@@ -377,7 +376,7 @@ describe('Todo reordering within a Bucket', () => {
   it('renders the optimistic order before the drag end handler returns', () => {
     mockedMoveTodo.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -405,7 +404,7 @@ describe('Todo reordering within a Bucket', () => {
   it('shows only the active horizontal insertion line as the drop-position indicator', () => {
     dnd.activeDropTargetId = `bucket-${bucket.id}-insertion-1`
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
 
@@ -419,7 +418,7 @@ describe('Todo reordering within a Bucket', () => {
   it('moves completed Todos with the same insertion-line anchors', async () => {
     const completedTodos = [todos[0], { ...todos[1], completed: true }, todos[2]]
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], completedTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), completedTodos)
 
     renderBucket(bucket, queryClient)
 
@@ -459,9 +458,9 @@ describe('Todo reordering within a Bucket', () => {
 describe('Bucket column layout', () => {
   it('keeps Buckets readable in a horizontally scrolling board with independently scrolling Todo lists', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], readyBoard)
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.board(), readyBoard)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(<Board />, { queryClient })
 
@@ -493,7 +492,7 @@ describe('Bucket column layout', () => {
       createTodo({ id: 100 + index, position: (index + 1) * 1024, title: `Todo ${index + 1}` }),
     )
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], manyTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), manyTodos)
 
     renderBucket(bucket, queryClient)
 
@@ -504,9 +503,9 @@ describe('Bucket column layout', () => {
 
   it('scrolls the board horizontally during drag near the board edge', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], readyBoard)
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.board(), readyBoard)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(<Board />, { queryClient })
 
@@ -536,9 +535,9 @@ describe('Bucket column layout', () => {
 
   it('scrolls only the current Bucket Todo list vertically during drag', () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([BOARD_QUERY_KEY], readyBoard)
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.board(), readyBoard)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(<Board />, { queryClient })
 
@@ -577,8 +576,8 @@ describe('Todo movement across Buckets', () => {
 
   it('moves a Todo to another Bucket at the visible insertion line', async () => {
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(
       <TodoDragDropProvider>
@@ -632,8 +631,8 @@ describe('Todo movement across Buckets', () => {
       todo: movedTodo,
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(
       <TodoDragDropProvider>
@@ -662,12 +661,12 @@ describe('Todo movement across Buckets', () => {
     })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[0].id,
         todos[2].id,
       ])
       expect(
-        queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
+        queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(destinationBucket.id))?.map((todo) => todo.id),
       ).toEqual([destinationTodos[0].id, movedTodo.id, destinationTodos[1].id])
     })
   })
@@ -675,8 +674,8 @@ describe('Todo movement across Buckets', () => {
   it('optimistically moves a Todo across Buckets before the server responds', async () => {
     mockedMoveTodo.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(
       <TodoDragDropProvider>
@@ -705,12 +704,12 @@ describe('Todo movement across Buckets', () => {
     })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[0].id,
         todos[2].id,
       ])
       expect(
-        queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
+        queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(destinationBucket.id))?.map((todo) => todo.id),
       ).toEqual([destinationTodos[0].id, todos[1].id, destinationTodos[1].id])
     })
   })
@@ -719,8 +718,8 @@ describe('Todo movement across Buckets', () => {
     mockedMoveTodo.mockRejectedValue(new Error('Network unavailable'))
     mockedGetTodos.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(
       <TodoDragDropProvider>
@@ -754,13 +753,13 @@ describe('Todo movement across Buckets', () => {
     })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[0].id,
         todos[1].id,
         todos[2].id,
       ])
       expect(
-        queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
+        queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(destinationBucket.id))?.map((todo) => todo.id),
       ).toEqual([destinationTodos[0].id, destinationTodos[1].id])
     })
     await waitFor(() => {
@@ -784,8 +783,8 @@ describe('Todo movement across Buckets', () => {
     )
     mockedGetTodos.mockReturnValue(new Promise(() => {}))
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(
       <TodoDragDropProvider>
@@ -819,13 +818,13 @@ describe('Todo movement across Buckets', () => {
     })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[0].id,
         todos[1].id,
         todos[2].id,
       ])
       expect(
-        queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
+        queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(destinationBucket.id))?.map((todo) => todo.id),
       ).toEqual([destinationTodos[0].id, destinationTodos[1].id])
     })
     await waitFor(() => {
@@ -843,21 +842,21 @@ describe('Todo movement across Buckets', () => {
     const queryClient = createTestQueryClient()
     let finishSourceFetch: ((todos: Array<Todo>) => void) | undefined
     let finishTargetFetch: ((todos: Array<Todo>) => void) | undefined
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
     void queryClient.fetchQuery({
       queryFn: () =>
         new Promise<Array<Todo>>((resolve) => {
           finishSourceFetch = resolve
         }),
-      queryKey: [TODOS_QUERY_KEY, bucket.id],
+      queryKey: boardCacheKeys.todos(bucket.id),
     })
     void queryClient.fetchQuery({
       queryFn: () =>
         new Promise<Array<Todo>>((resolve) => {
           finishTargetFetch = resolve
         }),
-      queryKey: [TODOS_QUERY_KEY, destinationBucket.id],
+      queryKey: boardCacheKeys.todos(destinationBucket.id),
     })
 
     render(
@@ -887,7 +886,7 @@ describe('Todo movement across Buckets', () => {
     })
 
     await waitFor(() => {
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[0].id,
         todos[2].id,
       ])
@@ -899,12 +898,12 @@ describe('Todo movement across Buckets', () => {
       await Promise.resolve()
     })
 
-    expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+    expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
       todos[0].id,
       todos[2].id,
     ])
     expect(
-      queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])?.map((todo) => todo.id),
+      queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(destinationBucket.id))?.map((todo) => todo.id),
     ).toEqual([destinationTodos[0].id, todos[1].id, destinationTodos[1].id])
   })
 
@@ -918,8 +917,8 @@ describe('Todo movement across Buckets', () => {
       todo: movedTodo,
     })
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], todos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], [])
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), [])
 
     render(
       <TodoDragDropProvider>
@@ -957,19 +956,19 @@ describe('Todo movement across Buckets', () => {
           targetBucketId: destinationBucket.id,
         },
       })
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, bucket.id])?.map((todo) => todo.id)).toEqual([
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(bucket.id))?.map((todo) => todo.id)).toEqual([
         todos[1].id,
         todos[2].id,
       ])
-      expect(queryClient.getQueryData<Array<Todo>>([TODOS_QUERY_KEY, destinationBucket.id])).toEqual([movedTodo])
+      expect(queryClient.getQueryData<Array<Todo>>(boardCacheKeys.todos(destinationBucket.id))).toEqual([movedTodo])
     })
   })
 
   it('moves a completed Todo across Buckets with the same insertion-line anchors', async () => {
     const completedTodos = [todos[0], { ...todos[1], completed: true }, todos[2]]
     const queryClient = createTestQueryClient()
-    queryClient.setQueryData([TODOS_QUERY_KEY, bucket.id], completedTodos)
-    queryClient.setQueryData([TODOS_QUERY_KEY, destinationBucket.id], destinationTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(bucket.id), completedTodos)
+    queryClient.setQueryData(boardCacheKeys.todos(destinationBucket.id), destinationTodos)
 
     render(
       <TodoDragDropProvider>

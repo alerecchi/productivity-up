@@ -1,30 +1,18 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation } from '@tanstack/react-query'
 
-import { CATEGORIES_QUERY_KEY, TODOS_QUERY_KEY } from '@/features/board/queries/query-keys'
-import type { CategoryDisplay } from '@/lib/types/Category'
-import type { Todo } from '@/lib/types/Todo'
+import { useBoardCache } from '@/features/board/cache'
 import { deleteCategory } from '@/server/functions/categories'
 
 export default function useDeleteCategory() {
-  const queryClient = useQueryClient()
+  const cache = useBoardCache()
 
   return useMutation({
     mutationFn: deleteCategory,
-    onSuccess: (deletedCategory) => {
-      queryClient.setQueryData<Array<CategoryDisplay>>([CATEGORIES_QUERY_KEY], (old = []) =>
-        old.filter((category) => category.id !== deletedCategory.categoryId),
-      )
-      queryClient.setQueriesData<Array<Todo>>({ queryKey: [TODOS_QUERY_KEY] }, (old = []) =>
-        old.map((todo) =>
-          todo.category?.id === deletedCategory.categoryId
-            ? {
-                ...todo,
-                category: null,
-                categoryId: null,
-              }
-            : todo,
-        ),
-      )
+    onError: (error) => {
+      void cache.recover(error, { type: 'categories' })
+    },
+    onSuccess: async ({ categoryId }) => {
+      await cache.apply({ categoryId, type: 'category-deleted' })
     },
   })
 }

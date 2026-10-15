@@ -20,7 +20,6 @@ export type BoardRepository = LifecycleRepository & {
     plan: (state: MigrationStepState) => MigrationStepPlan,
   ) => Promise<MigrationStepPlan>
   findBucketByUserTypeAndPeriod: (userId: string, type: BucketType, period: string) => Promise<BucketDb | undefined>
-  getActiveBuckets: (userId: string) => Promise<Array<BucketDb>>
   getPendingMigrationBuckets: (userId: string) => Promise<Array<BucketDb>>
   getTodosByBucket: (userId: string, bucketId: number) => Promise<Array<TodoDbSelect>>
   getTodosByBucketWithDisplay: (userId: string, bucketId: number) => Promise<Array<MigrationTodo>>

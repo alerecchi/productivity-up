@@ -5,7 +5,6 @@ import {
   completeDay,
   confirmMigrationStep,
   getBoard,
-  getBuckets,
   getMigrationStep,
   reconcileLifecycle,
 } from '@/server/functions/board'
@@ -54,7 +53,6 @@ const privateFunctions = [
   ['board.completeDay', completeDay],
   ['board.getMigrationStep', getMigrationStep],
   ['board.confirmMigrationStep', confirmMigrationStep],
-  ['board.getBuckets', getBuckets],
   ['categories.create', createCategory],
   ['categories.list', listCategories],
   ['categories.update', updateCategory],

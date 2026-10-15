@@ -2,6 +2,10 @@ import type { QueryClient } from '@tanstack/react-query'
 import { z } from 'zod'
 
 import { boardCacheKeys } from '@/features/board/cache/board-cache-keys'
+import { CategoryDisplaySchema } from '@/lib/types/Category'
+import type { CategoryDisplay } from '@/lib/types/Category'
+import { TagDisplaySchema } from '@/lib/types/Tag'
+import type { TagDisplay } from '@/lib/types/Tag'
 import { TodoSchema } from '@/lib/types/Todo'
 import type { Todo } from '@/lib/types/Todo'
 import { ReconcileLifecycleResponse } from '@/server/functions/board/schemas'
@@ -66,7 +70,33 @@ type MigrationStepConfirmed = {
   type: 'migration-step-confirmed'
 }
 
+/** A Category was created or updated; `category` is its canonical display data. */
+type CategorySaved = {
+  category: CategoryDisplay
+  type: 'category-saved'
+}
+
+type CategoryDeleted = {
+  categoryId: number
+  type: 'category-deleted'
+}
+
+/** A Tag was created or updated; `tag` is its canonical display data. */
+type TagSaved = {
+  tag: TagDisplay
+  type: 'tag-saved'
+}
+
+type TagDeleted = {
+  tagId: number
+  type: 'tag-deleted'
+}
+
 export type CommittedBoardChange =
+  | CategoryDeleted
+  | CategorySaved
+  | TagDeleted
+  | TagSaved
   | LifecycleCommitted
   | MigrationStepConfirmed
   | TodoCreated
@@ -75,6 +105,8 @@ export type CommittedBoardChange =
   | TodoUpdated
 
 const CommittedBoardChangeSchema = z.discriminatedUnion('type', [
+  z.object({ categoryId: z.int(), type: z.literal('category-deleted') }).strict(),
+  z.object({ category: CategoryDisplaySchema, type: z.literal('category-saved') }).strict(),
   z.object({ board: ReconcileLifecycleResponse, type: z.literal('lifecycle-committed') }).strict(),
   z
     .object({
@@ -119,13 +151,14 @@ const CommittedBoardChangeSchema = z.discriminatedUnion('type', [
       }
     }),
   z.object({ previousBucketId: z.int(), todo: TodoSchema, type: z.literal('todo-updated') }).strict(),
+  z.object({ tagId: z.int(), type: z.literal('tag-deleted') }).strict(),
+  z.object({ tag: TagDisplaySchema, type: z.literal('tag-saved') }).strict(),
 ])
 
 export type BoardCacheScope =
   | { bucketIds: Array<number>; type: 'todos' }
   | { type: 'all' }
   | { type: 'board' }
-  | { type: 'buckets' }
   | { type: 'categories' }
   | { sourceBucketId: number; type: 'migration-step' }
   | { type: 'tags' }
@@ -133,7 +166,7 @@ export type BoardCacheScope =
 const BoardCacheScopeSchema: z.ZodType<BoardCacheScope> = z.discriminatedUnion('type', [
   z.object({ bucketIds: z.array(z.int()), type: z.literal('todos') }).strict(),
   z.object({ sourceBucketId: z.int(), type: z.literal('migration-step') }).strict(),
-  z.object({ type: z.enum(['all', 'board', 'buckets', 'categories', 'tags']) }).strict(),
+  z.object({ type: z.enum(['all', 'board', 'categories', 'tags']) }).strict(),
 ])
 
 /**
@@ -256,6 +289,16 @@ export function createBoardCache(queryClient: QueryClient) {
       return
     }
 
+    // Todos embed Category and Tag display data, so a taxonomy scope covers every Todo projection too.
+    if (validScope.type === 'categories' || validScope.type === 'tags') {
+      await Promise.all([
+        queryClient.invalidateQueries({ exact: true, queryKey: getQueryKeyForScope(validScope), refetchType }),
+        queryClient.invalidateQueries({ queryKey: boardCacheKeys.todosRoot(), refetchType }),
+      ])
+      reapplyPendingChanges('all')
+      return
+    }
+
     await queryClient.invalidateQueries({
       exact: true,
       queryKey:
@@ -297,6 +340,13 @@ export function createBoardCache(queryClient: QueryClient) {
     )
 
     switch (committedChange.type) {
+      case 'category-deleted':
+      case 'category-saved':
+      case 'tag-deleted':
+      case 'tag-saved':
+        await applyTaxonomyChange(queryClient, committedChange)
+        reapplyPendingChanges('all')
+        break
       case 'lifecycle-committed':
         await applyCanonicalBoard(committedChange.board)
         break
@@ -473,6 +523,11 @@ function applyCommittedTodoUpdate(queryClient: QueryClient, change: TodoUpdated)
 
 function getAffectedBucketIds(change: CommittedBoardChange) {
   switch (change.type) {
+    case 'category-deleted':
+    case 'category-saved':
+    case 'tag-deleted':
+    case 'tag-saved':
+      return []
     case 'lifecycle-committed':
       return []
     case 'migration-step-confirmed':
@@ -516,7 +571,6 @@ function getPendingBucketIds(board: CanonicalBoard) {
 
 const STATIC_SCOPE_QUERY_KEYS = {
   board: boardCacheKeys.board(),
-  buckets: boardCacheKeys.buckets(),
   categories: boardCacheKeys.categories(),
   tags: boardCacheKeys.tags(),
 } as const
@@ -658,6 +712,90 @@ function updateLoadedTodos(
   }
 
   queryClient.setQueryData<Array<Todo>>(queryKey, (todos) => (todos === undefined ? undefined : update(todos)))
+}
+
+type TaxonomyChange = CategoryDeleted | CategorySaved | TagDeleted | TagSaved
+
+// Cancel pre-commit reads before patching, including initial and inactive fetches. Restart active reads; leave
+// inactive projections stale so their next read fetches canonical data without accepting the canceled response.
+async function applyTaxonomyChange(queryClient: QueryClient, change: TaxonomyChange) {
+  const [taxonomyRoot] = change.type.startsWith('category') ? boardCacheKeys.categories() : boardCacheKeys.tags()
+  const inFlightQueries = new Set(
+    queryClient.getQueryCache().findAll({
+      fetchStatus: 'fetching',
+      predicate: ({ queryKey: [root] }) => root === taxonomyRoot || root === boardCacheKeys.todosRoot()[0],
+    }),
+  )
+
+  await queryClient.cancelQueries({ predicate: (query) => inFlightQueries.has(query) })
+  patchTaxonomyChange(queryClient, change)
+  await queryClient.invalidateQueries({ predicate: (query) => inFlightQueries.has(query) })
+}
+
+function patchTaxonomyChange(queryClient: QueryClient, change: TaxonomyChange) {
+  switch (change.type) {
+    case 'category-deleted': {
+      const { categoryId } = change
+      removeTaxonomyEntry(queryClient, boardCacheKeys.categories(), categoryId)
+      updateEveryLoadedTodo(queryClient, (todo) =>
+        todo.category?.id === categoryId ? { ...todo, category: null, categoryId: null } : todo,
+      )
+      break
+    }
+    case 'category-saved': {
+      const { category } = change
+      saveTaxonomyEntry(queryClient, boardCacheKeys.categories(), category)
+      updateEveryLoadedTodo(queryClient, (todo) => (todo.category?.id === category.id ? { ...todo, category } : todo))
+      break
+    }
+    case 'tag-deleted': {
+      const { tagId } = change
+      removeTaxonomyEntry(queryClient, boardCacheKeys.tags(), tagId)
+      updateEveryLoadedTodo(queryClient, (todo) =>
+        todo.tags.some(({ id }) => id === tagId) ? { ...todo, tags: todo.tags.filter(({ id }) => id !== tagId) } : todo,
+      )
+      break
+    }
+    case 'tag-saved': {
+      const { tag } = change
+      saveTaxonomyEntry(queryClient, boardCacheKeys.tags(), tag)
+      updateEveryLoadedTodo(queryClient, (todo) =>
+        todo.tags.some(({ id }) => id === tag.id)
+          ? {
+              ...todo,
+              tags: todo.tags
+                .map((todoTag) => (todoTag.id === tag.id ? tag : todoTag))
+                .toSorted(compareTaxonomyEntries),
+            }
+          : todo,
+      )
+      break
+    }
+  }
+}
+
+type TaxonomyEntry = CategoryDisplay | TagDisplay
+
+// Upserts a canonical entry into a loaded taxonomy projection, in the server's name order.
+function saveTaxonomyEntry(queryClient: QueryClient, queryKey: readonly [string], entry: TaxonomyEntry) {
+  queryClient.setQueryData<Array<TaxonomyEntry>>(queryKey, (entries) =>
+    entries === undefined
+      ? undefined
+      : [...entries.filter(({ id }) => id !== entry.id), entry].toSorted(compareTaxonomyEntries),
+  )
+}
+
+function compareTaxonomyEntries(left: TaxonomyEntry, right: TaxonomyEntry) {
+  return left.name.localeCompare(right.name) || left.id - right.id
+}
+
+function removeTaxonomyEntry(queryClient: QueryClient, queryKey: readonly [string], entryId: number) {
+  queryClient.setQueryData<Array<TaxonomyEntry>>(queryKey, (entries) => entries?.filter(({ id }) => id !== entryId))
+}
+
+// Patches every loaded Todo projection, since any Bucket may display the changed Categories and tags.
+function updateEveryLoadedTodo(queryClient: QueryClient, update: (todo: Todo) => Todo) {
+  queryClient.setQueriesData<Array<Todo>>({ queryKey: boardCacheKeys.todosRoot() }, (todos) => todos?.map(update))
 }
 
 function compareTodoPosition(left: Todo, right: Todo) {

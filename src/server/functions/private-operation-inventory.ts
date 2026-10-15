@@ -4,7 +4,6 @@ export const PRIVATE_OPERATION_NAMES = [
   'board.completeDay',
   'board.getMigrationStep',
   'board.confirmMigrationStep',
-  'board.getBuckets',
   'categories.create',
   'categories.list',
   'categories.update',

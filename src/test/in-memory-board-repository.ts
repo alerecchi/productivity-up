@@ -208,9 +208,6 @@ export function createInMemoryBoardRepository({
         storedBuckets.find((bucket) => bucket.userId === userId && bucket.type === type && bucket.period === period),
       )
     },
-    getActiveBuckets(userId) {
-      return Promise.resolve(storedBuckets.filter((bucket) => bucket.userId === userId && bucket.status === 'active'))
-    },
     getPendingMigrationBuckets(userId) {
       return Promise.resolve(
         storedBuckets.filter((bucket) => bucket.userId === userId && bucket.status === 'pending_migration'),
