@@ -101,9 +101,9 @@ export function createRealtimeConnection({
 
     await Promise.all([
       ...(bucketIds.size > 0 ? [cache.sync({ bucketIds: [...bucketIds], type: 'todos' })] : []),
-      ...(scopes.has('categories') ? [cache.sync({ type: 'categories' }), cache.sync({ type: 'all-todos' })] : []),
+      ...(scopes.has('categories') ? [cache.sync({ type: 'categories' })] : []),
       ...(scopes.has('categories') || scopes.has('tags') ? [cache.sync({ type: 'migration-steps' })] : []),
-      ...(scopes.has('tags') ? [cache.sync({ type: 'tags' }), cache.sync({ type: 'all-todos' })] : []),
+      ...(scopes.has('tags') ? [cache.sync({ type: 'tags' })] : []),
     ])
   }
 

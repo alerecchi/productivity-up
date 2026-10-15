@@ -169,7 +169,7 @@ const BoardCacheScopeSchema: z.ZodType<BoardCacheScope> = z.discriminatedUnion('
   z.object({ type: z.literal('all-todos') }).strict(),
   z.object({ bucketIds: z.array(z.int()), type: z.literal('todos') }).strict(),
   z.object({ sourceBucketId: z.int(), type: z.literal('migration-step') }).strict(),
-  z.object({ type: z.enum(['all', 'board', 'buckets', 'categories', 'migration-steps', 'tags']) }).strict(),
+  z.object({ type: z.enum(['all', 'board', 'categories', 'migration-steps', 'tags']) }).strict(),
 ])
 
 /**
