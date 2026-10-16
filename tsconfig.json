@@ -1,5 +1,5 @@
 {
-  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts", "eslint.config.js", "vite.config.js"],
+  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts", ".agents/**/*.ts", "eslint.config.js", "vite.config.js"],
 
   "compilerOptions": {
     "target": "ES2023",

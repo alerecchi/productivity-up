@@ -163,3 +163,6 @@ sketch
 
 # UI Sketches
 sketches/
+
+# Verification harness instances and evidence (scripts/verify)
+.verify/
