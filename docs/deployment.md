@@ -29,15 +29,6 @@ Verification and password-reset email is sent directly through Resend with the e
 
 Every send emits one `auth_email.send` record with the email kind, request ID, deployment version, outcome (`sent` or `failed`), duration, the safe provider error code of a failure, and the Resend message ID of a success. Records never contain addresses, names, links, tokens, email bodies, or raw provider errors. Failures are logged at error level. To find them in Workers Logs, filter the Worker's events on `operation = auth_email.send` and `outcome = failed`.
 
-Earlier releases delivered this email through Cloudflare Queues. Once a release without Queues is live in an environment, delete that environment's leftover Queues:
-
-```sh
-pnpm exec wrangler queues delete productivity-up-staging-auth-email
-pnpm exec wrangler queues delete productivity-up-staging-auth-email-dlq
-pnpm exec wrangler queues delete productivity-up-production-auth-email
-pnpm exec wrangler queues delete productivity-up-production-auth-email-dlq
-```
-
 Wrangler provisions the SQLite-backed `UserRealtimeDurableObject` namespace from the declarative `exports` configuration during deployment. Do not create or migrate that namespace by hand.
 
 The Hyperdrive configuration IDs are non-secret resource identifiers and are committed in `wrangler.jsonc`. Cloudflare stores each Hyperdrive origin URL and its database credentials. Keep the same direct origin URLs in the ignored `.env.deploy.local` file for migrations and operator setup commands. Do not add Neon pooler URLs or database credentials to Wrangler variables, Worker secrets, or tracked files.
@@ -166,7 +157,7 @@ The override skips only the staging revision check. Installation, build, migrati
 
 Do not use a Worker rollback as the default recovery path. Cloudflare changes only the Worker version; Neon remains on its current schema. If the previous Worker is not compatible with that schema, rolling back the Worker can make the incident worse. Deploy a forward fix instead.
 
-A Worker rollback also does not remove Durable Object namespaces or their stored data. Worker versions from before direct authentication email require the deleted email Queues, so do not roll back to them. Confirm compatibility with those resources before selecting an older Worker version.
+A Worker rollback also does not remove Durable Object namespaces or their stored data. Confirm compatibility with those resources before selecting an older Worker version.
 
 Only roll back after confirming that the selected Worker version supports the current Neon schema. When that condition holds, use the version ID shown by the Worker deployment history:
 
