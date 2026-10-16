@@ -293,6 +293,38 @@ describe('confirmMigrationStepForUser', () => {
     })
   })
 
+  test('rejects a decision for another User’s Todo without moving either Todo', async () => {
+    const createdAt = new Date('2026-07-03T08:00:00.000Z')
+    const repository = createInMemoryBoardRepository({
+      buckets: [
+        createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
+        createBucket({ createdAt, id: 2, period: '2026-W28', type: 'weekly' }),
+        createBucket({ createdAt, id: 3, period: '2026-07-06', type: 'daily' }),
+        createBucket({ createdAt, id: 4, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+        { ...createBucket({ createdAt, id: 5, period: '2026-07-03', type: 'daily' }), userId: 'user-2' },
+      ],
+      todos: [
+        createTodo({ bucketId: 4, completed: false, id: 12, position: 1024, title: 'Mine' }),
+        { ...createTodo({ bucketId: 5, completed: false, id: 40, position: 1024, title: 'Theirs' }), userId: 'user-2' },
+      ],
+      user: {
+        planningDate: '2026-07-06',
+        timeZone: 'Europe/Berlin',
+      },
+    })
+
+    await expect(
+      confirmMigrationStepForUser({
+        data: { decisions: { 12: 'carry_forward', 40: 'carry_forward' }, sourceBucketId: 4 },
+        repository,
+        userId: 'user-1',
+      }),
+    ).rejects.toHaveProperty('status', 409)
+
+    await expect(repository.getTodosByBucket('user-1', 4)).resolves.toEqual([expect.objectContaining({ id: 12 })])
+    await expect(repository.getTodosByBucket('user-2', 5)).resolves.toEqual([expect.objectContaining({ id: 40 })])
+  })
+
   test('returns not found for a missing or foreign source Bucket', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const repository = createInMemoryBoardRepository({
@@ -467,19 +499,25 @@ describe('confirmMigrationStepForUser', () => {
 })
 
 describe('getMigrationStepForUser', () => {
-  test('returns not found for a stale migration source', async () => {
+  test('returns not found for a missing or foreign migration source', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const repository = createInMemoryBoardRepository({
       buckets: [
         createBucket({ createdAt, id: 1, period: 'inbox', type: 'inbox' }),
         createBucket({ createdAt, id: 2, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+        {
+          ...createBucket({ createdAt, id: 3, period: '2026-07-03', status: 'pending_migration', type: 'daily' }),
+          userId: 'user-2',
+        },
       ],
       user: { planningDate: '2026-07-04', timeZone: 'Europe/Berlin' },
     })
 
-    await expect(
-      getMigrationStepForUser({ data: { sourceBucketId: 999 }, repository, userId: 'user-1' }),
-    ).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', status: 404 })
+    for (const sourceBucketId of [3, 999]) {
+      await expect(
+        getMigrationStepForUser({ data: { sourceBucketId }, repository, userId: 'user-1' }),
+      ).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND', status: 404 })
+    }
   })
 
   test('orders pending source Buckets daily, weekly, monthly, yearly and returns an aggregate flow recap', async () => {

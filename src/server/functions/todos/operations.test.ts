@@ -146,6 +146,47 @@ describe('createTodoForUser', () => {
     expect(await repository.listTodos(USER, DAILY)).toEqual([])
   })
 
+  it.each<[string, 'findActiveBucket' | 'findCategory' | 'findTags', (state: InMemoryTodoState) => void]>([
+    [
+      'its Bucket is archived',
+      'findActiveBucket',
+      (state) => {
+        state.buckets[0].status = 'archived'
+      },
+    ],
+    [
+      'its Category is deleted',
+      'findCategory',
+      (state) => {
+        state.categories = [FOREIGN_CATEGORY]
+      },
+    ],
+    [
+      'one of its Tags is deleted',
+      'findTags',
+      (state) => {
+        state.tags = [URGENT, FOREIGN_TAG]
+      },
+    ],
+  ])('creates nothing when %s after validation', async (_, read, concurrentChange) => {
+    const { repository, state } = createInMemoryTodoRepository({
+      buckets: BUCKETS,
+      categories: [HOME, FOREIGN_CATEGORY],
+      tags: [URGENT, FOCUS, FOREIGN_TAG],
+    })
+    afterRead(repository, read, () => Promise.resolve(concurrentChange(state)))
+
+    await expect(
+      createTodoForUser({
+        data: { bucketId: DAILY, categoryId: HOME.id, tagIds: [URGENT.id, FOCUS.id], title: 'Pay rent' },
+        repository,
+        userId: USER,
+      }),
+    ).rejects.toMatchObject(NOT_FOUND)
+    expect(state.todos).toEqual([])
+    expect(state.todoTags).toEqual([])
+  })
+
   it('requires Migration before creating while a Pending Migration Bucket gates the board', async () => {
     const repository = setup({ buckets: [...BUCKETS, { id: 9, status: 'pending_migration', userId: USER }] })
 
@@ -242,7 +283,9 @@ describe('updateTodoForUser', () => {
     ['a foreign Todo', { id: 40 }],
     ['a missing Category', { categoryId: 99 }],
     ['a foreign Category', { categoryId: FOREIGN_CATEGORY.id }],
+    ['a missing Tag', { tagIds: [99] }],
     ['a foreign Tag', { tagIds: [FOREIGN_TAG.id] }],
+    ['a missing destination Bucket', { bucketId: 99 }],
     ['a foreign destination Bucket', { bucketId: FOREIGN_BUCKET }],
     ['an archived destination Bucket', { bucketId: ARCHIVED }],
   ])('rejects %s with the indistinguishable not-found error and changes nothing', async (_, input) => {
@@ -276,6 +319,17 @@ describe('updateTodoForUser', () => {
       updateTodoForUser({ data: { id: 20, title: 'Changed' }, repository, userId: USER }),
     ).rejects.toMatchObject(CONFLICT)
     expect(await repository.findTodo(USER, 20)).toMatchObject({ title: 'Todo 20' })
+  })
+
+  it('converges a retried edit with Tag replacement on the same committed Todo', async () => {
+    const repository = taggedTodo()
+    const data = { categoryId: null, id: 20, tagIds: [FOCUS.id, URGENT.id], title: 'Pay rent early' }
+
+    const first = await updateTodoForUser({ data, repository, userId: USER })
+    const retried = await updateTodoForUser({ data, repository, userId: USER })
+
+    expect(retried).toEqual(first)
+    expect((await repository.listTodos(USER, DAILY))[0]).toEqual(first.todo)
   })
 
   it('keeps ordinary field edits last-write-wins when a concurrent move relocates the Todo', async () => {
@@ -581,6 +635,7 @@ describe('moveTodoForUser', () => {
   it.each([
     ['a missing Todo', { id: 99 }],
     ['a foreign Todo', { id: 40 }],
+    ['a missing target Bucket', { targetBucketId: 99 }],
     ['a foreign target Bucket', { targetBucketId: FOREIGN_BUCKET }],
     ['an archived target Bucket', { targetBucketId: ARCHIVED }],
   ])('rejects %s with the indistinguishable not-found error', async (_, input) => {
