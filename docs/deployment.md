@@ -97,7 +97,7 @@ The direct URLs must point to separate Neon databases and use non-pooler hosts. 
 
 The staging Cloudflare Access application should continue to require interactive login for normal visitors. Its staging-only Service Auth policy grants this smoke-test Service Token access to the Worker. The smoke test sends the token's `CF-Access-Client-Id` and `CF-Access-Client-Secret` headers on every request, so Access checks never replace the application's own checks: the realtime upgrade must still refuse a caller without an app session. Do not add this Service Token to Wrangler or expose it to deployment subprocesses.
 
-To check authentication email on the deployed staging Worker, run the command below. It reads `STAGING_RESEND_API_KEY`, the staging Worker's `RESEND_API_KEY` secret, from `.env.cloudflare-setup.local`, so the Resend lookup uses the same account that sent the email. The key needs full access, not sending-only access, to read sent emails.
+To check authentication email on the deployed staging Worker, run the command below. It reads `STAGING_RESEND_LOOKUP_API_KEY` from `.env.cloudflare-setup.local`. This is a separate full-access Resend key in the same account that sends staging email, because a sending-only key cannot read sent emails. Keep it local: never give a Worker full access, because a full-access key can read every email the account has sent, including password-reset links. The Worker's own `RESEND_API_KEY` stays sending-only.
 
 ```sh
 pnpm test:staging-email

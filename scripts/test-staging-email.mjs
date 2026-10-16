@@ -18,7 +18,7 @@ const accessClientSecret = requiredEnvironmentVariable('STAGING_CF_ACCESS_CLIENT
 const databaseUrl = requiredEnvironmentVariable('STAGING_DATABASE_URL_DIRECT')
 const productionDatabaseUrl = process.env.PRODUCTION_DATABASE_URL_DIRECT
 const publicUrl = new URL(requiredEnvironmentVariable('STAGING_PUBLIC_URL'))
-const resendApiKey = requiredEnvironmentVariable('STAGING_RESEND_API_KEY')
+const resendApiKey = requiredEnvironmentVariable('STAGING_RESEND_LOOKUP_API_KEY')
 
 const SEND_RECORD_TIMEOUT_MS = 60_000
 const runId = randomUUID()

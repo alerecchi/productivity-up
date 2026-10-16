@@ -54,6 +54,7 @@ describe('deployment subprocess environments', () => {
       ...sourceEnvironment(),
       PRODUCTION_BETTER_AUTH_SECRET: 'production auth secret',
       STAGING_RESEND_API_KEY: 'staging email secret',
+      STAGING_RESEND_LOOKUP_API_KEY: 'staging email lookup secret',
       UNRELATED_VALUE: 'preserved',
     })
 
@@ -62,6 +63,7 @@ describe('deployment subprocess environments', () => {
     expect(environment).not.toHaveProperty('PRODUCTION_BETTER_AUTH_SECRET')
     expect(environment).not.toHaveProperty('STAGING_PUBLIC_URL')
     expect(environment).not.toHaveProperty('STAGING_RESEND_API_KEY')
+    expect(environment).not.toHaveProperty('STAGING_RESEND_LOOKUP_API_KEY')
     expect(environment).not.toHaveProperty('STAGING_SMOKE_TEST_PASSWORD')
     expect(environment.UNRELATED_VALUE).toBe('preserved')
   })

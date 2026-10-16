@@ -17,7 +17,9 @@ const CLIENT_INSTANCE_ID = '5b0c2f55-6d0e-4d8f-9a39-0f7c7f0d8a11'
 const createdHints = ({ id }: { id: number }): Array<RealtimeHint> => [{ bucketIds: [id], type: 'todo-created' }]
 
 describe('private operation public request contract', () => {
-  it.each(PRIVATE_OPERATION_NAMES)('%s rejects a signed-out request before product behavior', async (operation) => {
+  // The public request suite proves each exported operation's status; this proves the middleware stops early.
+  it('rejects a signed-out request before product behavior and closes its connection', async () => {
+    const operation = 'todos.create'
     const next = vi.fn()
     const { close, dependencies, emit } = createDependencies(null)
 
@@ -34,7 +36,8 @@ describe('private operation public request contract', () => {
     expect(emit).toHaveBeenCalledWith(expect.objectContaining({ operation, outcome: 'unauthorized', status: 401 }))
   })
 
-  it.each(PRIVATE_OPERATION_NAMES)('%s rejects an authenticated unverified User', async (operation) => {
+  it('rejects an authenticated unverified User before product behavior and closes its connection', async () => {
+    const operation = 'todos.create'
     const next = vi.fn()
     const { close, dependencies, emit } = createDependencies({ emailVerified: false, id: 'user-1' })
 

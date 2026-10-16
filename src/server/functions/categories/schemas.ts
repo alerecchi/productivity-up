@@ -5,9 +5,11 @@ import { EmptyInputSchema, PositiveIdSchema, strictInput } from '@/server/core/v
 
 export const CATEGORY_NAME_MAX_LENGTH = 64
 
+const categoryNameSchema = z.string().trim().min(1).max(CATEGORY_NAME_MAX_LENGTH)
+
 export const CreateCategoryInput = strictInput({
   colorKey: CategoryColorKeySchema,
-  name: z.string().trim().min(1).max(CATEGORY_NAME_MAX_LENGTH),
+  name: categoryNameSchema,
 })
 
 export const ListCategoriesInput = EmptyInputSchema
@@ -15,7 +17,7 @@ export const ListCategoriesInput = EmptyInputSchema
 export const UpdateCategoryInput = strictInput({
   colorKey: CategoryColorKeySchema,
   id: PositiveIdSchema,
-  name: z.string().trim().min(1).max(CATEGORY_NAME_MAX_LENGTH),
+  name: categoryNameSchema,
 })
 
 export const DeleteCategoryInput = strictInput({ id: PositiveIdSchema })
