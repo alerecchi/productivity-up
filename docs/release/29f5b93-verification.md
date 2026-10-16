@@ -15,17 +15,17 @@ The tests added by this verification change only tests, plus one schema refactor
 
 ## Acceptance criteria
 
-| Criterion                                               | Result  | Evidence                                                                 |
-| ------------------------------------------------------- | ------- | ------------------------------------------------------------------------ |
-| `pnpm validate` passes on the release revision          | Pass    | [Validation](#validation)                                                |
-| Ownership matrix for every ID-bearing operation         | Pass    | [Ownership matrix](#ownership-matrix)                                    |
-| Atomic workflows: retry, stale state, race, transaction | Pass    | [Atomic workflows](#atomic-workflows)                                    |
-| No tests repeated at layers that add no proof           | Pass    | [Redundant tests](#redundant-tests)                                      |
-| Deployed smoke tests                                    | Partial | [Deployed evidence](#deployed-evidence). Gaps tracked in #134 and below. |
-| Completion records: required fields, no forbidden data  | Pass    | [Completion records](#completion-records)                                |
-| Strict input schemas with bound and one-past-bound      | Pass    | [Input schemas](#input-schemas)                                          |
-| Residual risks and exceptions recorded                  | Pass    | [Residual risks](#residual-risks-and-exceptions)                         |
-| No open launch-critical defect                          | Pass    | [Open defects](#open-defects)                                            |
+| Criterion                                               | Result  | Evidence                                                                      |
+| ------------------------------------------------------- | ------- | ----------------------------------------------------------------------------- |
+| `pnpm validate` passes on the release revision          | Pass    | [Validation](#validation)                                                     |
+| Ownership matrix for every ID-bearing operation         | Pass    | [Ownership matrix](#ownership-matrix)                                         |
+| Atomic workflows: retry, stale state, race, transaction | Pass    | [Atomic workflows](#atomic-workflows)                                         |
+| No tests repeated at layers that add no proof           | Pass    | [Redundant tests](#redundant-tests)                                           |
+| Deployed smoke tests                                    | Partial | [Deployed evidence](#deployed-evidence). Server-function gap tracked in #134. |
+| Completion records: required fields, no forbidden data  | Pass    | [Completion records](#completion-records)                                     |
+| Strict input schemas with bound and one-past-bound      | Pass    | [Input schemas](#input-schemas)                                               |
+| Residual risks and exceptions recorded                  | Pass    | [Residual risks](#residual-risks-and-exceptions)                              |
+| No open launch-critical defect                          | Pass    | [Open defects](#open-defects)                                                 |
 
 ## Validation
 
@@ -119,7 +119,7 @@ The Timezone length cap (255) has no accepted at-bound case, because no IANA zon
 | `categories.list`, `tags.list` | `200`                                                          |
 | Non-serialized POST body       | `500` with a library message, no request ID: #133              |
 
-`pnpm test:staging-email` signed up a throwaway `resend.dev` User. Resend accepted the verification email from the Worker, which logged `auth_email.send` with outcome `sent` and a provider message ID, and the script deleted the User. The script's Resend lookup failed with `401 restricted_api_key`: the `STAGING_RESEND_API_KEY` in `.env.cloudflare-setup.local` is send-only, but the lookup needs a full-access key. As a result, delivery to the requested recipient was not confirmed through Resend, and the script's own log-redaction check did not run. The independent tail check below covers redaction.
+`pnpm test:staging-email` signed up a throwaway `resend.dev` User. The Worker logged `auth_email.send` with outcome `sent` and a provider message ID. The Resend API confirmed that the verification email went to the requested recipient, the script's log check found no recipient, link, password, or credential in the tailed Worker logs, and the script deleted the User. The first run could not confirm delivery because the lookup used the Worker's sending-only key. The script now reads a separate local full-access key, `STAGING_RESEND_LOOKUP_API_KEY`, so the Worker keeps sending-only access.
 
 Not covered for this release: manual end-to-end staging workflows, including two-client convergence. They moved to #111. The realtime convergence check in `docs/deployment.md` remains the manual procedure until then.
 
@@ -153,22 +153,21 @@ No application log message contained `@`, a URL, a token, a cookie, a password, 
 
 ## Residual risks and exceptions
 
-| Risk or exception                                                                                                 | Accepted because                                                                                                        | Removal condition                                                      |
-| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Malformed server-function payloads return a `500` with a library message, no request ID, and no completion record | No data exposure, and the real client never sends this payload                                                          | #133 merged                                                            |
-| The smoke test does not call a private server function                                                            | Manual probe passed for this release                                                                                    | #134 merged                                                            |
-| Resend delivery to the recipient was not confirmed, because the local lookup key is send-only                     | The Worker recorded a provider-accepted send                                                                            | A full-access lookup key is added and `pnpm test:staging-email` passes |
-| No automated end-to-end coverage of user flows or two-client convergence                                          | Unit and public-contract coverage; manual convergence procedure is documented                                           | #111 merged                                                            |
-| Atomicity, locking, and SQL predicates are proven by review, not by tests against PostgreSQL                      | Real-PostgreSQL tests were removed on purpose                                                                           | Permanent, by decision                                                 |
-| A retried Todo create after a lost response can create a duplicate Todo                                           | The standard forbids an idempotency-key framework without a demonstrated need, and duplicates are visible and deletable | A named workflow shows the need                                        |
-| A Migration Step replayed after an uncertain outcome returns `409` and refetches instead of confirming success    | Safe, and the canonical refetch repairs the client                                                                      | #123 resolved                                                          |
-| Migration Step confirmation issues one `UPDATE` per moved Todo while the User row is locked                       | No evidence of slowness; numeric budgets wait for evidence                                                              | #80                                                                    |
-| Production Users who never verified their email lose product access until they verify                             | This is the verified-email policy. Verification resend is available                                                     | Accepted at #106                                                       |
-| Rolling production back to `a4c8c56` would need the deleted authentication-email Queues                           | Forward fixes are the documented recovery path                                                                          | Permanent, documented in `docs/deployment.md`                          |
+| Risk or exception                                                                                                 | Accepted because                                                                                                        | Removal condition                             |
+| ----------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| Malformed server-function payloads return a `500` with a library message, no request ID, and no completion record | No data exposure, and the real client never sends this payload                                                          | #133 merged                                   |
+| The smoke test does not call a private server function                                                            | Manual probe passed for this release                                                                                    | #134 merged                                   |
+| No automated end-to-end coverage of user flows or two-client convergence                                          | Unit and public-contract coverage; manual convergence procedure is documented                                           | #111 merged                                   |
+| Atomicity, locking, and SQL predicates are proven by review, not by tests against PostgreSQL                      | Real-PostgreSQL tests were removed on purpose                                                                           | Permanent, by decision                        |
+| A retried Todo create after a lost response can create a duplicate Todo                                           | The standard forbids an idempotency-key framework without a demonstrated need, and duplicates are visible and deletable | A named workflow shows the need               |
+| A Migration Step replayed after an uncertain outcome returns `409` and refetches instead of confirming success    | Safe, and the canonical refetch repairs the client                                                                      | #123 resolved                                 |
+| Migration Step confirmation issues one `UPDATE` per moved Todo while the User row is locked                       | No evidence of slowness; numeric budgets wait for evidence                                                              | #80                                           |
+| Production Users who never verified their email lose product access until they verify                             | Production has no Users yet                                                                                             | Accepted by the maintainer                    |
+| Rolling production back to `a4c8c56` would need the deleted authentication-email Queues                           | Forward fixes are the documented recovery path                                                                          | Permanent, documented in `docs/deployment.md` |
 
 The only migration between production and this candidate is `drizzle/0002_auth_rate_limits.sql`. It creates one table and one index and does not touch existing data.
 
-`docs/deployment.md` says the pre-production exception ended with the first production release. #106 instead ends it when the maintainer approves this candidate. #106 should settle which statement is right.
+The pre-production exception has ended, as `docs/deployment.md` states. Production changes, including this release, must preserve compatibility through ordinary migrations and rollout planning. #106 was updated to match.
 
 ## Open defects
 
