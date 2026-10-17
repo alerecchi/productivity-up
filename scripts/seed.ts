@@ -1,11 +1,12 @@
 import 'dotenv/config'
-import { neon } from '@neondatabase/serverless'
 import { hashPassword } from 'better-auth/crypto'
 import { sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/neon-http'
+import { drizzle } from 'drizzle-orm/node-postgres'
+import { Pool } from 'pg'
 
 import * as schema from '../src/server/db/schema'
 import { accounts, buckets, categories, tags, todoTags, todos, users } from '../src/server/db/schema'
+import { seedUsers } from './seed-users'
 
 const databaseUrl = process.env.DATABASE_URL
 
@@ -13,23 +14,10 @@ if (!databaseUrl) {
   throw new Error('DATABASE_URL is required to seed the database.')
 }
 
-const db = drizzle(neon(databaseUrl), { schema })
+const pool = new Pool({ connectionString: databaseUrl })
+const db = drizzle(pool, { schema })
 
-const primaryUserEmail = 'aaa@aaa.aaa'
-const seedUsers = [
-  {
-    email: primaryUserEmail,
-    id: 'seed-user-aaa',
-    name: 'AAA Seed',
-    password: 'aaa@aaa.aaa',
-  },
-  {
-    email: 'bbb@bbb.bbb',
-    id: 'seed-user-bbb',
-    name: 'BBB Seed',
-    password: 'bbb@bbb.bbb',
-  },
-] as const
+const primaryUserId = seedUsers.seed_user_with_data.id
 
 async function main() {
   const now = new Date()
@@ -48,7 +36,9 @@ async function main() {
   console.log(
     [
       'Seed completed.',
-      `Users: ${seedUsers.map((user) => `${user.email} / ${user.password}`).join(', ')}`,
+      `Users: ${Object.values(seedUsers)
+        .map((user) => `${user.email} / ${user.password}`)
+        .join(', ')}`,
       `Buckets: ${seedBuckets.length}`,
       `Categories: ${seedCategories.length}`,
       `Tags: ${seedTags.length}`,
@@ -60,13 +50,13 @@ async function main() {
 
 async function resetDatabase() {
   await db.execute(
-    sql`truncate table "todo_tags", "todos", "tags", "categories", "buckets", "accounts", "sessions", "verifications", "users" restart identity cascade`,
+    sql`truncate table "todo_tags", "todos", "tags", "categories", "buckets", "accounts", "sessions", "verifications", "users", "auth_rate_limits" restart identity cascade`,
   )
 }
 
 async function seedAuthUsers(now: Date) {
   await db.insert(users).values(
-    seedUsers.map((user) => ({
+    Object.values(seedUsers).map((user) => ({
       createdAt: now,
       email: user.email,
       emailVerified: true,
@@ -78,7 +68,7 @@ async function seedAuthUsers(now: Date) {
 
   await db.insert(accounts).values(
     await Promise.all(
-      seedUsers.map(async (user) => ({
+      Object.values(seedUsers).map(async (user) => ({
         accountId: user.id,
         createdAt: now,
         id: `seed-account-${user.id}`,
@@ -101,31 +91,31 @@ async function seedPrimaryUserBuckets(now: Date) {
         period: 'inbox',
         status: 'active',
         type: 'inbox',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         period: periods.year,
         status: 'active',
         type: 'yearly',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         period: periods.month,
         status: 'active',
         type: 'monthly',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         period: periods.week,
         status: 'active',
         type: 'weekly',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         period: periods.day,
         status: 'active',
         type: 'daily',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
     ])
     .returning()
@@ -138,22 +128,22 @@ async function seedPrimaryUserCategories() {
       {
         colorKey: 'blue',
         name: 'work',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'green',
         name: 'home admin',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'amber',
         name: 'personal',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'rose',
         name: 'health',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
     ])
     .returning()
@@ -166,27 +156,27 @@ async function seedPrimaryUserTags() {
       {
         colorKey: 'blue',
         name: 'urgent',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'green',
         name: 'focus',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'amber',
         name: 'blocked',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'orange',
         name: 'waiting',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
       {
         colorKey: 'rose',
         name: 'quick-win',
-        userId: 'seed-user-aaa',
+        userId: primaryUserId,
       },
     ])
     .returning()
@@ -217,7 +207,7 @@ async function seedPrimaryUserTodos(
           description: `Seed todo description ${String(todoIndex).padStart(2, '0')}`,
           position: bucketTodoCount * 1024,
           title: `Seed Todo ${String(todoIndex).padStart(2, '0')}`,
-          userId: 'seed-user-aaa',
+          userId: primaryUserId,
         }
       }),
     )
@@ -266,8 +256,10 @@ function pad(value: number) {
   return String(value).padStart(2, '0')
 }
 
-main().catch((error: unknown) => {
-  console.error('Seed failed.')
-  console.error(error)
-  process.exit(1)
-})
+main()
+  .catch((error: unknown) => {
+    console.error('Seed failed.')
+    console.error(error)
+    process.exitCode = 1
+  })
+  .finally(() => pool.end())

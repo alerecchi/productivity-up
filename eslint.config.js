@@ -5,7 +5,7 @@ import unusedImports from 'eslint-plugin-unused-imports'
 
 export default [
   {
-    ignores: ['eslint.config.js', 'src/config/env.d.ts', 'src/features/shared/components/ui/*'],
+    ignores: ['.verify/**', 'eslint.config.js', 'src/config/env.d.ts', 'src/features/shared/components/ui/*'],
   },
   ...tanstackConfig,
   {

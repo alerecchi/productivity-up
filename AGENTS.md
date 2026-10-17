@@ -20,6 +20,7 @@ The current stack is:
 - Tailwind v4 and shadcn/ui for CSS and UI components. Prefer using shadcn's components when available over creating your own. Never use BaseUI components directly, better propose to install the shadcn component.
 - @cloudflare/vite-plugin and Wrangler build, preview, and deploy the TanStack Start application on Cloudflare Workers.
 - pg provides PostgreSQL connections for local Neon development and Cloudflare Hyperdrive at runtime.
+- @playwright/test (dev) drives the app in a real browser for agent verification (`pnpm verify`), and is the intended base for end-to-end tests (#111).
 
 For the TanStack libraries, you have access to the TanStack CLI and you can query docs using that:
 `tanstack search-docs <query> [options]`
