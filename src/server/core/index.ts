@@ -1,4 +1,4 @@
 export * from './errors'
-export * from './private-operation'
+export * from './middlewares'
 export * from './telemetry'
 export * from './validation'

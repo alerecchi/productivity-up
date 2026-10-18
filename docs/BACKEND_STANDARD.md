@@ -44,7 +44,7 @@ Every private server function MUST:
 - declare its HTTP method explicitly;
 - validate a strict Zod input at the boundary;
 - derive the User from the verified session, never from request data;
-- use the shared authentication and database middleware;
+- use the shared `createVerifiedUserMiddleware` preset from `server/core/middlewares`;
 - return an explicit response DTO;
 - reject unknown fields and enforce positive identifiers, valid IANA timezones, bounded text and collections, and operation-specific work limits.
 
@@ -54,7 +54,9 @@ Server operations fall into three authorization classes:
 
 - Public authentication operations establish identity or begin account recovery. They do not require a session and MUST return generic responses for unknown and existing email addresses.
 - Session and verification operations may be used by an authenticated but unverified User only to read session status, verify or resend verification, sign out, or recover the account.
-- Private product-data operations require the shared private-operation middleware and a verified User. Router redirects are navigation behavior and MUST NOT be treated as authorization.
+- Private product-data operations require the shared `createVerifiedUserMiddleware` preset and a verified User. Router redirects are navigation behavior and MUST NOT be treated as authorization.
+
+Every server function uses exactly one middleware preset from `server/core/middlewares`, named for who may call it. `createPublicMiddleware` applies the error, request-ID, telemetry, and response-DTO contract with a database connection. `createVerifiedUserMiddleware` adds the verified User and realtime hints. The presets fix the order of their parts, so server functions MUST NOT chain those parts directly. A public-contract test fails when an exported server function is in neither operation inventory.
 
 The application MUST keep Better Auth origin, CSRF, and cookie protections. Session cookie caching is allowed only for ordinary session reads and MUST be bypassed for sensitive account operations. Password reset MUST revoke existing sessions.
 
@@ -252,5 +254,9 @@ The standard applies immediately to new and changed code. Existing work is track
 | Authenticated realtime transport and convergence                   | [#99](https://github.com/alerecchi/productivity-up/issues/99), [#100](https://github.com/alerecchi/productivity-up/issues/100), and [#101](https://github.com/alerecchi/productivity-up/issues/101)   |
 | Session, abuse, and authentication-email hardening                 | [#102](https://github.com/alerecchi/productivity-up/issues/102), [#103](https://github.com/alerecchi/productivity-up/issues/103), and [#104](https://github.com/alerecchi/productivity-up/issues/104) |
 | Production-shaped verification                                     | [#105](https://github.com/alerecchi/productivity-up/issues/105)                                                                                                                                       |
+
+### Accepted framework boundary
+
+TanStack Start decodes server-function payloads before any function middleware runs. A request whose payload the framework cannot decode, which the application client never sends, therefore receives TanStack Start's default `500` response and `Server Fn Error!` log instead of the error and telemetry contract above. This is accepted framework behavior, not an exception ([#133](https://github.com/alerecchi/productivity-up/issues/133)). Revisit it if TanStack Start adds a hook that runs on decode failure, or if error-level log alerting makes the noise costly.
 
 An exception is not complete when it has an owner alone. It also needs a removal condition, such as a named issue being merged, a verification result being recorded, or a backend contract being migrated.

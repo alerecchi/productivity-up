@@ -49,7 +49,7 @@ The project has an opinionated structure that is feature-based but does not colo
 - `server/` all server code; client code should only import from `server/functions`;
 - `server/db` DB schemas, migration and configuration;
 - `server/functions` Server functions, organized in features files or sub folders when the single file gets too big;
-- `server/middleware`;
+- `server/core/middlewares` Middleware shared by every server function; middleware for one feature lives in that feature's server folder;
 
 As this is a WIP project this project structure is subject to changes.
 When folders contain many elements that are exported for other modules/components an `index.ts` file should be added to improve dev experience.
