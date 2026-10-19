@@ -56,9 +56,9 @@ All three share: a 44 px completion checkbox with a named label (`Mark "X" as do
 **Friction**
 
 - **Mandatory init before shape.** The launcher refuses to shape without PRODUCT.md and requires an interview round with the user. This cost one question round, which was quick because #138 already had the answers.
-- **Binary and network.** `scripts/impeccable` is a shell launcher that runs a self-contained binary. No download happened, and no new files appeared in `~/.cache` or `~/.impeccable`. `concept-seed` calls a remote catalog API on every roll and asks the agent to send an anonymous telemetry ping once the round resolves (not sent, because the round never resolved).
+- **Binary and network (corrected at the end of the run).** `scripts/impeccable` is a shell launcher. The **first `impeccable context` call (18:03) silently downloaded a 17 MB binary to `~/.impeccable/bin/0.1.15/impeccable`** and wrote `~/.impeccable/update-check.json`. `concept-seed` later wrote `~/.impeccable/seed-salt`. These files live in the user's home, outside the workspace, and were **left in place**. An earlier draft of this report wrongly said nothing was downloaded; the agent had checked `~/.cache` and the skill's `scripts/` folder, not `~/.impeccable`. `concept-seed` also calls a remote catalog API on every roll and asks for an anonymous telemetry ping once a round resolves (not sent).
 - **The concept-seed "dice"** override the agent's ranking (the roll led with the agent's #7). The process is long (new-work.md is 60 KB of dense rules), and it is designed for picking *one* direction, which conflicts with `/prototype`'s three-variant build. Resolution: the dealt three became the three variants, and the decision page doubled as shape's confirmation step.
-- **Decision page.** It needs the user to open a localhost page and click. The agent has to hold a blocking `--wait` loop (exit 3 every 60 s). Unanswered after about 2 hours, so step 1 ends with the page still open, and the user's variant pick below is the real answer.
+- **Decision page.** Its detached server (`serve-question --detached-serve`, 900 s timeout) was **still running at the end of the run**, about 4 h after the page closed, and the agent killed it. It needs the user to open a localhost page and click. The agent has to hold a blocking `--wait` loop (exit 3 every 60 s). Unanswered after about 2 hours, so step 1 ends with the page still open, and the user's variant pick below is the real answer.
 - **Extra files the skill created:** `PRODUCT.md`, `.impeccable/mocks/decision/` (payload + 3 HTML sketches). No DESIGN.md (new-work only writes it at the finish of a full build).
 - **Tooling outside the skill:** `shadcn add dropdown-menu sheet` resolved the `utils` alias wrongly, rewrote the import to `from "cn"`, and **installed an unrelated npm package `cn`**. The agent reverted it (`pnpm remove cn`, fixed the import) and dropped the unused `sheet`. The CLI also stopped at an overwrite prompt for `button.tsx` (answered no).
 - No permission prompts appeared during this step.
@@ -202,3 +202,86 @@ The **detector found none of the three**; it only flagged the category stripe. A
 **Files:** `board.tsx`, `bucket-column.tsx`, `todo-card.tsx`, `create-todo-button.tsx`, `todo-drag-drop-provider.tsx`, `use-move-todo.ts`, `use-update-todo.ts`, `board-prototype-shared.tsx`, `variant-a-pick-and-place.tsx`, 5 `*.test.tsx`, `step4/copy.md`, screenshots (4 + 2 empty-board extras).
 
 **AGENTS.md:** no new components or libraries; no Base UI imports; no form code.
+
+## Step 5: review the whole change (`/impeccable critique` + `/impeccable audit`)
+
+**Time:** 22:21 → 22:26 (about 5 min). Findings recorded, **not fixed**.
+
+**Skills and commands invoked**
+
+1. `Skill impeccable` with "critique the whole change from main…". Loaded `reference/critique.md` (48 KB; it overflowed tool output again).
+   - It **requires two isolated sub-agents** (A: design review, B: detector + browser) whenever a sub-agent tool exists, and says the `impeccable context` boot output counts the skill invocation as the user's authorization. This harness only spawns agents on an explicit user request, so the agent ran **single-context** and led the report with the mandatory `⚠️ DEGRADED` banner. To keep A unanchored, A was written to a file before any detector output was read.
+   - `impeccable critique-storage slug …` → `rd-prototype-variant-a-pick-and-place-tsx-3e5cc683`. No ignore list.
+   - B: `impeccable detect --json` on the 13 changed source files → 1 finding (`side-tab`). `impeccable live-server --background` (port 8400) → Playwright journey preflighted mutation, injected `http://localhost:8400/detect.js` on 3 views, and read the console: 1 / 26 / 31 anti-patterns. Then `live-server stop --keep-inject`.
+   - `IMPECCABLE_CRITIQUE_META=… impeccable critique-storage write` → `.impeccable/critique/2026-10-19T20-24-29Z__…md` (committed). `critique-storage trend` → first run.
+   - The reference makes **targeted questions to the user** the mandatory last step (3+ priority issues). Not asked interactively, because step 5 forbids acting on them; they are recorded in the report's "Close" section instead. By the skill's own definition that makes the run "incomplete".
+2. `Skill impeccable` with "audit the whole change from main…": same `audit.md` as step 3, plus `.verify/journeys/audit2.ts` (tab order, pick-mode states, 200% text).
+
+**Results**
+
+- Critique: [`step5/critique.md`](step5/critique.md) (Assessment A alone: [`step5/critique-assessment-a.md`](step5/critique-assessment-a.md); overlay screenshots `step5/critique-overlay--*.png`). **25/40 Acceptable**, P1 ×2, P2 ×3.
+- Audit: [`step5/audit.md`](step5/audit.md). **13/20 Acceptable** (step 3 was 10/20), P1 ×3, P2 ×4, P3 ×3.
+
+**Critique findings, verbatim-ish**
+
+1. [P1] Variant A shows less than today's board: tags aren't rendered and the category is grey text.
+2. [P1] Colour carries no meaning (nearness is invisible), and the primary is 4.4:1.
+3. [P2] Doubled, icon-only move affordances (⇄ and ⋮⋮ on every card).
+4. [P2] Phone primary action out of reach ("Wrap up the day" and "+" at the top).
+5. [P2] No Undo for moves and completions.
+- Personas: Casey (actions at top; today's board still scrolls sideways), Jordan (unlabeled icons, "Planning for today" unexplained), Sam (pick-mode buttons don't announce state).
+- Minor: "Move here" shifts columns by about 52 px; 11 px tab counts; Bucket names differ between the two boards; the switcher overlaps content.
+
+**Audit findings, verbatim-ish**
+
+1. [P1] Primary button text 4.4:1 (white on `#1770f9`).
+2. [P1] Bucket colour pairs 3.3–3.6:1 on today's board.
+3. [P1] 200% text overflows the phone layout (`scrollWidth` 598 at 390).
+4. [P2] Pick-mode targets expose no state.
+5. [P2] Prototype scaffolding in the production route (`?variant=` works in prod; switcher gated by `DEV`).
+6. [P2] Bucket colours hard-coded rather than tokens.
+7. [P2] Variant A card omits tags and category colour.
+8. [P3] Switcher re-binds its key listener on every render.
+9. [P3] Smooth scrolling ignores reduced motion (variant B, `bucket-todo-list-scroll.ts`).
+10. [P3] `side-tab` category stripe.
+
+**Known defects in the final review**
+
+The audit reported all three as **resolved and verified**, under Positive Findings. The checkbox is visible and named. No target is under 24 px. Announcements are named, and a keyboard drag crosses Buckets. Neither the critique nor the audit raised them as open issues.
+
+**False or questionable findings**
+
+- `nested-cards` ×25 (overlay): **false positive**. Todo cards inside a kanban column panel are the category convention; the column is a tinted region, not a card.
+- `side-tab` / `ai-color-palette` on today's board: real to the detector's rules, but they come from `main`'s inherited Bucket colours and category stripe, which the theme prototype owns. Out of scope rather than wrong.
+- The detector's contrast reads are **real and missed by the LLM review** (primary 4.4:1, badge pairs 3.3–3.6:1). This is where the detector earns its keep.
+- Critique H4 (consistency) penalises the coexistence of two boards; that is expected in a prototype (`/prototype` keeps both until a winner is folded in).
+- Audit P2 "prototype scaffolding in the production route" is accurate but is the prototype skill's design; folding the winner in is the prototype's next step.
+
+**Friction**
+
+- The critique forces the sub-agent question (dual-agent or degraded banner) and a mandatory closing question round. Both conflict with this harness and this script.
+- `critique.md` (48 KB) and `new-work.md` (60 KB) are too large to read in one tool call.
+- The live server + overlay worked first try once the agent wrote its own Playwright injection. The skill expects a native browser tool, and there's no persistent [Human] tab in headless mode.
+- **Files the skill created:** `.impeccable/critique/<timestamp>__<slug>.md` (snapshot, committed), `.impeccable/live/{annotations,sessions}/` (empty dirs), `.impeccable/live/server.json` (removed on stop), and `.impeccable/questions/*` (decision-page state from step 1, self-ignored by its own `.gitignore`).
+
+## AGENTS.md compliance (whole change)
+
+- `rg '@base-ui' src` outside `src/features/shared/components/ui/`: **none**.
+- Form code: **none added**. The todo dialog (TanStack Form) is reused unchanged; `rg 'useForm|<form'` in changed files: none.
+- shadcn: `DropdownMenu` added via the shadcn CLI (used by B/C). `Button`, `Checkbox`, `Tabs`, `Badge` reused. The CLI mis-resolved the `cn` alias and installed an npm package `cn`, which was reverted (step 1).
+- Non-shadcn custom controls: plain `<button>` elements for variant A's Bucket strip (an intentional exception, logged in step 2), B's jump chips, the card title buttons (B/C/A), and the prototype switcher. `ToggleGroup`/`Tabs` could cover the chips.
+- New library: `@dnd-kit/dom` (already a transitive dependency) as a direct dependency, **approved by the user** in step 3 and listed in AGENTS.md's tech stack.
+- Tests: `vitest run src/features/board` 174/174. `tsc` and `eslint` clean on changed files.
+- Size of the change from `main`, excluding the skill install and screenshots: 18 source/test files, 5 prototype files, docs, `PRODUCT.md`, `.impeccable/` artifacts.
+
+## Timeline summary
+
+| Step | Start → end | Notes |
+|---|---|---|
+| 1 shape + prototype | 17:49 → 21:48 (pick at about 21:57) | Most of it was waiting on the decision page; build and verify about 25 min |
+| 2 polish | 21:57 → 22:01 | |
+| 3 audit + fix | 22:01 → 22:16 | 1 user question (new dependency) |
+| 4 clarify | 22:16 → 22:21 | 1 user question (domain terms) |
+| 5 critique + audit | 22:21 → 22:26 | Degraded critique (no sub-agents) |
+
+User questions over the run: 5 rounds. In order: init/shape interview, variation pick (after the decision page closed), `@dnd-kit/dom` approval, domain terms, plus the unanswered decision page.
