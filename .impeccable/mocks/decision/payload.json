@@ -1,0 +1,46 @@
+{
+  "title": "Board rework: choose the structure",
+  "question": "Three structures for the board on phone and desktop, all in today's theme. Lock the one that best fits the shape brief. All three will be built as ?variant= prototypes on /board either way.",
+  "options": [
+    {
+      "id": "pick-and-place",
+      "kind": "assigned",
+      "kicker": "THE ROLL",
+      "label": "Pick up and place",
+      "thesis": "Tap a todo to pick it up, then tap a Bucket to place it. Dragging does the same thing.",
+      "palette": ["#f6f7f9", "#0f2433", "#3b5bdb", "#ffffff"],
+      "materials": ["today's shadcn theme", "Manrope"],
+      "viewport": "Phone: one Bucket fills the screen, and a strip of Bucket tabs with counts sits in the thumb zone. When you pick up a todo, the strip turns into drop targets. Desktop: all five columns, and the column headers become tap targets.",
+      "risk": "A pick-up mode is new to most people, so the selected state has to be unmistakable.",
+      "html": ".impeccable/mocks/decision/pick-and-place.html",
+      "htmlFrame": "390x844"
+    },
+    {
+      "id": "horizon-ladder",
+      "kind": "dealt",
+      "label": "Horizon ladder",
+      "thesis": "All Buckets in one vertical list, nearest first, with one-step Sooner / Later buttons on each todo.",
+      "palette": ["#f6f7f9", "#0f2433", "#3b5bdb", "#ffffff"],
+      "materials": ["today's shadcn theme", "Manrope"],
+      "viewport": "Phone: Today at the top, then week, month, year, and Inbox as sections with sticky headers. A chip row jumps to any section. Desktop: kanban columns with the same step buttons.",
+      "risk": "Moving a todo several horizons at once takes several taps unless there is also a Move to menu.",
+      "html": ".impeccable/mocks/decision/horizon-ladder.html",
+      "htmlFrame": "390x844"
+    },
+    {
+      "id": "today-first",
+      "kind": "dealt",
+      "label": "Today first, pull from above",
+      "thesis": "The phone opens on today. Broader Buckets live in a pull-up drawer, and you pull todos down into today.",
+      "palette": ["#f6f7f9", "#0f2433", "#3b5bdb", "#ffffff"],
+      "materials": ["today's shadcn theme", "Manrope"],
+      "viewport": "Phone: the selected Bucket's list (Today by default) with a bottom drawer handle reading 'Pull from this week · 6'. Each todo has a Move menu. Desktop: kanban with today pinned wide on the right.",
+      "risk": "Inbox and year feel secondary on a phone, which fits the brand but hides the planning view.",
+      "html": ".impeccable/mocks/decision/today-first.html",
+      "htmlFrame": "390x844"
+    }
+  ],
+  "reroll": true,
+  "buildPath": { "value": "code" },
+  "steer": true
+}

@@ -14,6 +14,9 @@ import {
 } from '@/features/board/components/pending-migration-recap-dialog'
 import { TodoDragDropProvider } from '@/features/board/components/todo-drag-drop-provider'
 import { useReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
+import { BOARD_VARIANTS, BoardVariant } from '@/features/board/prototype/variants'
+import type { BoardVariantKey } from '@/features/board/prototype/variants'
+import { PrototypeSwitcher } from '@/features/shared/components/prototype-switcher'
 import type { ReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
 import { Button } from '@/features/shared/components/ui/button'
 import { getTodayLocalDate, isFutureBucket } from '@/lib/periods'
@@ -27,7 +30,7 @@ const bucketPriority: Record<string, number> = BUCKET_TYPE_ORDER.reduce(
   {},
 )
 
-export function Board() {
+export function Board({ variant }: { variant?: BoardVariantKey }) {
   const { board, reconciliation } = useReconciledBoard()
 
   if (!board) {
@@ -38,10 +41,10 @@ export function Board() {
     )
   }
 
-  return <ReconciledBoardView board={board} />
+  return <ReconciledBoardView board={board} variant={variant} />
 }
 
-function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
+function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; variant?: BoardVariantKey }) {
   const navigate = useNavigate()
   const cache = useBoardCache()
   const completeDayMutation = useMutation({
@@ -119,21 +122,31 @@ function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
         <TodoDragDropProvider>
           <div
             aria-label='Productivity Up board'
-            className={`flex min-h-0 flex-1 flex-row gap-6 overflow-x-auto overflow-y-hidden px-6 py-6 transition ${isMigrationRequired ? 'pointer-events-none blur-sm select-none' : ''}`}
+            className={`${variant ? 'min-h-0 flex-1 overflow-hidden' : 'flex min-h-0 flex-1 flex-row gap-6 overflow-x-auto overflow-y-hidden px-6 py-6'} transition ${isMigrationRequired ? 'pointer-events-none blur-sm select-none' : ''}`}
             data-todo-board
             role='region'
           >
-            {sortedBuckets.map((bucket: Bucket) => (
-              <BucketColumn
-                key={bucket.id}
-                bucket={bucket}
+            {variant ? (
+              <BoardVariant
                 buckets={sortedBuckets}
-                isPlanningBucket={isFutureBucket({ bucket, planningDate: board.planningDate, today })}
+                isPlanningBucket={(bucket) => isFutureBucket({ bucket, planningDate: board.planningDate, today })}
+                isPlanningTomorrow={isPlanningAhead && board.planningDate === addDaysToDateKey(today, 1)}
+                variant={variant}
               />
-            ))}
+            ) : (
+              sortedBuckets.map((bucket: Bucket) => (
+                <BucketColumn
+                  key={bucket.id}
+                  bucket={bucket}
+                  buckets={sortedBuckets}
+                  isPlanningBucket={isFutureBucket({ bucket, planningDate: board.planningDate, today })}
+                />
+              ))
+            )}
           </div>
         </TodoDragDropProvider>
       </div>
+      <PrototypeSwitcher current={variant} variants={BOARD_VARIANTS} />
       {board.status === 'migration_required' && !board.completionRecap ? (
         <PendingMigrationRecapDialog sourceBucketId={board.pendingMigrationBuckets[0].id} />
       ) : null}
