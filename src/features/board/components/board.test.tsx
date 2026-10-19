@@ -119,11 +119,11 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Wrap up the day' }))
 
-    expect(await screen.findByRole('heading', { name: '2026-07-03 is wrapped' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Friday 3 is wrapped up' })).toBeInTheDocument()
     expect(screen.getByText('Review ended buckets')).toBeInTheDocument()
-    expect(screen.getByText('No migration needed')).toBeInTheDocument()
+    expect(screen.getByText('Nothing to carry over')).toBeInTheDocument()
     expect(screen.getByText('Open the board')).toBeInTheDocument()
     expect(screen.getByText('2 completed')).toBeInTheDocument()
     expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).toMatchObject({
@@ -135,10 +135,10 @@ describe('Board lifecycle controls', () => {
       planningDate: '2026-07-04',
     })
     expect(screen.queryByRole('button', { name: 'Continue to migration' })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: 'Close and plan tomorrow' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Plan tomorrow' }))
 
     await waitFor(() => {
-      expect(screen.queryByRole('heading', { name: '2026-07-03 is wrapped' })).not.toBeInTheDocument()
+      expect(screen.queryByRole('heading', { name: 'Friday 3 is wrapped up' })).not.toBeInTheDocument()
     })
     expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).not.toHaveProperty('completionRecap')
     expect(mockedCompleteDay).toHaveBeenCalledWith({ data: { planningDate: '2026-07-03' } })
@@ -172,7 +172,7 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Wrap up the day' }))
 
     expect(await screen.findByRole('heading', { name: 'Migration required' })).toBeInTheDocument()
     expect(screen.getByText('Migrate unfinished todos')).toBeInTheDocument()
@@ -200,9 +200,9 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    expect(screen.getByText('Planning tomorrow')).toBeInTheDocument()
-    expect(screen.getAllByText('Complete day is disabled while planning ahead.').length).toBeGreaterThan(0)
-    expect(screen.getByRole('button', { name: 'Complete day' })).toBeDisabled()
+    expect(screen.getByText('Planning for tomorrow')).toBeInTheDocument()
+    expect(screen.getAllByText('Today is wrapped up. You can wrap up the next day once it starts.').length).toBeGreaterThan(0)
+    expect(screen.getByRole('button', { name: 'Wrap up the day' })).toBeDisabled()
     expect(screen.getByLabelText('inbox Bucket')).toHaveAttribute('data-planning-bucket', 'false')
     expect(screen.getByLabelText('yearly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
     expect(screen.getByLabelText('monthly Bucket')).toHaveAttribute('data-planning-bucket', 'true')
@@ -225,7 +225,7 @@ describe('Board lifecycle controls', () => {
     render(<Board />, { queryClient })
 
     expect(await screen.findByText('We are creating your board')).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Complete day' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Wrap up the day' })).not.toBeInTheDocument()
     await act(() => {
       finishCreation()
     })
@@ -266,7 +266,7 @@ describe('Board lifecycle controls', () => {
     render(<Board />, { queryClient })
 
     expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
-    expect(screen.getByText('Planning today')).toBeInTheDocument()
+    expect(screen.getByText('Planning for today')).toBeInTheDocument()
     expect(mockedReconcileLifecycle).toHaveBeenCalledTimes(1)
     expect(mockedGetBoard).not.toHaveBeenCalled()
   })
@@ -303,10 +303,10 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Wrap up the day' }))
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Cannot complete day while Todos are incomplete')
+      expect(toast.error).toHaveBeenCalledWith("Couldn't wrap up the day", { description: 'Try again in a moment.' })
     })
     expect(screen.queryByRole('heading', { name: 'Day complete' })).not.toBeInTheDocument()
   })
@@ -331,10 +331,10 @@ describe('Board lifecycle controls', () => {
 
     render(<Board />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Complete day' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Wrap up the day' }))
 
-    expect(await screen.findByText('Planning tomorrow')).toBeInTheDocument()
-    expect(toast.error).toHaveBeenCalledWith('Could not complete day')
+    expect(await screen.findByText('Planning for tomorrow')).toBeInTheDocument()
+    expect(toast.error).toHaveBeenCalledWith("Couldn't wrap up the day", { description: 'Try again in a moment.' })
   })
 
   it('shows an undismissable Migration Recap dialog over a blurred board when migration is required', async () => {

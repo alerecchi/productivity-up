@@ -22,9 +22,9 @@ type TodoInsertionData = {
 type AnnouncementOperation = { source: { data?: unknown } | null; target: { data?: unknown } | null }
 
 const todoTitle = (operation: AnnouncementOperation) =>
-  isTodoDragData(operation.source?.data) ? `“${operation.source.data.todo.title}”` : 'Todo'
+  isTodoDragData(operation.source?.data) ? `“${operation.source.data.todo.title}”` : 'Task'
 const bucketName = (operation: AnnouncementOperation) =>
-  isTodoInsertionData(operation.target?.data) ? (operation.target.data.bucketName ?? 'a Bucket') : undefined
+  isTodoInsertionData(operation.target?.data) ? (operation.target.data.bucketName ?? 'a list') : undefined
 
 /** Screen-reader messages that name the todo and the Bucket instead of dnd-kit's internal ids. */
 const accessibility = Accessibility.configure({
@@ -32,17 +32,17 @@ const accessibility = Accessibility.configure({
     dragend: ({ canceled, operation }: { canceled: boolean; operation: AnnouncementOperation }) => {
       if (canceled) return `Move cancelled. ${todoTitle(operation)} stayed where it was.`
       const target = bucketName(operation)
-      return target ? `${todoTitle(operation)} moved to ${target}.` : `${todoTitle(operation)} dropped outside a Bucket. Nothing moved.`
+      return target ? `${todoTitle(operation)} moved to ${target}.` : `${todoTitle(operation)} wasn't moved.`
     },
     dragover: ({ operation }: { operation: AnnouncementOperation }) => {
       const target = bucketName(operation)
-      return target ? `Over ${target}.` : 'Not over a Bucket.'
+      return target ? `Over ${target}.` : 'Not over a list.'
     },
-    dragstart: ({ operation }: { operation: AnnouncementOperation }) => `Picked up ${todoTitle(operation)}. Use the arrow keys to choose a Bucket.`,
+    dragstart: ({ operation }: { operation: AnnouncementOperation }) => `Picked up ${todoTitle(operation)}. Use the left and right arrow keys to choose where it goes.`,
   },
   screenReaderInstructions: {
     draggable:
-      'To drag, press Space, then use the left and right arrow keys to move between Buckets and press Space again to drop, or Escape to cancel. You can also use the Move button.',
+      'To move a task, press Space, choose where it goes with the left and right arrow keys, then press Space again. Press Escape to cancel. The Move button does the same without dragging.',
   },
 })
 

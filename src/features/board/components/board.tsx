@@ -19,7 +19,7 @@ import type { BoardVariantKey } from '@/features/board/prototype/variants'
 import { PrototypeSwitcher } from '@/features/shared/components/prototype-switcher'
 import type { ReconciledBoard } from '@/features/board/hooks/use-reconciled-board'
 import { Button } from '@/features/shared/components/ui/button'
-import { getTodayLocalDate, isFutureBucket } from '@/lib/periods'
+import { formatBucketLabel, getTodayLocalDate, isFutureBucket } from '@/lib/periods'
 import type { Bucket } from '@/lib/types/Bucket'
 import { completeDay } from '@/server/functions/board'
 
@@ -50,7 +50,7 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
   const completeDayMutation = useMutation({
     mutationFn: () => completeDay({ data: { planningDate: board.planningDate } }),
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Could not complete day')
+      toast.error("Couldn't wrap up the day", { description: 'Try again in a moment.' })
       void cache.recover(error, { type: 'board' })
     },
     onSuccess: async (result) => {
@@ -89,11 +89,11 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
   const isPlanningBehind = board.planningDate < today
   const planningStatus = isPlanningAhead
     ? board.planningDate === addDaysToDateKey(today, 1)
-      ? 'Planning tomorrow'
+      ? 'Planning for tomorrow'
       : 'Planning ahead'
     : isPlanningBehind
-      ? 'Planning earlier'
-      : 'Planning today'
+      ? 'Planning for an earlier day'
+      : 'Planning for today'
 
   return (
     <>
@@ -103,7 +103,7 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
             <h1 className='sr-only'>Board</h1>
             <p className='text-sm font-medium'>{planningStatus}</p>
             {isPlanningAhead && (
-              <p className='text-sm text-muted-foreground'>Complete day is disabled while planning ahead.</p>
+              <p className='text-sm text-muted-foreground'>Today is wrapped up. You can wrap up the next day once it starts.</p>
             )}
           </div>
           <Button
@@ -113,11 +113,11 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
             onClick={() => completeDayMutation.mutate()}
           >
             <CheckCircle2 />
-            Complete day
+            Wrap up the day
           </Button>
           {isPlanningAhead && (
             <span className='sr-only' id='complete-day-disabled-reason'>
-              Complete day is disabled while planning ahead.
+              Today is wrapped up. You can wrap up the next day once it starts.
             </span>
           )}
         </header>
@@ -161,12 +161,12 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
       ) : null}
       {board.status === 'ready' && board.completionRecap ? (
         <BucketLifecycleRecapDialog
-          actionLabel='Close and plan tomorrow'
+          actionLabel='Plan tomorrow'
           completedCount={board.completionRecap.completedCount}
-          headline={`${board.completionRecap.completedPlanningDate} is wrapped`}
+          headline={`${formatBucketLabel({ periodKey: board.completionRecap.completedPlanningDate, type: 'daily' })} is wrapped up`}
           incompleteCount={board.completionRecap.incompleteCount}
-          migrationStepDetail='All todos are completed, so this step is skipped.'
-          migrationStepTitle='No migration needed'
+          migrationStepDetail='No unfinished tasks to move.'
+          migrationStepTitle='Nothing to carry over'
           onAction={() => cache.dismissCompletionRecap()}
           open
           showCloseButton

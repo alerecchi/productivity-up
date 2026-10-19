@@ -207,8 +207,8 @@ describe('Todo card edit dialog', () => {
     fireEvent.click(screen.getByRole('checkbox'))
 
     await waitFor(() => {
-      expect(toast.error).toHaveBeenCalledWith('Could not update Todo', {
-        description: 'Your change was undone. Please try again.',
+      expect(toast.error).toHaveBeenCalledWith("Couldn't save that change", {
+        description: 'The task is back as it was. Try again in a moment.',
       })
     })
     expect(screen.getByRole('checkbox')).not.toBeChecked()
@@ -473,7 +473,7 @@ describe('Todo card edit dialog', () => {
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: /^Add todo to / }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add task to / }))
 
     expect(await screen.findByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete todo' })).not.toBeInTheDocument()

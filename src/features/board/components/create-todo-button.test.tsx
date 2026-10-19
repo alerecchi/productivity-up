@@ -150,7 +150,7 @@ describe('CreateTodoButton', () => {
   it('opens TodoDialog create mode with the current bucket selected', () => {
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
 
     expect(screen.getByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Add' })).toBeInTheDocument()
@@ -178,7 +178,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
@@ -228,7 +228,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: '  Plan review  ' } })
     fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Bring notes' } })
     fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: '2' } })
@@ -269,7 +269,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Organize cabinet' } })
     openCategoryPicker()
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }))
@@ -325,7 +325,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     openTagPicker()
     fireEvent.click(await screen.findByLabelText(existingTag.name))
@@ -365,7 +365,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     openTagPicker()
     fireEvent.click(screen.getByRole('button', { name: 'Create tag' }))
@@ -437,7 +437,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openTagPicker()
     expect(await screen.findByLabelText(existingTag.name)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: `Edit ${existingTag.name}` }))
@@ -489,7 +489,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openTagPicker()
     expect(await screen.findByLabelText(existingTag.name)).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: `Edit ${existingTag.name}` }))
@@ -526,7 +526,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     openTagPicker()
     fireEvent.click(await screen.findByLabelText(existingTag.name))
@@ -575,7 +575,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openTagPicker()
     fireEvent.click(await screen.findByLabelText(existingTag.name))
     fireEvent.click(screen.getByRole('button', { name: `Edit ${existingTag.name}` }))
@@ -595,7 +595,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openCategoryPicker()
     fireEvent.click(screen.getByRole('button', { name: 'Create category' }))
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Home admin' } })
@@ -643,7 +643,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openCategoryPicker()
     expect(await screen.findByRole('button', { name: createdCategory.name })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: `Edit ${createdCategory.name}` }))
@@ -691,7 +691,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openCategoryPicker()
     expect(await screen.findByRole('button', { name: createdCategory.name })).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: `Edit ${createdCategory.name}` }))
@@ -726,7 +726,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openCategoryPicker()
     fireEvent.click(await screen.findByRole('button', { name: createdCategory.name }))
     openCategoryPicker(createdCategory.name)
@@ -761,7 +761,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     openCategoryPicker()
     fireEvent.click(await screen.findByRole('button', { name: createdCategory.name }))
     openCategoryPicker(createdCategory.name)
@@ -781,7 +781,7 @@ describe('CreateTodoButton', () => {
   it('rejects missing title and missing bucket before saving', async () => {
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 
     expect(await screen.findByText('Title is required.')).toBeInTheDocument()
@@ -800,7 +800,7 @@ describe('CreateTodoButton', () => {
 
     render(<CreateTodoButton bucketId={1} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     fireEvent.change(screen.getByLabelText('Bucket'), { target: { value: '2' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
@@ -817,7 +817,7 @@ describe('CreateTodoButton', () => {
     )
     render(<CreateTodoButton bucketId={1} buckets={buckets} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Add task' }))
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Plan review' } })
     fireEvent.click(screen.getByRole('button', { name: 'Add' }))
 

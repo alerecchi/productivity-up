@@ -46,7 +46,7 @@ export function useToggleTodo() {
     }),
     onError: (error, _todo, context) => {
       void context?.pendingChange.rollback(error)
-      toast.error('Could not update Todo', { description: 'Your change was undone. Please try again.' })
+      toast.error("Couldn't save that change", { description: 'The task is back as it was. Try again in a moment.' })
     },
     onSuccess: async ({ previousBucketId, todo }, _variables, context) => {
       await context.pendingChange.confirm({ previousBucketId, todo, type: 'todo-updated' })

@@ -8,7 +8,7 @@ import type { Bucket } from '@/lib/types/Bucket'
 type CreateTodoButtonProps = {
   buckets: ReadonlyArray<Bucket>
   bucketId: number
-  /** Names the Bucket in the button's accessible name, so five "Add todo" buttons stay distinguishable. */
+  /** Names the Bucket in the button's accessible name, so five "Add task" buttons stay distinguishable. */
   bucketName?: string
 }
 
@@ -19,7 +19,7 @@ export default function CreateTodoButton({ bucketId, bucketName, buckets }: Crea
   return (
     <>
       <Button
-        aria-label={bucketName ? `Add todo to ${bucketName}` : 'Add todo'}
+        aria-label={bucketName ? `Add task to ${bucketName}` : 'Add task'}
         className='pointer-coarse:size-11'
         size='icon'
         onClick={() => setDialogOpen(true)}

@@ -32,14 +32,14 @@ export function useMoveTodo() {
       void context?.pendingChange.rollback(error)
 
       if (await isStaleMoveConflict(error)) {
-        toast.error('Board refreshed', {
-          description: 'Todo positions changed before your move completed. Review the latest order and try again.',
+        toast.error("That move didn't go through", {
+          description: 'Your tasks changed while you were moving this one. The latest order is showing now, so try again.',
         })
         return
       }
 
-      toast.error('Could not move Todo', {
-        description: 'Your board was restored. Refreshing affected Buckets now.',
+      toast.error("Couldn't move the task", {
+        description: "It's back where it was. Try again in a moment.",
       })
     },
     onSuccess: async (result, _variables, context) => {

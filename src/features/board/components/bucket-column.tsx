@@ -52,7 +52,7 @@ export function BucketColumn({ bucket, buckets, isPlanningBucket = false }: Buck
         <AddTodoButton bucketId={bucket.id} bucketName={bucketLabel} buckets={buckets} />
       </header>
       <div
-        aria-label={`${bucketLabel} Todos`}
+        aria-label={`${bucketLabel} tasks`}
         className='flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-y-none rounded-lg bg-secondary pt-2'
         data-bucket-id={bucket.id}
         data-bucket-todo-list

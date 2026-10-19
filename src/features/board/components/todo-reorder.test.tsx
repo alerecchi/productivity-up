@@ -147,7 +147,7 @@ describe('Todo reordering within a Bucket', () => {
 
     renderBucket(bucket, queryClient)
 
-    expect(screen.getByRole('button', { name: 'Drag Second todo' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Drag “Second todo”' })).toBeInTheDocument()
 
     act(() => {
       dnd.dragEnd?.({
@@ -221,7 +221,7 @@ describe('Todo reordering within a Bucket', () => {
     queryClient.setQueryData(boardCacheKeys.todos(bucket.id), todos)
 
     renderBucket(bucket, queryClient)
-    const bucketList = screen.getByRole('list', { name: 'Wednesday 24 Todos' })
+    const bucketList = screen.getByRole('list', { name: 'Wednesday 24 tasks' })
     const scrollTo = vi.fn()
     Object.defineProperty(bucketList, 'scrollHeight', { value: 720 })
     bucketList.scrollTo = scrollTo
@@ -398,7 +398,7 @@ describe('Todo reordering within a Bucket', () => {
 
     expect(
       screen.getAllByRole('button', { name: /^Drag / }).map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Drag Second todo', 'Drag First todo', 'Drag Third todo'])
+    ).toEqual(['Drag “Second todo”', 'Drag “First todo”', 'Drag “Third todo”'])
   })
 
   it('shows only the active horizontal insertion line as the drop-position indicator', () => {
@@ -422,7 +422,7 @@ describe('Todo reordering within a Bucket', () => {
 
     renderBucket(bucket, queryClient)
 
-    expect(screen.getByRole('button', { name: 'Drag Second todo' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Drag “Second todo”' })).toBeInTheDocument()
 
     act(() => {
       dnd.dragEnd?.({
@@ -476,13 +476,13 @@ describe('Bucket column layout', () => {
     expect(screen.getByRole('region', { name: 'Wednesday 24' })).toHaveClass('h-full', 'w-80', 'shrink-0')
 
     expect(screen.getByRole('heading', { name: 'Wednesday 24' }).closest('header')).toHaveClass('sticky', 'top-0')
-    expect(screen.getByRole('list', { name: 'Wednesday 24 Todos' })).toHaveClass(
+    expect(screen.getByRole('list', { name: 'Wednesday 24 tasks' })).toHaveClass(
       'overflow-y-auto',
       'min-h-0',
       'overscroll-y-none',
       'pt-2',
     )
-    expect(screen.getByRole('button', { name: 'Drag First todo' }).closest('[data-slot="card"]')).toHaveClass(
+    expect(screen.getByRole('button', { name: 'Drag “First todo”' }).closest('[data-slot="card"]')).toHaveClass(
       'shrink-0',
     )
   })
@@ -541,8 +541,8 @@ describe('Bucket column layout', () => {
 
     render(<Board />, { queryClient })
 
-    const sourceList = screen.getByRole('list', { name: 'Wednesday 24 Todos' })
-    const destinationList = screen.getByRole('list', { name: 'June Todos' })
+    const sourceList = screen.getByRole('list', { name: 'Wednesday 24 tasks' })
+    const destinationList = screen.getByRole('list', { name: 'June tasks' })
     sourceList.scrollBy = vi.fn()
     destinationList.scrollBy = vi.fn()
     sourceList.getBoundingClientRect = () => createDomRect({ bottom: 620, left: 0, right: 320, top: 120 })
@@ -766,8 +766,8 @@ describe('Todo movement across Buckets', () => {
       expect(countTodoFetches(bucket.id)).toBeGreaterThan(fetchesBeforeMove.source)
       expect(countTodoFetches(destinationBucket.id)).toBeGreaterThan(fetchesBeforeMove.destination)
     })
-    expect(toast.error).toHaveBeenCalledWith('Could not move Todo', {
-      description: 'Your board was restored. Refreshing affected Buckets now.',
+    expect(toast.error).toHaveBeenCalledWith("Couldn't move the task", {
+      description: "It's back where it was. Try again in a moment.",
     })
   })
 
@@ -831,8 +831,8 @@ describe('Todo movement across Buckets', () => {
       expect(countTodoFetches(bucket.id)).toBeGreaterThan(fetchesBeforeMove.source)
       expect(countTodoFetches(destinationBucket.id)).toBeGreaterThan(fetchesBeforeMove.destination)
     })
-    expect(toast.error).toHaveBeenCalledWith('Board refreshed', {
-      description: 'Todo positions changed before your move completed. Review the latest order and try again.',
+    expect(toast.error).toHaveBeenCalledWith("That move didn't go through", {
+      description: 'Your tasks changed while you were moving this one. The latest order is showing now, so try again.',
     })
   })
 

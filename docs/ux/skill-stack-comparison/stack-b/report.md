@@ -166,3 +166,39 @@ The **detector found none of the three**; it only flagged the category stripe. A
 **Files:** `todo-card.tsx`, `bucket-column.tsx`, `create-todo-button.tsx`, `todo-drag-drop-provider.tsx`, `board.tsx`, `todo-edit-dialog.test.tsx`, `variant-a-pick-and-place.tsx`, `board-prototype-shared.tsx`, `prototype-switcher.tsx`, `package.json`, `pnpm-lock.yaml`, `AGENTS.md`, plus `step3/audit.md` and screenshots (244+/25−).
 
 **AGENTS.md:** `rg '@base-ui' src` outside `ui/`: none. `@dnd-kit/dom` added with approval and listed. No form code.
+
+## Step 4: copy pass (`/impeccable clarify`)
+
+**Time:** 22:16 → 22:21 (about 5 min, plus one user question).
+
+**Skills and commands invoked**
+
+1. `Skill impeccable` with "clarify the board's strings (…board.tsx, bucket-column.tsx, todo-card.tsx, create-todo-button.tsx, todo-drag-drop-provider.tsx, use-move-todo.ts, and src/features/board/prototype)".
+2. Loaded `reference/clarify.md`. It opens with "**Additional context needed**: audience knowledge and emotional state". Not asked, because PRODUCT.md (from #138) already records both.
+3. Followed its "ask before changing … a term that may be domain-specific" rule with **one question to the user** (2 parts):
+   - "Bucket" in UI copy? → **Avoid the noun** (use the Bucket's own name, or "list").
+   - "todo" or "task"? → **"task"**.
+4. Rewrote the strings by function (actions, errors, empty/success states, SR names), then read the flow in context on the real app (phone, desktop, empty board as `seed_user_without_data`).
+5. No detector run in this step: nothing visual changed except text, and the reference doesn't call for one.
+
+**Output:** the full before/after deck is in [`step4/copy.md`](step4/copy.md) (22 rows + the deliberate exclusions). Highlights:
+
+- No raw keys or developer messages: the recap headline now reads "Monday 19 is wrapped up", and "Couldn't wrap up the day" replaces the server's `error.message`.
+- One verb for ending the day ("Wrap up the day" / "is wrapped up"), and "task" everywhere.
+- Empty states now give a next step and permission to stop: "Nothing left for today. Move something in from this week, or take the rest of the day off."
+- No "Bucket" in UI copy: it uses each Bucket's name, "list" in announcements, and "Lists" as the nav name.
+
+**Behaviour change to flag:** the complete-day error toast no longer shows the server's `error.message`. The existing test expected that pass-through ("Cannot complete day while Todos are incomplete"), so it was updated to the new generic message. That server error isn't reachable in the normal flow (incomplete todos return `migration_required`), but the "why" is now lost if it ever fires.
+
+**Verified:** `vitest run src/features/board` 174/174 (test expectations updated to the new strings in 5 test files; no logic changes). `tsc`/`eslint` clean. `variant-moves.ts` and `variant-drag.ts` PASS. The copy was read in screenshots, including the empty board.
+
+**Friction**
+
+- A second "Additional context needed" header, again answered by PRODUCT.md.
+- One user question (domain terms), as the reference requires.
+- Copy changes ripple into tests: 5 test files needed new strings. The **project's verify skill** (`.claude/skills/verify-productivity-up/`) still documents old names (e.g. `'Inbox Todos'`, `'Drag <title>'`). It was not edited, because the brief forbids changing skills, so its feature map is now stale for this branch.
+- No prompts, downloads, or new files from the skill.
+
+**Files:** `board.tsx`, `bucket-column.tsx`, `todo-card.tsx`, `create-todo-button.tsx`, `todo-drag-drop-provider.tsx`, `use-move-todo.ts`, `use-update-todo.ts`, `board-prototype-shared.tsx`, `variant-a-pick-and-place.tsx`, 5 `*.test.tsx`, `step4/copy.md`, screenshots (4 + 2 empty-board extras).
+
+**AGENTS.md:** no new components or libraries; no Base UI imports; no form code.

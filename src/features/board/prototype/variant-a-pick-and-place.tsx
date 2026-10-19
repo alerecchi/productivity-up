@@ -55,7 +55,7 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
     return (
       <div className='flex h-full min-h-0 flex-col'>
         <p aria-live='polite' className='sr-only'>
-          {picked ? `Moving “${picked.title}”. Choose a Bucket, or press Escape to cancel.` : ''}
+          {picked ? `Moving “${picked.title}”. Choose where it should go, or press Escape to cancel.` : ''}
         </p>
         {picked && <PickedBanner picked={picked} onCancel={() => setPicked(null)} />}
         <div className='flex min-h-0 flex-1 gap-4 overflow-x-auto px-6 py-4'>
@@ -82,7 +82,7 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
             {active.name}
           </h2>
           <p className='text-sm text-muted-foreground'>
-            {[active.periodLabel !== active.name && active.periodLabel, `${active.todos.length} ${active.todos.length === 1 ? 'todo' : 'todos'}`]
+            {[active.periodLabel !== active.name && active.periodLabel, taskCount(active.todos.length)]
               .filter(Boolean)
               .join(' · ')}
           </p>
@@ -96,7 +96,7 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
       <ul aria-labelledby='pick-active-bucket' className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4'>
         {active.todos.length === 0 && (
           <li className='rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground'>
-            Nothing here yet.
+            {emptyMessage(active)}
           </li>
         )}
         {active.todos.map((todo) => (
@@ -106,11 +106,11 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
         ))}
       </ul>
       <p aria-live='polite' className='sr-only'>
-        {picked ? `Moving “${picked.title}”. Choose a Bucket, or press Escape to cancel.` : ''}
+        {picked ? `Moving “${picked.title}”. Choose where it should go, or press Escape to cancel.` : ''}
       </p>
       {picked && <PickedBanner picked={picked} onCancel={() => setPicked(null)} />}
       <nav
-        aria-label={picked ? `Choose where to move “${picked.title}”` : 'Buckets'}
+        aria-label={picked ? `Choose where to move “${picked.title}”` : 'Lists'}
         className='grid shrink-0 grid-cols-5 gap-1 border-t bg-card px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]'
       >
         {bucketViews.map((view) => (
@@ -133,7 +133,7 @@ function PickedBanner({ onCancel, picked }: { onCancel: () => void; picked: Todo
       className='mx-4 mb-2 flex shrink-0 items-center gap-3 rounded-xl bg-foreground py-1 pr-1 pl-4 text-sm text-background md:mx-6 md:mt-3 md:mb-0'
     >
       <span aria-hidden className='min-w-0 flex-1 py-2 [overflow-wrap:anywhere]'>
-        Moving “{picked.title}”. Choose a Bucket, or press Escape to cancel.
+        Moving “{picked.title}”. Choose where it should go.
       </span>
       <Button
         className='h-11 text-background hover:bg-background/10 hover:text-background'
@@ -167,7 +167,7 @@ function BucketTab({
       ref={ref}
       aria-current={!picked && isActive ? 'page' : undefined}
       data-place-target={isTarget || undefined}
-      aria-label={isTarget ? `Move to ${view.name}` : `${view.name}, ${view.todos.length} todos`}
+      aria-label={isTarget ? `Move to ${view.name}` : `${view.name}, ${taskCount(view.todos.length)}`}
       className={cn(
         'flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold text-muted-foreground transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
         !picked && isActive && 'bg-accent text-primary',
@@ -226,6 +226,7 @@ function DesktopColumn({
       </header>
       {isTarget && (
         <Button
+          aria-label={`Move to ${view.name}`}
           className='h-11 border-2 border-dashed border-primary text-primary dark:border-primary'
           data-place-target
           variant='outline'
@@ -234,7 +235,14 @@ function DesktopColumn({
           Move here
         </Button>
       )}
-      <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto'>{children}</div>
+      <div className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto'>
+        {view.todos.length === 0 && (
+          <p className='rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground'>
+            {emptyMessage(view)}
+          </p>
+        )}
+        {children}
+      </div>
     </section>
   )
 }
@@ -298,4 +306,18 @@ function PickCard({
       </Button>
     </div>
   )
+}
+
+function taskCount(count: number) {
+  return count === 1 ? '1 task' : `${count} tasks`
+}
+
+/** Says what the empty list means and, where it helps, what to do next. */
+function emptyMessage(view: BucketView) {
+  if (view.bucket.type === 'inbox') return 'Your inbox is empty.'
+  if (view.bucket.type === 'daily' && view.name === 'Today') {
+    return 'Nothing left for today. Move something in from this week, or take the rest of the day off.'
+  }
+  if (view.bucket.type === 'daily') return `Nothing planned for ${view.name.toLowerCase()} yet. Move something in from this week.`
+  return `Nothing planned for ${view.name.toLowerCase()} yet.`
 }

@@ -51,7 +51,7 @@ function TodoCard({ dragHandleRef, draggableRef, isDragging = false, onEdit, tod
         <CardAction className='row-span-1'>
           <div className='flex items-center gap-1'>
             <Button
-              aria-label={`Drag ${todo.title}`}
+              aria-label={`Drag “${todo.title}”`}
               className='size-11 cursor-grab text-muted-foreground active:cursor-grabbing pointer-fine:size-9'
               ref={dragHandleRef}
               size='icon'
@@ -61,7 +61,7 @@ function TodoCard({ dragHandleRef, draggableRef, isDragging = false, onEdit, tod
               <GripVertical className='size-4' />
             </Button>
             <Checkbox
-              aria-label={todo.completed ? `Mark ${todo.title} as not done` : `Mark ${todo.title} as done`}
+              aria-label={todo.completed ? `Mark “${todo.title}” as not done` : `Mark “${todo.title}” as done`}
               checked={todo.completed}
               onClick={(event) => event.stopPropagation()}
               onCheckedChange={handleCheckedChange}

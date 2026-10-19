@@ -78,7 +78,7 @@ export function useMoveToBucket() {
 
     mutate(
       { data: { id: todo.id, targetBucketId: target.bucket.id }, sourceBucketId: todo.bucketId },
-      { onSuccess: () => toast(`Moved “${todo.title}” to ${target.name}`) },
+      { onSuccess: () => toast(`Moved “${todo.title}” to ${target.name}.`) },
     )
   }
 }
