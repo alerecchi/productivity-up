@@ -14,6 +14,7 @@ The current stack is:
 - TanStack Query for data fetching;
 - TanStack Form, all form code MUST use TanStack Form to the fullest;
 - @dnd-kit/react for drag-and-drop mechanics;
+- @dnd-kit/dom (direct import only for its `Accessibility` plugin and sensors, to configure drag-and-drop screen-reader announcements);
 - Better Auth for authentication;
 - Zod for validation;
 - Drizzle as a DB ORM (using a Neon backend)

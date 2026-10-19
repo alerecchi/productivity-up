@@ -109,3 +109,60 @@ All three share: a 44 px completion checkbox with a named label (`Mark "X" as do
 **Friction:** none beyond the unanswered "additional context" header. No prompts, downloads, or new files from the skill.
 
 **AGENTS.md:** unchanged from step 1 (no Base UI imports outside `ui/`, no form code).
+
+## Step 3: known defects (`/impeccable audit`, then fix)
+
+**Time:** 22:01 → 22:16 (about 15 min, including one user question).
+
+**Skills and commands invoked**
+
+1. `Skill impeccable` with "audit the board (/board, default and ?variant=A; src/features/board/components and src/features/board/prototype): accessibility, touch targets, keyboard, screen reader, responsive". *Bias note:* the agent's argument named the audit's own dimension words. It did not name the three defects.
+2. Loaded `reference/audit.md`: score 5 dimensions 0–4, P0–P3 findings, "don't fix issues; document them". The fixes below were done by the agent because the script asks for them; audit itself only recommends `harden`/`adapt`/`colorize`/`clarify`/`animate`.
+3. `impeccable detect --json src/features/board src/features/shared/components` → 5 findings, all `side-tab` (`border-l-4`). A rendered URL scan (`detect <url>`) could not run, because `/board` needs a session.
+4. Evidence journey `.verify/journeys/audit.ts` (written by the agent to the reference's checklist): target sizes, hidden controls, keyboard drag with Space and arrows, live-region text, headings, overflow, dark heading colour. First run invalid twice (measured before render; the prototype switcher hijacked ←/→), re-run with the switcher listener suppressed in the test page.
+5. Report saved verbatim as [`step3/audit.md`](step3/audit.md): **10/20 (Acceptable)**, P1 ×6, P2 ×4, P3 ×2.
+
+**Known defects: found by the audit on its own?**
+
+| Known defect | Found? | How |
+|---|---|---|
+| Hover-only checkboxes | **Yes** (P1) | Checklist "Keyboard navigation / Missing ARIA" + measured `opacity: 0`, no name, on today's board |
+| Small touch targets | **Yes** (P1, P2) | Checklist "Touch targets < 44px" + measured: 25 controls < 24 px on today's board; app-shell 36 px |
+| DnD announcements and keyboard behaviour | **Yes** (P1 ×2) | Measured live-region text (raw ids) and a keyboard drag that never left Inbox |
+
+The **detector found none of the three**; it only flagged the category stripe. All three came from the agent running the audit checklist against the live app. The agent knew the defects from the brief, so "on its own" is partly the checklist and partly the agent.
+
+**Findings that are false, wrong, or out of scope**
+
+- `side-tab` in `todo-card.test.tsx` (×3): false positives, the class strings are test fixtures.
+- `side-tab` on the category stripe (`todo-card.tsx`, `migration-flow.tsx`): accurate as a craft-floor ban, but the stripe carries the category colour, a theme decision outside this comparison. Not fixed.
+- The audit's 44 px threshold flags the 36 px app-shell controls, which pass WCAG 2.2 AA 2.5.8 (24 px). It is a comfort finding (P2), not a violation. Not fixed (app shell is outside board scope).
+- The variant A checkbox measures 24×24 visually, but its hit area is 44 px (`after:-inset`). An automated size check would miss this; the audit text treats it as passing.
+- One new finding the brief didn't anticipate: the **prototype switcher's ←/→ shortcut** steals arrow keys during a keyboard drag (real, fixed).
+
+**Fixes applied**
+
+| Finding | Fix |
+|---|---|
+| P1 checkbox (today's board) | Always visible; `aria-label` "Mark X as done / not done"; 24 px box with a 44 px (coarse) / 36 px (fine) hit area; dropped the leftover `terms-checkbox` id |
+| P1 touch targets (today's board) | Drag handle `icon-xs` 24 px at 0.7 opacity → 44 px coarse / 36 px fine, full opacity; "Add todo" and "Complete day" 44 px on coarse pointers |
+| P1 announcements | `Accessibility.configure` with named messages ("Picked up "X". Use the arrow keys to choose a Bucket.", "Over This week.", ""X" moved to Today.", "Move cancelled…") and instructions that mention the Move button; droppables carry `bucketName` |
+| P1 keyboard drag | `KeyboardSensor.configure({ offset: { x: 310, y: 56 } })`: one arrow press moves about one Bucket column |
+| P1 switcher arrows | Switcher ignores ←/→ unless focus is on the page body or the switcher |
+| P1 dark headings | `dark:text-*-200` / `dark:bg-*-400/25` on the Bucket colours |
+| P2 "Add todo" ×5 | "Add todo to <Bucket>" (optional `bucketName` prop; one test updated) |
+| P2 live region | Variant A: a persistent `sr-only` polite region; the visible banner is `aria-hidden` |
+| P2 no h1 | `sr-only` `<h1>Board</h1>` |
+| P3 reduced motion | Picked card keeps the ring, drops the scale under `motion-reduce` |
+
+**Verified after the fixes** (`audit.ts` re-run with the real switcher): 0 controls under 24 px on either board. The checkbox is visible (`opacity: 1`) and named. A keyboard drag from Inbox with ArrowRight ×3 lands in **This week** (DB `weekly`) with the announcement ""Seed Todo 01" moved to Week 43 (19-25)."; on variant A, ×2 lands in **This month**. The dark heading is `oklch(0.93 …)` on `oklch(0.14 …)`. `vitest run src/features/board`: 174/174 pass. `variant-moves.ts` and `variant-drag.ts` pass. **Untested:** real touch (Playwright reported a fine pointer, so the `pointer-coarse` 44 px sizes were not exercised) and a real screen reader (live-region text was read from the DOM).
+
+**Friction**
+
+- **User question:** the announcement fix needs `Accessibility` from `@dnd-kit/dom`, not re-exported by `@dnd-kit/react`. AGENTS.md requires approval for new libraries. The user approved, so `@dnd-kit/dom@0.5.0` was added as a direct dependency and listed in AGENTS.md.
+- Audit's no-fix rule vs the script's "then fix": the agent applied the fixes itself instead of running the recommended `harden`/`adapt`/`colorize` commands.
+- No prompts, downloads, or new files from the skill.
+
+**Files:** `todo-card.tsx`, `bucket-column.tsx`, `create-todo-button.tsx`, `todo-drag-drop-provider.tsx`, `board.tsx`, `todo-edit-dialog.test.tsx`, `variant-a-pick-and-place.tsx`, `board-prototype-shared.tsx`, `prototype-switcher.tsx`, `package.json`, `pnpm-lock.yaml`, `AGENTS.md`, plus `step3/audit.md` and screenshots (244+/25−).
+
+**AGENTS.md:** `rg '@base-ui' src` outside `ui/`: none. `@dnd-kit/dom` added with approval and listed. No form code.

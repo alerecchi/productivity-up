@@ -54,6 +54,9 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
   if (isDesktop) {
     return (
       <div className='flex h-full min-h-0 flex-col'>
+        <p aria-live='polite' className='sr-only'>
+          {picked ? `Moving “${picked.title}”. Choose a Bucket, or press Escape to cancel.` : ''}
+        </p>
         {picked && <PickedBanner picked={picked} onCancel={() => setPicked(null)} />}
         <div className='flex min-h-0 flex-1 gap-4 overflow-x-auto px-6 py-4'>
           {bucketViews.map((view) => (
@@ -84,7 +87,11 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
               .join(' · ')}
           </p>
         </div>
-        <CreateTodoButton bucketId={active.bucket.id} buckets={bucketViews.map(({ bucket }) => bucket)} />
+        <CreateTodoButton
+          bucketId={active.bucket.id}
+          bucketName={active.name}
+          buckets={bucketViews.map(({ bucket }) => bucket)}
+        />
       </div>
       <ul aria-labelledby='pick-active-bucket' className='flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-4 pb-4'>
         {active.todos.length === 0 && (
@@ -98,6 +105,9 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
           </li>
         ))}
       </ul>
+      <p aria-live='polite' className='sr-only'>
+        {picked ? `Moving “${picked.title}”. Choose a Bucket, or press Escape to cancel.` : ''}
+      </p>
       {picked && <PickedBanner picked={picked} onCancel={() => setPicked(null)} />}
       <nav
         aria-label={picked ? `Choose where to move “${picked.title}”` : 'Buckets'}
@@ -120,10 +130,9 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
 function PickedBanner({ onCancel, picked }: { onCancel: () => void; picked: Todo }) {
   return (
     <div
-      aria-live='polite'
       className='mx-4 mb-2 flex shrink-0 items-center gap-3 rounded-xl bg-foreground py-1 pr-1 pl-4 text-sm text-background md:mx-6 md:mt-3 md:mb-0'
     >
-      <span className='min-w-0 flex-1 py-2 [overflow-wrap:anywhere]'>
+      <span aria-hidden className='min-w-0 flex-1 py-2 [overflow-wrap:anywhere]'>
         Moving “{picked.title}”. Choose a Bucket, or press Escape to cancel.
       </span>
       <Button
@@ -149,7 +158,7 @@ function BucketTab({
   picked: Todo | null
   view: BucketView
 }) {
-  const { isDropTarget, ref } = useBucketDroppable(`pick-tab-${view.bucket.id}`, view.bucket.id)
+  const { isDropTarget, ref } = useBucketDroppable(`pick-tab-${view.bucket.id}`, view.bucket.id, view.name)
   const isSource = picked?.bucketId === view.bucket.id
   const isTarget = picked !== null && !isSource
 
@@ -190,7 +199,7 @@ function DesktopColumn({
   picked: Todo | null
   view: BucketView
 }) {
-  const { isDropTarget, ref } = useBucketDroppable(`pick-column-${view.bucket.id}`, view.bucket.id)
+  const { isDropTarget, ref } = useBucketDroppable(`pick-column-${view.bucket.id}`, view.bucket.id, view.name)
   const headingId = `pick-column-${view.bucket.id}-heading`
   const isTarget = picked !== null && picked.bucketId !== view.bucket.id
 
@@ -213,7 +222,7 @@ function DesktopColumn({
           )}
         </h2>
         <span className='text-sm font-semibold text-muted-foreground tabular-nums'>{view.todos.length}</span>
-        <CreateTodoButton bucketId={view.bucket.id} buckets={bucketViews.map(({ bucket }) => bucket)} />
+        <CreateTodoButton bucketId={view.bucket.id} bucketName={view.name} buckets={bucketViews.map(({ bucket }) => bucket)} />
       </header>
       {isTarget && (
         <Button
@@ -249,7 +258,7 @@ function PickCard({
       ref={ref}
       className={cn(
         'flex items-center gap-1 rounded-xl bg-card py-1 pr-1 shadow-sm transition-[box-shadow,transform]',
-        isPicked && 'scale-[1.01] ring-[3px] ring-primary',
+        isPicked && 'scale-[1.01] ring-[3px] ring-primary motion-reduce:scale-100',
         isDragging && 'opacity-60',
       )}
     >

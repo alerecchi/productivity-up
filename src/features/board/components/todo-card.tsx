@@ -52,22 +52,21 @@ function TodoCard({ dragHandleRef, draggableRef, isDragging = false, onEdit, tod
           <div className='flex items-center gap-1'>
             <Button
               aria-label={`Drag ${todo.title}`}
-              className='cursor-grab text-muted-foreground opacity-70 active:cursor-grabbing'
+              className='size-11 cursor-grab text-muted-foreground active:cursor-grabbing pointer-fine:size-9'
               ref={dragHandleRef}
-              size='icon-xs'
+              size='icon'
               type='button'
               variant='ghost'
             >
               <GripVertical className='size-4' />
             </Button>
             <Checkbox
-              id={`terms-checkbox-${todo.id}`}
+              aria-label={todo.completed ? `Mark ${todo.title} as not done` : `Mark ${todo.title} as done`}
               checked={todo.completed}
               onClick={(event) => event.stopPropagation()}
               onCheckedChange={handleCheckedChange}
               className={cn(
-                'size-5 cursor-pointer rounded-full border-2',
-                !todo.completed && 'opacity-0 transition-opacity group-hover:opacity-100',
+                'size-6 cursor-pointer rounded-full border-2 after:-inset-2.5 pointer-fine:after:-inset-1.5',
                 todo.completed && 'opacity-70',
               )}
             />

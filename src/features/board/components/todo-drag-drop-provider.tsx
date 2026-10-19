@@ -1,3 +1,4 @@
+import { Accessibility, KeyboardSensor } from '@dnd-kit/dom'
 import { DragDropProvider } from '@dnd-kit/react'
 import type { DragEndEvent } from '@dnd-kit/react'
 import { createContext, useContext, useState } from 'react'
@@ -14,8 +15,39 @@ type TodoInsertionData = {
   afterTodoId?: number
   beforeTodoId?: number
   bucketId: number
+  bucketName?: string
   kind: 'todo-insertion'
 }
+
+type AnnouncementOperation = { source: { data?: unknown } | null; target: { data?: unknown } | null }
+
+const todoTitle = (operation: AnnouncementOperation) =>
+  isTodoDragData(operation.source?.data) ? `“${operation.source.data.todo.title}”` : 'Todo'
+const bucketName = (operation: AnnouncementOperation) =>
+  isTodoInsertionData(operation.target?.data) ? (operation.target.data.bucketName ?? 'a Bucket') : undefined
+
+/** Screen-reader messages that name the todo and the Bucket instead of dnd-kit's internal ids. */
+const accessibility = Accessibility.configure({
+  announcements: {
+    dragend: ({ canceled, operation }: { canceled: boolean; operation: AnnouncementOperation }) => {
+      if (canceled) return `Move cancelled. ${todoTitle(operation)} stayed where it was.`
+      const target = bucketName(operation)
+      return target ? `${todoTitle(operation)} moved to ${target}.` : `${todoTitle(operation)} dropped outside a Bucket. Nothing moved.`
+    },
+    dragover: ({ operation }: { operation: AnnouncementOperation }) => {
+      const target = bucketName(operation)
+      return target ? `Over ${target}.` : 'Not over a Bucket.'
+    },
+    dragstart: ({ operation }: { operation: AnnouncementOperation }) => `Picked up ${todoTitle(operation)}. Use the arrow keys to choose a Bucket.`,
+  },
+  screenReaderInstructions: {
+    draggable:
+      'To drag, press Space, then use the left and right arrow keys to move between Buckets and press Space again to drop, or Escape to cancel. You can also use the Move button.',
+  },
+})
+
+/** Left/right arrows jump roughly one Bucket column; up/down step through a Bucket's todos. */
+const keyboardSensor = KeyboardSensor.configure({ offset: { x: 310, y: 56 } })
 
 export type PendingTodoMove = {
   afterTodoId?: number
@@ -101,7 +133,12 @@ export function TodoDragDropProvider({ children }: { children: ReactNode }) {
 
   return (
     <PendingTodoMoveContext value={pendingTodoMove}>
-      <DragDropProvider onDragEnd={handleDragEnd} onDragMove={handleDragMove}>
+      <DragDropProvider
+        onDragEnd={handleDragEnd}
+        onDragMove={handleDragMove}
+        plugins={(defaults) => [...defaults.filter((plugin) => plugin !== Accessibility), accessibility]}
+        sensors={(defaults) => defaults.map((sensor) => (sensor === KeyboardSensor ? keyboardSensor : sensor))}
+      >
         {children}
       </DragDropProvider>
     </PendingTodoMoveContext>

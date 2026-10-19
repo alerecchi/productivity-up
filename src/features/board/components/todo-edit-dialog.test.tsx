@@ -473,7 +473,7 @@ describe('Todo card edit dialog', () => {
 
     render(<BucketColumn bucket={buckets[1]} buckets={buckets} />, { queryClient })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Add todo' }))
+    fireEvent.click(screen.getByRole('button', { name: /^Add todo to / }))
 
     expect(await screen.findByRole('heading', { name: 'Add New Task' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Delete todo' })).not.toBeInTheDocument()

@@ -22,6 +22,8 @@ export function PrototypeSwitcher({ current, variants }: { current: string | und
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
+      // Arrow keys belong to whatever has focus (keyboard drag, menus, tabs); only react on the page itself.
+      if (target && target !== document.body && !target.closest('[data-prototype-switcher]')) return
       if (target?.closest('input, textarea, select, [contenteditable], [role="menu"], [role="tablist"], [role="dialog"]')) return
       if (event.key === 'ArrowLeft') go(-1)
       if (event.key === 'ArrowRight') go(1)

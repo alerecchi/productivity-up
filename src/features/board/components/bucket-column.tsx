@@ -49,7 +49,7 @@ export function BucketColumn({ bucket, buckets, isPlanningBucket = false }: Buck
           {bucketLabel}
         </h2>
         <Badge className={cn(textColor, bgColor)}>{displayedTodos.length}</Badge>
-        <AddTodoButton bucketId={bucket.id} buckets={buckets} />
+        <AddTodoButton bucketId={bucket.id} bucketName={bucketLabel} buckets={buckets} />
       </header>
       <div
         aria-label={`${bucketLabel} Todos`}
@@ -58,7 +58,12 @@ export function BucketColumn({ bucket, buckets, isPlanningBucket = false }: Buck
         data-bucket-todo-list
         role='list'
       >
-        <TodoInsertionLine bucketId={bucket.id} index={0} afterTodoId={displayedTodos[0]?.id} />
+        <TodoInsertionLine
+          bucketId={bucket.id}
+          bucketName={bucketLabel}
+          index={0}
+          afterTodoId={displayedTodos[0]?.id}
+        />
         {displayedTodos
           .map((todoItem) => (
             <SortableTodoCard key={todoItem.id} bucketId={bucket.id} todo={todoItem} onEdit={setEditingTodo} />
@@ -68,6 +73,7 @@ export function BucketColumn({ bucket, buckets, isPlanningBucket = false }: Buck
             <TodoInsertionLine
               key={`insertion-${index + 1}`}
               bucketId={bucket.id}
+              bucketName={bucketLabel}
               index={index + 1}
               beforeTodoId={displayedTodos[index]?.id}
               afterTodoId={displayedTodos[index + 1]?.id}
@@ -134,6 +140,7 @@ type TodoInsertionData = {
   afterTodoId?: number
   beforeTodoId?: number
   bucketId: number
+  bucketName: string
   kind: 'todo-insertion'
 }
 
@@ -141,11 +148,13 @@ function TodoInsertionLine({
   afterTodoId,
   beforeTodoId,
   bucketId,
+  bucketName,
   index,
 }: {
   afterTodoId?: number
   beforeTodoId?: number
   bucketId: number
+  bucketName: string
   index: number
 }) {
   const id = `bucket-${bucketId}-insertion-${index}`
@@ -154,6 +163,7 @@ function TodoInsertionLine({
       afterTodoId,
       beforeTodoId,
       bucketId,
+      bucketName,
       kind: 'todo-insertion',
     },
     id,
@@ -180,9 +190,9 @@ type BucketStyle = {
 }
 
 const bucketStyles: Record<BucketType, BucketStyle> = {
-  inbox: { icon: Inbox, textColor: 'text-slate-900', bgColor: 'bg-slate-900/50' },
-  yearly: { icon: Mountain, textColor: 'text-violet-900', bgColor: 'bg-violet-900/50' },
-  monthly: { icon: Map, textColor: 'text-blue-900', bgColor: 'bg-blue-900/50' },
-  weekly: { icon: Signpost, textColor: 'text-amber-900', bgColor: 'bg-amber-900/50 ' },
-  daily: { icon: ListTodo, textColor: 'text-green-900', bgColor: 'bg-green-900/50' },
+  inbox: { icon: Inbox, textColor: 'text-slate-900 dark:text-slate-200', bgColor: 'bg-slate-900/50 dark:bg-slate-400/25' },
+  yearly: { icon: Mountain, textColor: 'text-violet-900 dark:text-violet-200', bgColor: 'bg-violet-900/50 dark:bg-violet-400/25' },
+  monthly: { icon: Map, textColor: 'text-blue-900 dark:text-blue-200', bgColor: 'bg-blue-900/50 dark:bg-blue-400/25' },
+  weekly: { icon: Signpost, textColor: 'text-amber-900 dark:text-amber-200', bgColor: 'bg-amber-900/50 dark:bg-amber-400/25 ' },
+  daily: { icon: ListTodo, textColor: 'text-green-900 dark:text-green-200', bgColor: 'bg-green-900/50 dark:bg-green-400/25' },
 }

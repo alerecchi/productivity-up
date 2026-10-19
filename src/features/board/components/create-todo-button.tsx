@@ -8,15 +8,22 @@ import type { Bucket } from '@/lib/types/Bucket'
 type CreateTodoButtonProps = {
   buckets: ReadonlyArray<Bucket>
   bucketId: number
+  /** Names the Bucket in the button's accessible name, so five "Add todo" buttons stay distinguishable. */
+  bucketName?: string
 }
 
 // TODO the bucket re-renders when I write things in the form, why?
-export default function CreateTodoButton({ bucketId, buckets }: CreateTodoButtonProps) {
+export default function CreateTodoButton({ bucketId, bucketName, buckets }: CreateTodoButtonProps) {
   const [isDialogOpen, setDialogOpen] = useState(false)
 
   return (
     <>
-      <Button aria-label='Add todo' onClick={() => setDialogOpen(true)}>
+      <Button
+        aria-label={bucketName ? `Add todo to ${bucketName}` : 'Add todo'}
+        className='pointer-coarse:size-11'
+        size='icon'
+        onClick={() => setDialogOpen(true)}
+      >
         <Plus className='size-4' />
       </Button>
       <TodoDialog buckets={buckets} defaultBucketId={bucketId} isOpen={isDialogOpen} setOpen={setDialogOpen} />

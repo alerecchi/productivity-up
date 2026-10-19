@@ -100,6 +100,7 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
       <div className='flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col'>
         <header className='flex shrink-0 items-center justify-between gap-4 border-b px-6 py-3'>
           <div className='flex min-w-0 flex-col gap-1'>
+            <h1 className='sr-only'>Board</h1>
             <p className='text-sm font-medium'>{planningStatus}</p>
             {isPlanningAhead && (
               <p className='text-sm text-muted-foreground'>Complete day is disabled while planning ahead.</p>
@@ -107,6 +108,7 @@ function ReconciledBoardView({ board, variant }: { board: ReconciledBoard; varia
           </div>
           <Button
             aria-describedby={isPlanningAhead ? 'complete-day-disabled-reason' : undefined}
+            className='pointer-coarse:h-11'
             disabled={isMigrationRequired || isPlanningAhead || completeDayMutation.isPending}
             onClick={() => completeDayMutation.mutate()}
           >

@@ -92,8 +92,8 @@ export function useTodoDraggable(todo: Todo) {
 }
 
 /** A whole-Bucket drop target (tab, chip, header or column). `id` must be unique on the page. */
-export function useBucketDroppable(id: string, bucketId: number) {
-  return useDroppable({ data: { bucketId, kind: 'todo-insertion' }, id })
+export function useBucketDroppable(id: string, bucketId: number, bucketName?: string) {
+  return useDroppable({ data: { bucketId, bucketName, kind: 'todo-insertion' }, id })
 }
 
 export function useIsDesktop() {
