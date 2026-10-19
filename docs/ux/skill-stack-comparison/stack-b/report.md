@@ -68,3 +68,44 @@ All three share: a 44 px completion checkbox with a named label (`Mark "X" as do
 - `rg '@base-ui' src` outside `shared/components/ui`: none.
 - Forms: no form code added (the todo dialog is reused as is).
 - shadcn: `Button`, `Checkbox`, `Tabs`, `DropdownMenu` (newly added via the shadcn CLI). Hand-rolled: the Bucket tab strip (A), jump chips (B), the card title button, and the prototype switcher. These are plain `<button>`s styled with Tailwind. shadcn has `Tabs`/`ToggleGroup`, which could cover A's strip and B's chips; C uses shadcn `Tabs`.
+
+### Step 1 outcome
+
+- The decision page closed unanswered after about 2 h (`serve-question --wait` exit 4, "PAGE CLOSED"). Per new-work.md the agent re-presented the choice once through the structured question tool, which was also the script's "pick a variation" stop. **The user picked A, Pick up and place.**
+- concept-seed asks for an anonymous telemetry ping (`--kind assigned`) once a round resolves. **Not sent:** it publishes data to a third party and the user hadn't approved it.
+
+## Step 2: polish (`/impeccable polish`)
+
+**Time:** 21:57 → 22:01 (about 4 min of agent work, plus about 2 min of journeys).
+
+**Skills and commands invoked**
+
+1. `Skill impeccable` with "polish the board variant A…". The skill says to run `impeccable context` once per session, so it was not rerun.
+2. Loaded `reference/polish.md`. It opens with "**Additional context needed**: quality bar and shipping constraints". The agent **did not ask** and inferred it from the brief: a throwaway prototype, today's theme, shadcn, no new libraries.
+3. `impeccable critique-storage latest src/features/board/prototype/variant-a-pick-and-place.tsx --json` → exit 2 (no prior critique).
+4. Evidence pass, as the reference asks: drove variant A at 390, 768, 1024, and 1440 px, picked and unpicked, keyboard and mouse, dark (`.verify/journeys/a-states.ts`).
+5. Re-read `craft-floor.md` before editing (already loaded in step 1).
+6. `impeccable detect --json` on the changed files → `[]`.
+
+**What polish found and fixed** (in the reference's triage order)
+
+| Priority | Finding | Fix |
+|---|---|---|
+| 1 Blocked/misleading | Phone: the "Moving …" banner was truncated to "Moving" and covered by the prototype bar | Banner wraps; switcher moved up on phones |
+| 1 Inaccessible path | Keyboard: after Move, focus stayed on the card, so reaching a Bucket meant tabbing through the whole list | Focus jumps to the first place target (tab or "Move here"); Escape returns focus to the card's Move button |
+| 3 Hierarchy/responsive | Desktop: two 44 px controls squeezed titles onto two lines in five columns | On `md` + fine pointer, controls are 36 px (still ≥ 24 px for 2.5.8); touch keeps 44 px |
+| 3 Local defect | Inbox showed "Inbox" twice (name + period label) | Hide the period label when it equals the name |
+| 4 Theme | Dark: the dashed "Move here" border disappeared (`dark:border-input` won) | `dark:border-primary` |
+| 4 Content | Long titles without spaces could overflow | `overflow-wrap: anywhere` |
+
+- Not a defect: the pale picked Move button in one capture was `transition-all` caught mid-transition (computed bg alpha 0.03).
+- Intentional exception (logged, not changed): the Bucket strip stays a custom `<nav>`, not shadcn `Tabs`. It switches from navigation to move targets while a todo is picked, and a tablist can't change role like that.
+- Polish did **not** say to drop B, C, or the switcher, so they stay. The shared `TodoCheck` change (36 px on desktop) also applies to B and C.
+
+**Verified:** `a-states.ts` (focus moves to "Move to Inbox" on the phone and to "Move here" on desktop), `variant-moves.ts` and `variant-drag.ts` re-run, all PASS.
+
+**Files:** `variant-a-pick-and-place.tsx` (+35/−10), `board-prototype-shared.tsx` (1 line), `prototype-switcher.tsx` (1 line), and screenshots in `step2/` (plus two `extra-…picked` captures).
+
+**Friction:** none beyond the unanswered "additional context" header. No prompts, downloads, or new files from the skill.
+
+**AGENTS.md:** unchanged from step 1 (no Base UI imports outside `ui/`, no form code).

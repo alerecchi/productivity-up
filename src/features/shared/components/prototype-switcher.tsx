@@ -36,7 +36,7 @@ export function PrototypeSwitcher({ current, variants }: { current: string | und
 
   return (
     <div
-      className='fixed bottom-24 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-1 rounded-full bg-fuchsia-700 p-1 text-sm font-semibold text-white shadow-lg shadow-black/30 md:bottom-4'
+      className='fixed bottom-44 left-1/2 z-[60] flex -translate-x-1/2 items-center gap-1 rounded-full bg-fuchsia-700 p-1 text-sm font-semibold text-white shadow-lg shadow-black/30 md:bottom-4'
       data-prototype-switcher
     >
       <button aria-label='Previous variant' className='rounded-full p-2 hover:bg-white/15' type='button' onClick={() => go(-1)}>

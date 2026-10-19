@@ -28,8 +28,16 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
 
   useEffect(() => {
     if (!picked) return
+    document.querySelector<HTMLElement>('[data-place-target]:not(:disabled)')?.focus()
+  }, [picked])
+
+  useEffect(() => {
+    if (!picked) return
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setPicked(null)
+      if (event.key === 'Escape') {
+        document.querySelector<HTMLElement>(`[data-pick-button="${picked.id}"]`)?.focus()
+        setPicked(null)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
@@ -71,7 +79,9 @@ export function VariantA({ bucketViews, onEdit }: VariantProps) {
             {active.name}
           </h2>
           <p className='text-sm text-muted-foreground'>
-            {active.periodLabel} · {active.todos.length} {active.todos.length === 1 ? 'todo' : 'todos'}
+            {[active.periodLabel !== active.name && active.periodLabel, `${active.todos.length} ${active.todos.length === 1 ? 'todo' : 'todos'}`]
+              .filter(Boolean)
+              .join(' · ')}
           </p>
         </div>
         <CreateTodoButton bucketId={active.bucket.id} buckets={bucketViews.map(({ bucket }) => bucket)} />
@@ -113,7 +123,7 @@ function PickedBanner({ onCancel, picked }: { onCancel: () => void; picked: Todo
       aria-live='polite'
       className='mx-4 mb-2 flex shrink-0 items-center gap-3 rounded-xl bg-foreground py-1 pr-1 pl-4 text-sm text-background md:mx-6 md:mt-3 md:mb-0'
     >
-      <span className='min-w-0 flex-1 truncate'>
+      <span className='min-w-0 flex-1 py-2 [overflow-wrap:anywhere]'>
         Moving “{picked.title}”. Choose a Bucket, or press Escape to cancel.
       </span>
       <Button
@@ -147,6 +157,7 @@ function BucketTab({
     <button
       ref={ref}
       aria-current={!picked && isActive ? 'page' : undefined}
+      data-place-target={isTarget || undefined}
       aria-label={isTarget ? `Move to ${view.name}` : `${view.name}, ${view.todos.length} todos`}
       className={cn(
         'flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-xs font-semibold text-muted-foreground transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
@@ -197,13 +208,20 @@ function DesktopColumn({
         <view.icon aria-hidden className='size-5 text-primary' />
         <h2 className='min-w-0 flex-1' id={headingId}>
           <span className='block font-bold'>{view.name}</span>
-          <span className='block text-xs font-normal text-muted-foreground'>{view.periodLabel}</span>
+          {view.periodLabel !== view.name && (
+            <span className='block text-xs font-normal text-muted-foreground'>{view.periodLabel}</span>
+          )}
         </h2>
         <span className='text-sm font-semibold text-muted-foreground tabular-nums'>{view.todos.length}</span>
         <CreateTodoButton bucketId={view.bucket.id} buckets={bucketViews.map(({ bucket }) => bucket)} />
       </header>
       {isTarget && (
-        <Button className='h-11 border-2 border-dashed border-primary' variant='outline' onClick={() => onPlace(view)}>
+        <Button
+          className='h-11 border-2 border-dashed border-primary text-primary dark:border-primary'
+          data-place-target
+          variant='outline'
+          onClick={() => onPlace(view)}
+        >
           Move here
         </Button>
       )}
@@ -238,7 +256,7 @@ function PickCard({
       <TodoCheck todo={todo} />
       <button
         className={cn(
-          'min-h-11 min-w-0 flex-1 rounded-md py-2 text-left font-semibold outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50',
+          'min-h-11 min-w-0 flex-1 rounded-md py-2 text-left font-semibold [overflow-wrap:anywhere] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 md:pointer-fine:min-h-9',
           todo.completed && 'text-muted-foreground line-through',
         )}
         type='button'
@@ -252,7 +270,8 @@ function PickCard({
       <Button
         aria-label={isPicked ? `Stop moving “${todo.title}”` : `Move “${todo.title}”`}
         aria-pressed={isPicked}
-        className='size-11'
+        className='size-11 md:pointer-fine:size-9'
+        data-pick-button={todo.id}
         size='icon'
         variant={isPicked ? 'default' : 'ghost'}
         onClick={() => onPick(isPicked ? null : todo)}
@@ -262,7 +281,7 @@ function PickCard({
       <Button
         ref={handleRef}
         aria-label={`Drag “${todo.title}”`}
-        className='size-11 cursor-grab touch-none text-muted-foreground active:cursor-grabbing'
+        className='size-11 cursor-grab touch-none text-muted-foreground active:cursor-grabbing md:pointer-fine:size-9'
         size='icon'
         variant='ghost'
       >

@@ -120,7 +120,7 @@ export function TodoCheck({ todo }: { todo: Todo }) {
   const { mutate: toggleTodo } = useToggleTodo()
 
   return (
-    <span className='flex size-11 shrink-0 items-center justify-center'>
+    <span className='flex size-11 shrink-0 items-center justify-center md:pointer-fine:size-9'>
       <Checkbox
         aria-label={todo.completed ? `Mark “${todo.title}” as not done` : `Mark “${todo.title}” as done`}
         checked={todo.completed}
