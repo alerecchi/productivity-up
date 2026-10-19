@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import type { z } from 'zod'
 
-import { createPrivateOperation, validateInput } from '@/server/core'
+import { createVerifiedUserMiddleware, validateInput } from '@/server/core'
 import { createCategoryRepository } from '@/server/db/category-repository'
 import {
   createCategoryForUser,
@@ -21,7 +21,7 @@ import {
 
 export const createCategory = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({
+    createVerifiedUserMiddleware({
       hints: () => [{ type: 'categories-changed' }],
       operation: 'categories.create',
       response: CategoryResponse,
@@ -33,7 +33,7 @@ export const createCategory = createServerFn({ method: 'POST' })
   })
 
 export const listCategories = createServerFn({ method: 'GET' })
-  .middleware([createPrivateOperation({ operation: 'categories.list', response: CategoriesResponse })])
+  .middleware([createVerifiedUserMiddleware({ operation: 'categories.list', response: CategoriesResponse })])
   .validator(validateInput(ListCategoriesInput))
   .handler(async ({ context }): Promise<z.output<typeof CategoriesResponse>> => {
     return listCategoriesForUser({ repository: createCategoryRepository(context.db), userId: context.user.id })
@@ -41,7 +41,7 @@ export const listCategories = createServerFn({ method: 'GET' })
 
 export const updateCategory = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({
+    createVerifiedUserMiddleware({
       hints: () => [{ type: 'categories-changed' }],
       operation: 'categories.update',
       response: CategoryResponse,
@@ -54,7 +54,7 @@ export const updateCategory = createServerFn({ method: 'POST' })
 
 export const deleteCategory = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({
+    createVerifiedUserMiddleware({
       hints: () => [{ type: 'categories-changed' }],
       operation: 'categories.delete',
       response: DeleteCategoryResponse,

@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import type { z } from 'zod'
 
-import { createPrivateOperation, validateInput } from '@/server/core'
+import { createVerifiedUserMiddleware, validateInput } from '@/server/core'
 import { createTodoRepository } from '@/server/db/todo-repository'
 import {
   createTodoForUser,
@@ -25,14 +25,16 @@ import {
 } from '@/server/functions/todos/schemas'
 
 export const createTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ hints: todoHints.create, operation: 'todos.create', response: TodoResponse })])
+  .middleware([
+    createVerifiedUserMiddleware({ hints: todoHints.create, operation: 'todos.create', response: TodoResponse }),
+  ])
   .validator(validateInput(CreateTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof TodoResponse>> => {
     return createTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
   })
 
 export const getTodos = createServerFn({ method: 'GET' })
-  .middleware([createPrivateOperation({ operation: 'todos.list', response: TodosResponse })])
+  .middleware([createVerifiedUserMiddleware({ operation: 'todos.list', response: TodosResponse })])
   .validator(validateInput(GetTodosInput))
   .handler(async ({ data, context }): Promise<z.output<typeof TodosResponse>> => {
     return getTodosForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
@@ -40,7 +42,7 @@ export const getTodos = createServerFn({ method: 'GET' })
 
 export const updateTodo = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({ hints: todoHints.update, operation: 'todos.update', response: UpdateTodoResponse }),
+    createVerifiedUserMiddleware({ hints: todoHints.update, operation: 'todos.update', response: UpdateTodoResponse }),
   ])
   .validator(validateInput(UpdateTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof UpdateTodoResponse>> => {
@@ -48,7 +50,9 @@ export const updateTodo = createServerFn({ method: 'POST' })
   })
 
 export const moveTodo = createServerFn({ method: 'POST' })
-  .middleware([createPrivateOperation({ hints: todoHints.move, operation: 'todos.move', response: MoveTodoResponse })])
+  .middleware([
+    createVerifiedUserMiddleware({ hints: todoHints.move, operation: 'todos.move', response: MoveTodoResponse }),
+  ])
   .validator(validateInput(MoveTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof MoveTodoResponse>> => {
     return moveTodoForUser({ data, repository: createTodoRepository(context.db), userId: context.user.id })
@@ -56,7 +60,7 @@ export const moveTodo = createServerFn({ method: 'POST' })
 
 export const deleteTodo = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({ hints: todoHints.delete, operation: 'todos.delete', response: DeleteTodoResponse }),
+    createVerifiedUserMiddleware({ hints: todoHints.delete, operation: 'todos.delete', response: DeleteTodoResponse }),
   ])
   .validator(validateInput(DeleteTodoInput))
   .handler(async ({ data, context }): Promise<z.output<typeof DeleteTodoResponse>> => {

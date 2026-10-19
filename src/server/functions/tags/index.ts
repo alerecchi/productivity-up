@@ -1,7 +1,7 @@
 import { createServerFn } from '@tanstack/react-start'
 import type { z } from 'zod'
 
-import { createPrivateOperation, validateInput } from '@/server/core'
+import { createVerifiedUserMiddleware, validateInput } from '@/server/core'
 import { createTagRepository } from '@/server/db/tag-repository'
 import {
   createTagForUser,
@@ -21,7 +21,7 @@ import {
 
 export const createTag = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({
+    createVerifiedUserMiddleware({
       hints: () => [{ type: 'tags-changed' }],
       operation: 'tags.create',
       response: TagResponse,
@@ -33,7 +33,7 @@ export const createTag = createServerFn({ method: 'POST' })
   })
 
 export const listTags = createServerFn({ method: 'GET' })
-  .middleware([createPrivateOperation({ operation: 'tags.list', response: TagsResponse })])
+  .middleware([createVerifiedUserMiddleware({ operation: 'tags.list', response: TagsResponse })])
   .validator(validateInput(ListTagsInput))
   .handler(async ({ context }): Promise<z.output<typeof TagsResponse>> => {
     return listTagsForUser({ repository: createTagRepository(context.db), userId: context.user.id })
@@ -41,7 +41,7 @@ export const listTags = createServerFn({ method: 'GET' })
 
 export const updateTag = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({
+    createVerifiedUserMiddleware({
       hints: () => [{ type: 'tags-changed' }],
       operation: 'tags.update',
       response: TagResponse,
@@ -54,7 +54,7 @@ export const updateTag = createServerFn({ method: 'POST' })
 
 export const deleteTag = createServerFn({ method: 'POST' })
   .middleware([
-    createPrivateOperation({
+    createVerifiedUserMiddleware({
       hints: () => [{ type: 'tags-changed' }],
       operation: 'tags.delete',
       response: DeleteTagResponse,

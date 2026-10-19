@@ -26,7 +26,7 @@ import {
   ListCategoriesInput,
   UpdateCategoryInput,
 } from '@/server/functions/categories/schemas'
-import { PRIVATE_OPERATION_NAMES } from '@/server/functions/private-operation-inventory'
+import { VERIFIED_USER_OPERATION_NAMES } from '@/server/functions/operation-inventory'
 import {
   CreateTagInput,
   DeleteTagInput,
@@ -69,7 +69,7 @@ const schemaCases: Array<[string, z.ZodType, unknown]> = [
 
 describe('private operation input schemas', () => {
   it('has one strict schema for every private operation', () => {
-    expect(schemaCases.map(([operation]) => operation)).toEqual(PRIVATE_OPERATION_NAMES)
+    expect(schemaCases.map(([operation]) => operation)).toEqual(VERIFIED_USER_OPERATION_NAMES)
 
     for (const [, schema, input] of schemaCases) {
       expect(schema.safeParse(input).success).toBe(true)
