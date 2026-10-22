@@ -1,0 +1,4 @@
+# Attaches to the browser `pnpm verify browser open` links at .verify/devtools-browser (see the verify-productivity-up skill).
+[mcp_servers.verify-browser]
+command = "npx"
+args = ["-y", "chrome-devtools-mcp@1.11.0", "--autoConnect", "--userDataDir", ".verify/devtools-browser"]

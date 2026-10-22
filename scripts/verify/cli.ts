@@ -26,6 +26,7 @@ import { groupAlive, stopProcessGroup } from './processes'
 const root = process.cwd()
 const verifyDir = path.join(root, '.verify')
 const evidenceRoot = path.join(verifyDir, 'evidence')
+const devtoolsLink = path.join(verifyDir, 'devtools-browser')
 
 type InstanceState = {
   /** Leader of the vite + workerd process group; unset until vite has been spawned. */
@@ -307,6 +308,7 @@ async function runBrowser() {
   await runBrowserAction(
     {
       baseUrl: state.baseUrl,
+      devtoolsLink,
       evidenceRoot,
       instanceDir,
       sessionFile: (user) => (user === 'none' ? undefined : sessionFile(user as SeedUserKey)),
@@ -334,7 +336,7 @@ async function down() {
     log(`No instance on port ${port}.`)
     return
   }
-  await closeBrowser(instanceDir)
+  await closeBrowser(instanceDir, devtoolsLink)
   // The app runs as its own process group (vite + workerd children); stop the whole group, never by name.
   // workerd can outlive a crashed vite, so this checks the group, not just its leader.
   const appPid = existsSync(stateFile) ? readState().appPid : undefined
