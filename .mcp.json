@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "verify-browser": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@1.11.0", "--autoConnect", "--userDataDir", ".verify/devtools-browser"]
+    }
+  }
+}

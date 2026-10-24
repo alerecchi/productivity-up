@@ -1,6 +1,6 @@
 ---
 name: verify-productivity-up
-description: Launch and drive the Productivity Up web app (board, todos, buckets, migration, auth) in an isolated local instance with Playwright, and capture evidence. Use to prove a change works in the real app, reproduce a UI bug, or verify a feature end to end.
+description: Launch and drive the Productivity Up web app (board, todos, buckets, migration, auth) in an isolated local instance with Playwright, and capture evidence. Use to prove a change works in the real app, reproduce a UI bug, verify a feature end to end, or inspect its network, styles, or performance with DevTools.
 ---
 
 # Verify Productivity Up
@@ -62,6 +62,15 @@ pnpm verify browser close
 `click` and `fill` take one target: `--role` (with optional `--name`), `--label`, `--text`, or `--selector`. Add `--nth <i>` when several elements match, and `--exact` for exact name matching. Each command waits for hydration and network to settle, then prints the URL plus any console errors and HTTP responses ≥ 400. Run `snapshot` after an action to see what changed; it's cheaper than a screenshot and gives you the exact names for locators. Everything is logged to `.verify/evidence/<timestamp>-browser/` (`transcript.log`, snapshots, screenshots).
 
 Exploring is for understanding the feature and finding selectors. Proof comes from a journey: it can be re-run, asserts, reloads, and records a trace and video.
+
+## Inspect with DevTools
+
+`browser open` also points `.verify/devtools-browser` at the browser it opened, and the `verify-browser` MCP server (`.mcp.json` for Claude, `.codex/config.toml` for Codex) attaches through that link to the same signed-in page the `browser` commands drive, whatever the port. Use it for what happens inside the page, which the harness doesn't report: request and response bodies (`list_network_requests`, `get_network_request`), computed styles (`get_css_styles`), performance traces, Lighthouse, heap snapshots. Use `verify-browser`, not the plugin's `chrome-devtools` server, which launches its own signed-out Chrome. Drive with the `browser` commands, which wait for hydration; the MCP's clicks don't wait.
+
+- It records network and console only from the moment it attaches. Make its first call, then trigger the action or `browser goto` again.
+- A dev page load makes about 400 requests; filter with `resourceTypes: ["fetch"]`. Server function calls are `/_serverFn/<id>`, where the id is base64 JSON naming the source file.
+- Page ids change whenever the browser is reopened; call `list_pages` again.
+- `Could not connect to Chrome in .verify/devtools-browser` means no browser is open: run `browser open`. With two instances, the link follows the browser opened last.
 
 ## Drive
 

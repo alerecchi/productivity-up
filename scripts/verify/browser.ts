@@ -1,7 +1,18 @@
 // Step-by-step browser for exploring an instance: one Chromium stays open between commands, and each
 // `pnpm verify browser <action>` connects to it over CDP, acts, reports, and disconnects.
 import { spawn } from 'node:child_process'
-import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import path from 'node:path'
 
 import { chromium } from '@playwright/test'
@@ -25,6 +36,8 @@ export type BrowserOptions = {
 
 type BrowserInstance = {
   baseUrl: string
+  /** Symlink to the open browser's profile; the `verify-browser` MCP server attaches through its DevToolsActivePort. */
+  devtoolsLink: string
   evidenceRoot: string
   instanceDir: string
   /** Saved session for a seed user, or undefined for `none`. */
@@ -55,7 +68,7 @@ export async function runBrowserAction(
     await openBrowser(instance, stateFile, options)
   }
   if (action === 'close') {
-    await closeBrowser(instance.instanceDir)
+    await closeBrowser(instance.instanceDir, instance.devtoolsLink)
     console.log('Browser closed.')
     return
   }
@@ -133,13 +146,25 @@ export async function runBrowserAction(
 }
 
 /** Stops the browser `open` started for this instance, if any, and waits for it to exit before deleting its profile. */
-export async function closeBrowser(instanceDir: string) {
+export async function closeBrowser(instanceDir: string, devtoolsLink: string) {
   const stateFile = path.join(instanceDir, 'browser.json')
   if (!existsSync(stateFile)) return
   const state = JSON.parse(readFileSync(stateFile, 'utf8')) as BrowserState
   await stopProcessGroup(state.pid, 5000)
   rmSync(stateFile, { force: true })
-  rmSync(path.join(instanceDir, 'browser-profile'), { force: true, recursive: true })
+  const profileDir = path.join(instanceDir, 'browser-profile')
+  // Another instance's browser may have taken the link since; leave it pointing there.
+  if (linkTarget(devtoolsLink) === profileDir) unlinkSync(devtoolsLink)
+  rmSync(profileDir, { force: true, recursive: true })
+}
+
+function linkTarget(link: string) {
+  try {
+    if (!lstatSync(link).isSymbolicLink()) return undefined
+    return path.resolve(path.dirname(link), readlinkSync(link))
+  } catch {
+    return undefined
+  }
 }
 
 async function openBrowser(instance: BrowserInstance, stateFile: string, options: BrowserOptions) {
@@ -176,7 +201,7 @@ async function openBrowser(instance: BrowserInstance, stateFile: string, options
     !(await fetch(`http://127.0.0.1:${state.cdpPort}/json/version`).catch(() => undefined))?.ok
   ) {
     if (Date.now() > deadline) {
-      await closeBrowser(instance.instanceDir)
+      await closeBrowser(instance.instanceDir, instance.devtoolsLink)
       throw new Error('Chromium did not open its debugging port')
     }
     if (existsSync(activePortFile)) state.cdpPort = Number(readFileSync(activePortFile, 'utf8').split('\n')[0])
@@ -193,6 +218,9 @@ async function openBrowser(instance: BrowserInstance, stateFile: string, options
     await browser.contexts()[0].addCookies(cookies)
     await browser.close()
   }
+  // The most recently opened browser takes the link, whichever instance it belongs to.
+  if (linkTarget(instance.devtoolsLink) !== undefined) unlinkSync(instance.devtoolsLink)
+  symlinkSync(path.relative(path.dirname(instance.devtoolsLink), profileDir), instance.devtoolsLink)
   console.log(`Evidence: ${evidenceDir}`)
 }
 
