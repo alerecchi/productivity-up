@@ -672,7 +672,7 @@ describe('board cache lifecycle consequences', () => {
     const cache = createBoardCache(queryClient)
     const board: CanonicalBoard = {
       ...createBoard(),
-      completionRecap: undefined,
+      dayRecap: undefined,
       pendingMigrationBuckets: [createBucket({ id: 21, period: '2026-W38', type: 'weekly' })],
       status: 'migration_required',
     }
@@ -727,7 +727,7 @@ describe('board cache lifecycle consequences', () => {
       ...createBoard({
         buckets: [createBucket({ id: 10 }), createBucket({ id: 12, period: '2026-W38', type: 'weekly' })],
       }),
-      completionRecap: undefined,
+      dayRecap: undefined,
       pendingMigrationBuckets: [createBucket({ id: 21, period: '2026-09', type: 'monthly' })],
       status: 'migration_required',
     }

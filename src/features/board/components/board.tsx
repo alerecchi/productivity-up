@@ -54,7 +54,7 @@ function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
       if (result.status === 'migration_required') {
         const { migrationRecap, ...nextBoard } = result
         await cache.apply({
-          board: { ...nextBoard, completionRecap: migrationRecap },
+          board: { ...nextBoard, dayRecap: migrationRecap },
           type: 'lifecycle-committed',
         })
         return
@@ -63,7 +63,7 @@ function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
       await cache.apply({
         board: {
           buckets: result.buckets,
-          completionRecap: {
+          dayRecap: {
             ...result.recap,
             completedPlanningDate: board.planningDate,
             nextPlanningDate: result.planningDate,
@@ -134,25 +134,25 @@ function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
           </div>
         </TodoDragDropProvider>
       </div>
-      {board.status === 'migration_required' && !board.completionRecap ? (
+      {board.status === 'migration_required' && !board.dayRecap ? (
         <PendingMigrationRecapDialog sourceBucketId={board.pendingMigrationBuckets[0].id} />
       ) : null}
-      {board.status === 'migration_required' && board.completionRecap ? (
+      {board.status === 'migration_required' && board.dayRecap ? (
         <MigrationRecapDialog
           onContinue={() => navigate({ to: '/migration' })}
           pendingMigrationBuckets={board.pendingMigrationBuckets}
-          recap={board.completionRecap}
+          recap={board.dayRecap}
         />
       ) : null}
-      {board.status === 'ready' && board.completionRecap ? (
+      {board.status === 'ready' && board.dayRecap ? (
         <BucketLifecycleRecapDialog
           actionLabel='Close and plan tomorrow'
-          completedCount={board.completionRecap.completedCount}
-          headline={`${board.completionRecap.completedPlanningDate} is wrapped`}
-          incompleteCount={board.completionRecap.incompleteCount}
+          completedCount={board.dayRecap.completedCount}
+          headline={`${board.dayRecap.completedPlanningDate} is wrapped`}
+          unfinishedCount={board.dayRecap.unfinishedCount}
           migrationStepDetail='All todos are completed, so this step is skipped.'
           migrationStepTitle='No migration needed'
-          onAction={() => cache.dismissCompletionRecap()}
+          onAction={() => cache.dismissDayRecap()}
           open
           showCloseButton
         />
