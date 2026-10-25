@@ -38,7 +38,7 @@ This repo is a colocated jj repository, and each workspace is a jj workspace. Do
 
 ### Product
 
-Purpose, users and brand personality guide every UI, UX and copy decision. See `docs/PRODUCT.md`.
+Purpose, users and brand personality guide every UI, UX and copy decision. See `docs/PRODUCT.md`. Voice, tone and user-facing vocabulary for every string a user sees or hears, including dates and period names, are in `docs/VOICE.md`.
 
 ### Design system
 

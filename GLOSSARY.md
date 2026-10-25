@@ -8,6 +8,10 @@ Productivity Up is a todo management context organized around moving work from b
 A time-based container that holds todos for a planning horizon, such as this year, this month, this week, or today. Todos are expected to flow from broader buckets toward narrower buckets as they become more immediate.
 _Avoid_: Column, lane.
 
+**Inbox**:
+The one bucket with no period: it has no Period End. It holds todos that have no time horizon yet, both newly captured ones and ones moved back from the yearly bucket. User-facing text calls it Someday.
+_Avoid_: Backlog, unscheduled bucket.
+
 **Bucket Horizon**:
 The calendar granularity a time-based bucket represents: yearly, monthly, weekly, or daily. A bucket's horizon determines which current period it belongs to in the user's timezone.
 _Avoid_: Bucket size, bucket level.
@@ -33,28 +37,33 @@ A stable text identifier for a bucket's period, such as `2026`, `2026-07`, `2026
 _Avoid_: Bucket label, display name.
 
 **Planning Date**:
-The local date the board is currently organized around for a user. It is normally today in the user's timezone, but may be tomorrow after the user completes the day early.
+The local date the board is currently organized around for a user. It is normally today in the user's timezone, but may be tomorrow after the user uses Finish Today.
 _Avoid_: Display date, selected date.
 
+**Finish Today**:
+The user's action of ending the current Planning Date before the day is over. The most granular bucket is completed, the Planning Date moves to tomorrow, and any unfinished todos go through a migration flow.
+_Avoid_: Complete day, wrap up the day.
+
+
 **Future Bucket**:
-A bucket that belongs to the user's Planning Date while that Planning Date is still ahead of today in the user's timezone. Future buckets are visible planning-ahead state and cannot be manually completed.
+A bucket that belongs to the user's Planning Date while that Planning Date is still ahead of today in the user's timezone. Future buckets are visible planning-ahead state and cannot be finished with Finish Today.
 _Avoid_: Tomorrow bucket, upcoming bucket.
 
-**Bucket Expiration**:
-The moment when a time-based bucket's period has ended in the user's timezone. An expired bucket no longer represents the current period for its horizon.
-_Avoid_: Due date, deadline.
+**Period End**:
+The moment when a time-based bucket's period has ended in the user's timezone. A bucket whose period has ended no longer represents the current period for its horizon.
+_Avoid_: Bucket expiration, due date, deadline.
 
 **Lifecycle Reconciliation**:
-The process that aligns a user's active buckets with their Planning Date. It creates needed current buckets, archives buckets that need no attention, and starts a migration flow when incomplete todos require user choices.
+The process that aligns a user's active buckets with their Planning Date. It creates needed current buckets, archives buckets that need no attention, and starts a migration flow when unfinished todos require user choices.
 _Avoid_: Sync, refresh.
 
 **Bucket Migration**:
-The review of incomplete todos from an expired or completed bucket, where each todo is either carried into the next period for that bucket horizon or moved back to the broader bucket.
+The review of unfinished todos from a bucket whose period has ended or that was finished with Finish Today, where each todo is either carried into the next period for that bucket horizon or moved back to the broader bucket.
 _Avoid_: Rollover, cleanup.
 
 **Pending Migration Bucket**:
-A bucket that no longer belongs on the active board but still contains incomplete todos that require user migration choices before it can be archived.
-_Avoid_: Active expired bucket, blocked bucket.
+A bucket that no longer belongs on the active board but still contains unfinished todos that require user migration choices before it can be archived.
+_Avoid_: Ended active bucket, blocked bucket.
 
 **Migration Flow**:
 A sequence of one or more bucket migrations presented to the user when multiple buckets need attention. Each step migrates one bucket before moving to the next bucket.
@@ -65,16 +74,16 @@ One bucket migration inside a migration flow. A migration step becomes durable o
 _Avoid_: Draft migration, partial migration.
 
 **Planning Flow**:
-An optional, finite guided experience for pulling incomplete Todos from broader Buckets into newly created Buckets after Lifecycle Reconciliation and any required Migration Flow have finished. Except during initial board creation, a new Bucket is eligible whenever at least one broader Bucket contains an incomplete Todo, regardless of which lifecycle action created it. Eligible Buckets are planned independently from broader to narrower horizons. Users may also create, inspect, edit, and complete Todos while planning. A Planning Flow can be entered only once; leaving it consumes the opportunity, while dismissing the initial invitation leaves a quieter Bucket callout until the Bucket is self-planned or the flow begins.
+An optional, finite guided experience for pulling unfinished Todos from broader Buckets into newly created Buckets after Lifecycle Reconciliation and any required Migration Flow have finished. Except during initial board creation, a new Bucket is eligible whenever at least one broader Bucket contains an unfinished Todo, regardless of which lifecycle action created it. Eligible Buckets are planned independently from broader to narrower horizons. Users may also create, inspect, edit, and complete Todos while planning. A Planning Flow can be entered only once; leaving it consumes the opportunity, while dismissing the initial invitation leaves a quieter Bucket callout until the Bucket is self-planned or the flow begins.
 _Avoid_: Planning mode, mandatory planning.
 
-**Completion Recap**:
-A summary shown before a migration flow begins, or after the user manually completes the most granular bucket with nothing left to migrate. It gives feedback on completed and incomplete todos in the buckets that need attention.
-_Avoid_: Report, retrospective.
+**Day Recap**:
+A summary shown before a migration flow begins, or after Finish Today with nothing left to migrate. It gives feedback on completed and unfinished todos in the buckets that need attention.
+_Avoid_: Completion recap, report, retrospective.
 
 **Todo**:
-An item of work that a user wants to remember, plan, or complete within a bucket. User-facing text may call this a task when that reads more naturally.
-_Avoid_: Task in domain and code language.
+An item of work that a user wants to remember, plan, or complete within a bucket. User-facing text uses the same word.
+_Avoid_: Task, to-do.
 
 **Todo Position**:
 The placement of a todo relative to other todos in the same bucket. A todo's position is part of the board's durable planning state, so moving a todo within or between buckets changes where it belongs in that ordered bucket.

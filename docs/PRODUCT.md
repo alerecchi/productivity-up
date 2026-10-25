@@ -8,8 +8,8 @@ Productivity Up is a todo app that organizes work by time horizon. Todos start b
 
 Two mechanisms, used together, set the product apart:
 
-- **Time-based Buckets.** There are five Buckets: an Inbox that never expires, This Year, This Month, This Week, and Today. Each time-based Bucket covers the current calendar period for its horizon, in the user's timezone.
-- **Migration when a Bucket expires.** When a Bucket's period ends (for example, today becomes tomorrow), every incomplete task in it is shown to the user, who decides for each one. They can keep it in the next period of the same horizon (e.g. try again tomorrow) or move it back to the broader Bucket (e.g. this week). Daily, weekly, monthly, and yearly Buckets all work this way.
+- **Time-based Buckets.** There are five Buckets: an Inbox (Someday in the app) that never ends, This Year, This Month, This Week, and Today. Each time-based Bucket covers the current calendar period for its horizon, in the user's timezone.
+- **Migration when a Bucket's period ends.** When a Bucket's period ends (for example, today becomes tomorrow), every unfinished todo in it is shown to the user, who decides for each one. They can keep it in the next period of the same horizon (e.g. try again tomorrow) or move it back to the broader Bucket (e.g. this week). Daily, weekly, monthly, and yearly Buckets all work this way.
 
 ## Users
 
