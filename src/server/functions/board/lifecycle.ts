@@ -30,7 +30,7 @@ export type BoardSnapshot = {
 export type RetiredBucket = {
   bucket: BoardBucket
   completedCount: number
-  incompleteCount: number
+  unfinishedCount: number
   status: 'archived' | 'pending_migration'
 }
 
@@ -75,7 +75,7 @@ export type BoardState = MigrationRequiredBoardState | ReadyBoardState
 export type CompletedBoardState = Omit<ReadyBoardState, 'status'> & {
   recap: {
     completedCount: number
-    incompleteCount: 0
+    unfinishedCount: 0
     kind: 'all_complete'
   }
   status: 'completed'
@@ -84,7 +84,7 @@ export type CompletedBoardState = Omit<ReadyBoardState, 'status'> & {
 export type MigrationFlowRecap = {
   bucketBreakdown: Array<Omit<RetiredBucket, 'status'>>
   completedCount: number
-  incompleteCount: number
+  unfinishedCount: number
 }
 
 export type CompletedDayMigrationState = MigrationRequiredBoardState & {
@@ -268,14 +268,14 @@ export async function finishTodayForUser({
   if (board.status === 'migration_required') {
     const bucketBreakdown = result.retiredBuckets
       .filter((retired) => retired.status === 'pending_migration')
-      .map(({ bucket, completedCount, incompleteCount }) => ({ bucket, completedCount, incompleteCount }))
+      .map(({ bucket, completedCount, unfinishedCount }) => ({ bucket, completedCount, unfinishedCount }))
 
     return {
       ...board,
       migrationRecap: {
         bucketBreakdown,
         completedCount: bucketBreakdown.reduce((total, row) => total + row.completedCount, 0),
-        incompleteCount: bucketBreakdown.reduce((total, row) => total + row.incompleteCount, 0),
+        unfinishedCount: bucketBreakdown.reduce((total, row) => total + row.unfinishedCount, 0),
       },
     }
   }
@@ -285,7 +285,7 @@ export async function finishTodayForUser({
   return {
     buckets: board.buckets,
     planningDate: board.planningDate,
-    recap: { completedCount: completedDaily?.completedCount ?? 0, incompleteCount: 0, kind: 'all_complete' },
+    recap: { completedCount: completedDaily?.completedCount ?? 0, unfinishedCount: 0, kind: 'all_complete' },
     status: 'completed',
     timeZone: board.timeZone,
   }

@@ -38,24 +38,24 @@ const MigrationRecapResponse = z.object({
     z.object({
       bucket: BucketResponse,
       completedCount: z.int().nonnegative(),
-      incompleteCount: z.int().nonnegative(),
+      unfinishedCount: z.int().nonnegative(),
     }),
   ),
   completedCount: z.int().nonnegative(),
-  incompleteCount: z.int().nonnegative(),
+  unfinishedCount: z.int().nonnegative(),
 })
 
 const AllCompleteRecapResponse = z.object({
   completedCount: z.int().nonnegative(),
   completedPlanningDate: PlanningDateSchema,
-  incompleteCount: z.literal(0),
+  unfinishedCount: z.literal(0),
   kind: z.literal('all_complete'),
   nextPlanningDate: PlanningDateSchema,
 })
 
 const ReadyBoardResponse = z.object({
   buckets: BucketsResponse,
-  completionRecap: AllCompleteRecapResponse.optional(),
+  dayRecap: AllCompleteRecapResponse.optional(),
   planningDate: PlanningDateSchema,
   status: z.literal('ready'),
   timeZone: UserTimeZoneSchema,
@@ -63,7 +63,7 @@ const ReadyBoardResponse = z.object({
 
 const MigrationRequiredBoardResponse = z.object({
   buckets: BucketsResponse,
-  completionRecap: MigrationRecapResponse.optional(),
+  dayRecap: MigrationRecapResponse.optional(),
   pendingMigrationBuckets: BucketsResponse,
   planningDate: PlanningDateSchema,
   status: z.literal('migration_required'),
@@ -91,7 +91,7 @@ const CompletedBoardResponse = z.object({
   planningDate: PlanningDateSchema,
   recap: z.object({
     completedCount: z.int().nonnegative(),
-    incompleteCount: z.literal(0),
+    unfinishedCount: z.literal(0),
     kind: z.literal('all_complete'),
   }),
   status: z.literal('completed'),
@@ -120,7 +120,7 @@ export const MigrationStepResponse = z.object({
   carryForwardDestination: BucketResponse,
   completedCount: z.int().nonnegative(),
   flowRecap: MigrationRecapResponse,
-  incompleteCount: z.int().nonnegative(),
+  unfinishedCount: z.int().nonnegative(),
   moveBackDestination: BucketResponse,
   pendingMigrationBuckets: BucketsResponse,
   sourceBucket: BucketResponse,

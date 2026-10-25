@@ -97,13 +97,13 @@ describe('Board lifecycle controls', () => {
     vi.useRealTimers()
   })
 
-  it('shows the Completion Recap after completing an all-done day', async () => {
+  it('shows the Day Recap after completing an all-done day', async () => {
     mockedFinishToday.mockResolvedValue({
       buckets: tomorrowBuckets,
       planningDate: '2026-07-04',
       recap: {
         completedCount: 2,
-        incompleteCount: 0,
+        unfinishedCount: 0,
         kind: 'all_complete',
       },
       status: 'completed',
@@ -127,7 +127,7 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByText('Open the board')).toBeInTheDocument()
     expect(screen.getByText('2 completed')).toBeInTheDocument()
     expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).toMatchObject({
-      completionRecap: {
+      dayRecap: {
         completedCount: 2,
         completedPlanningDate: '2026-07-03',
         nextPlanningDate: '2026-07-04',
@@ -140,7 +140,7 @@ describe('Board lifecycle controls', () => {
     await waitFor(() => {
       expect(screen.queryByRole('heading', { name: '2026-07-03 is wrapped' })).not.toBeInTheDocument()
     })
-    expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).not.toHaveProperty('completionRecap')
+    expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).not.toHaveProperty('dayRecap')
     expect(mockedFinishToday).toHaveBeenCalledWith({ data: { planningDate: '2026-07-03' } })
   })
 
@@ -153,9 +153,9 @@ describe('Board lifecycle controls', () => {
     mockedFinishToday.mockResolvedValue({
       buckets: tomorrowBuckets,
       migrationRecap: {
-        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, incompleteCount: 2 }],
+        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, unfinishedCount: 2 }],
         completedCount: 1,
-        incompleteCount: 2,
+        unfinishedCount: 2,
       },
       pendingMigrationBuckets: [pendingBucket],
       planningDate: '2026-07-04',
@@ -181,9 +181,9 @@ describe('Board lifecycle controls', () => {
     expect(screen.getByText('Daily 2026-07-03')).toBeInTheDocument()
     expect(mockedGetMigrationStep).not.toHaveBeenCalled()
     expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).toMatchObject({
-      completionRecap: {
+      dayRecap: {
         completedCount: 1,
-        incompleteCount: 2,
+        unfinishedCount: 2,
       },
       status: 'migration_required',
     })
@@ -347,11 +347,11 @@ describe('Board lifecycle controls', () => {
       carryForwardDestination: tomorrowBuckets[4],
       completedCount: 1,
       flowRecap: {
-        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, incompleteCount: 2 }],
+        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, unfinishedCount: 2 }],
         completedCount: 1,
-        incompleteCount: 2,
+        unfinishedCount: 2,
       },
-      incompleteCount: 2,
+      unfinishedCount: 2,
       moveBackDestination: tomorrowBuckets[3],
       pendingMigrationBuckets: [pendingBucket],
       sourceBucket: pendingBucket,
@@ -395,11 +395,11 @@ describe('Board lifecycle controls', () => {
       carryForwardDestination: tomorrowBuckets[4],
       completedCount: 0,
       flowRecap: {
-        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 0, incompleteCount: 1 }],
+        bucketBreakdown: [{ bucket: pendingBucket, completedCount: 0, unfinishedCount: 1 }],
         completedCount: 0,
-        incompleteCount: 1,
+        unfinishedCount: 1,
       },
-      incompleteCount: 1,
+      unfinishedCount: 1,
       moveBackDestination: tomorrowBuckets[3],
       pendingMigrationBuckets: [pendingBucket],
       sourceBucket: pendingBucket,

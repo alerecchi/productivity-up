@@ -10,10 +10,10 @@ export type MigrationRecap = {
   bucketBreakdown: Array<{
     bucket: Pick<Bucket, 'id' | 'period' | 'type'>
     completedCount: number
-    incompleteCount: number
+    unfinishedCount: number
   }>
   completedCount: number
-  incompleteCount: number
+  unfinishedCount: number
 }
 
 type MigrationRecapDialogProps = {
@@ -36,7 +36,7 @@ export function MigrationRecapDialog({
       bucketBreakdown={recap?.bucketBreakdown}
       completedCount={recap?.completedCount ?? 0}
       headline='Migration required'
-      incompleteCount={recap?.incompleteCount ?? 0}
+      unfinishedCount={recap?.unfinishedCount ?? 0}
       migrationStepDetail={
         isLoading
           ? 'Loading unfinished todos before migration.'
@@ -67,7 +67,7 @@ export function PendingMigrationRecapDialog({ sourceBucketId }: { sourceBucketId
         actionLabel='Retry migration'
         completedCount={0}
         headline='Migration could not load'
-        incompleteCount={0}
+        unfinishedCount={0}
         migrationStepDetail='Try loading the unfinished todos again before continuing.'
         migrationStepTitle='Migration unavailable'
         onAction={() => {

@@ -35,10 +35,10 @@ export type MigrationFlowRecap = {
   bucketBreakdown: Array<{
     bucket: BucketDb
     completedCount: number
-    incompleteCount: number
+    unfinishedCount: number
   }>
   completedCount: number
-  incompleteCount: number
+  unfinishedCount: number
 }
 
 type MigrationDecision = 'carry_forward' | 'move_back'
@@ -55,7 +55,7 @@ export type MigrationStepState = {
   /** Highest Todo Position per active Bucket; absent for empty Buckets. */
   lastPositions: Map<number, number>
   planningDate: string | null
-  /** IDs of incomplete Todos currently in the source Bucket, in board order. */
+  /** IDs of unfinished Todos currently in the source Bucket, in board order. */
   sourceTodoIds: Array<number>
   timeZone: string | null
 }
@@ -115,7 +115,7 @@ export async function confirmMigrationStepForUser({
 
 /**
  * Decides a Migration Step against authoritative state. The decisions must cover exactly the source Bucket's current
- * incomplete Todos, which are appended to their destinations in board order.
+ * unfinished Todos, which are appended to their destinations in board order.
  */
 function planMigrationStep(state: MigrationStepState, data: ConfirmMigrationStepData): MigrationStepPlan {
   const { planningDate, timeZone } = state
@@ -202,7 +202,7 @@ export async function getMigrationStepForUser({ data, repository, userId }: GetM
   const todos = (await repository.getTodosByBucketWithDisplay(userId, sourceBucket.id)).toSorted(
     (a, b) => a.position - b.position || a.id - b.id,
   )
-  const incompleteTodos = todos.filter((todo) => !todo.completed)
+  const unfinishedTodos = todos.filter((todo) => !todo.completed)
   const carryForwardDestination = await getMigrationDestinationBucket({
     decision: 'carry_forward',
     planningDate: user.planningDate,
@@ -220,13 +220,13 @@ export async function getMigrationStepForUser({ data, repository, userId }: GetM
 
   return {
     carryForwardDestination,
-    completedCount: todos.length - incompleteTodos.length,
+    completedCount: todos.length - unfinishedTodos.length,
     flowRecap: await getMigrationFlowRecap({ pendingMigrationBuckets, repository, userId }),
-    incompleteCount: incompleteTodos.length,
+    unfinishedCount: unfinishedTodos.length,
     moveBackDestination,
     pendingMigrationBuckets,
     sourceBucket,
-    todos: incompleteTodos,
+    todos: unfinishedTodos,
   }
 }
 
@@ -244,19 +244,19 @@ async function getMigrationFlowRecap({
   for (const bucket of pendingMigrationBuckets) {
     const todos = await repository.getTodosByBucket(userId, bucket.id)
     const completedCount = todos.filter((todo) => todo.completed).length
-    const incompleteCount = todos.length - completedCount
+    const unfinishedCount = todos.length - completedCount
 
     bucketBreakdown.push({
       bucket,
       completedCount,
-      incompleteCount,
+      unfinishedCount,
     })
   }
 
   return {
     bucketBreakdown,
     completedCount: bucketBreakdown.reduce((total, row) => total + row.completedCount, 0),
-    incompleteCount: bucketBreakdown.reduce((total, row) => total + row.incompleteCount, 0),
+    unfinishedCount: bucketBreakdown.reduce((total, row) => total + row.unfinishedCount, 0),
   }
 }
 

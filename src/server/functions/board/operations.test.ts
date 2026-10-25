@@ -4,7 +4,7 @@ import { confirmMigrationStepForUser, getMigrationStepForUser } from '@/server/f
 import { createBucket, createInMemoryBoardRepository, createTodo } from '@/test/in-memory-board-repository'
 
 describe('confirmMigrationStepForUser', () => {
-  test('moves every incomplete Todo to its chosen destination, appends by source order, and archives the source Bucket', async () => {
+  test('moves every unfinished Todo to its chosen destination, appends by source order, and archives the source Bucket', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const confirmedAt = new Date('2026-07-06T09:00:00.000Z')
     const repository = createInMemoryBoardRepository({
@@ -76,7 +76,7 @@ describe('confirmMigrationStepForUser', () => {
     })
   })
 
-  test('rejects submitted Todos that are no longer incomplete in the expected source Bucket', async () => {
+  test('rejects submitted Todos that are no longer unfinished in the expected source Bucket', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const repository = createInMemoryBoardRepository({
       buckets: [
@@ -260,7 +260,7 @@ describe('confirmMigrationStepForUser', () => {
     ])
   })
 
-  test('rejects decisions that miss a current incomplete Todo without writing', async () => {
+  test('rejects decisions that miss a current unfinished Todo without writing', async () => {
     const createdAt = new Date('2026-07-03T08:00:00.000Z')
     const repository = createInMemoryBoardRepository({
       buckets: [
@@ -586,13 +586,13 @@ describe('getMigrationStepForUser', () => {
     ])
     expect(result.flowRecap).toMatchObject({
       bucketBreakdown: [
-        { bucket: expect.objectContaining({ id: 9 }), completedCount: 0, incompleteCount: 2 },
-        { bucket: expect.objectContaining({ id: 8 }), completedCount: 2, incompleteCount: 1 },
-        { bucket: expect.objectContaining({ id: 7 }), completedCount: 0, incompleteCount: 1 },
-        { bucket: expect.objectContaining({ id: 6 }), completedCount: 1, incompleteCount: 1 },
+        { bucket: expect.objectContaining({ id: 9 }), completedCount: 0, unfinishedCount: 2 },
+        { bucket: expect.objectContaining({ id: 8 }), completedCount: 2, unfinishedCount: 1 },
+        { bucket: expect.objectContaining({ id: 7 }), completedCount: 0, unfinishedCount: 1 },
+        { bucket: expect.objectContaining({ id: 6 }), completedCount: 1, unfinishedCount: 1 },
       ],
       completedCount: 3,
-      incompleteCount: 5,
+      unfinishedCount: 5,
     })
     expect(result.todos.map((todo) => todo.title)).toEqual(['Plan day again', 'Also plan day again'])
   })

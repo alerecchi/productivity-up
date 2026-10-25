@@ -117,14 +117,14 @@ export function createInMemoryBoardRepository({
 
         const bucketTodos = storedTodos.filter((todo) => todo.userId === bucket.userId && todo.bucketId === bucket.id)
         const completedCount = bucketTodos.filter((todo) => todo.completed).length
-        const incompleteCount = bucketTodos.length - completedCount
+        const unfinishedCount = bucketTodos.length - completedCount
 
-        bucket.status = incompleteCount > 0 ? 'pending_migration' : 'archived'
-        bucket.archivedAt = incompleteCount > 0 ? null : transition.at
+        bucket.status = unfinishedCount > 0 ? 'pending_migration' : 'archived'
+        bucket.archivedAt = unfinishedCount > 0 ? null : transition.at
         retiredBuckets.push({
           bucket: { id: bucket.id, period: bucket.period, type: bucket.type },
           completedCount,
-          incompleteCount,
+          unfinishedCount,
           status: bucket.status,
         })
       }

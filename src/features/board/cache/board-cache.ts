@@ -448,15 +448,15 @@ export function createBoardCache(queryClient: QueryClient) {
 
   return {
     apply,
-    dismissCompletionRecap() {
+    dismissDayRecap() {
       queryClient.setQueryData(boardCacheKeys.board(), (current: unknown) => {
         const parsed = ReconcileLifecycleResponse.safeParse(current)
 
-        if (!parsed.success || !parsed.data.completionRecap) {
+        if (!parsed.success || !parsed.data.dayRecap) {
           return current
         }
 
-        const { completionRecap: _completionRecap, ...board } = parsed.data
+        const { dayRecap: _dayRecap, ...board } = parsed.data
         return board
       })
     },

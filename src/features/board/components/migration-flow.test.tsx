@@ -73,14 +73,14 @@ describe('MigrationFlow', () => {
       completedCount: 1,
       flowRecap: {
         bucketBreakdown: [
-          { bucket: dailyBucket, completedCount: 1, incompleteCount: 2 },
-          { bucket: weeklyBucket, completedCount: 3, incompleteCount: 1 },
-          { bucket: monthlyBucket, completedCount: 0, incompleteCount: 4 },
+          { bucket: dailyBucket, completedCount: 1, unfinishedCount: 2 },
+          { bucket: weeklyBucket, completedCount: 3, unfinishedCount: 1 },
+          { bucket: monthlyBucket, completedCount: 0, unfinishedCount: 4 },
         ],
         completedCount: 4,
-        incompleteCount: 7,
+        unfinishedCount: 7,
       },
-      incompleteCount: 2,
+      unfinishedCount: 2,
       moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       pendingMigrationBuckets: [dailyBucket, weeklyBucket, monthlyBucket],
       sourceBucket: dailyBucket,
@@ -105,7 +105,7 @@ describe('MigrationFlow', () => {
     expect(screen.queryByRole('heading', { name: 'Migration required' })).not.toBeInTheDocument()
   })
 
-  it('advances to the next unresolved Migration Step without showing another Completion Recap', async () => {
+  it('advances to the next unresolved Migration Step without showing another Day Recap', async () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
@@ -124,13 +124,13 @@ describe('MigrationFlow', () => {
         completedCount: 0,
         flowRecap: {
           bucketBreakdown: [
-            { bucket: dailyBucket, completedCount: 0, incompleteCount: 1 },
-            { bucket: weeklyBucket, completedCount: 2, incompleteCount: 1 },
+            { bucket: dailyBucket, completedCount: 0, unfinishedCount: 1 },
+            { bucket: weeklyBucket, completedCount: 2, unfinishedCount: 1 },
           ],
           completedCount: 2,
-          incompleteCount: 2,
+          unfinishedCount: 2,
         },
-        incompleteCount: 1,
+        unfinishedCount: 1,
         moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
         pendingMigrationBuckets: [dailyBucket, weeklyBucket],
         sourceBucket: dailyBucket,
@@ -140,11 +140,11 @@ describe('MigrationFlow', () => {
         carryForwardDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
         completedCount: 2,
         flowRecap: {
-          bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 2, incompleteCount: 1 }],
+          bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 2, unfinishedCount: 1 }],
           completedCount: 2,
-          incompleteCount: 1,
+          unfinishedCount: 1,
         },
-        incompleteCount: 1,
+        unfinishedCount: 1,
         moveBackDestination: createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
         pendingMigrationBuckets: [weeklyBucket],
         sourceBucket: weeklyBucket,
@@ -209,7 +209,7 @@ describe('MigrationFlow', () => {
     expect(mockedGetMigrationStep).toHaveBeenLastCalledWith({ data: { sourceBucketId: weeklyBucket.id } })
   })
 
-  it('resumes after refresh at the next unresolved Migration Step without repeating the Completion Recap', async () => {
+  it('resumes after refresh at the next unresolved Migration Step without repeating the Day Recap', async () => {
     const dailyBucket = createBucket({
       id: 10,
       period: '2026-07-03',
@@ -225,13 +225,13 @@ describe('MigrationFlow', () => {
       completedCount: 0,
       flowRecap: {
         bucketBreakdown: [
-          { bucket: dailyBucket, completedCount: 0, incompleteCount: 1 },
-          { bucket: weeklyBucket, completedCount: 2, incompleteCount: 1 },
+          { bucket: dailyBucket, completedCount: 0, unfinishedCount: 1 },
+          { bucket: weeklyBucket, completedCount: 2, unfinishedCount: 1 },
         ],
         completedCount: 2,
-        incompleteCount: 2,
+        unfinishedCount: 2,
       },
-      incompleteCount: 1,
+      unfinishedCount: 1,
       moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       pendingMigrationBuckets: [dailyBucket, weeklyBucket],
       sourceBucket: dailyBucket,
@@ -283,11 +283,11 @@ describe('MigrationFlow', () => {
       carryForwardDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       completedCount: 2,
       flowRecap: {
-        bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 2, incompleteCount: 1 }],
+        bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 2, unfinishedCount: 1 }],
         completedCount: 2,
-        incompleteCount: 1,
+        unfinishedCount: 1,
       },
-      incompleteCount: 1,
+      unfinishedCount: 1,
       moveBackDestination: createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
       pendingMigrationBuckets: [weeklyBucket],
       sourceBucket: weeklyBucket,
@@ -317,11 +317,11 @@ describe('MigrationFlow', () => {
       carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
       completedCount: 0,
       flowRecap: {
-        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, incompleteCount: 1 }],
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, unfinishedCount: 1 }],
         completedCount: 0,
-        incompleteCount: 1,
+        unfinishedCount: 1,
       },
-      incompleteCount: 1,
+      unfinishedCount: 1,
       moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       pendingMigrationBuckets: [dailyBucket],
       sourceBucket: dailyBucket,
@@ -329,7 +329,7 @@ describe('MigrationFlow', () => {
     }
     mockedGetMigrationStep.mockResolvedValueOnce(step).mockResolvedValue({
       ...step,
-      incompleteCount: 2,
+      unfinishedCount: 2,
       todos: [...step.todos, createTodo({ bucketId: dailyBucket.id, id: 21, title: 'Added from another tab' })],
     })
     mockedConfirmMigrationStep.mockRejectedValue(
@@ -361,11 +361,11 @@ describe('MigrationFlow', () => {
       carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
       completedCount: 1,
       flowRecap: {
-        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 1, incompleteCount: 2 }],
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 1, unfinishedCount: 2 }],
         completedCount: 1,
-        incompleteCount: 2,
+        unfinishedCount: 2,
       },
-      incompleteCount: 2,
+      unfinishedCount: 2,
       moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       pendingMigrationBuckets: [dailyBucket],
       sourceBucket: dailyBucket,
@@ -437,11 +437,11 @@ describe('MigrationFlow', () => {
       carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
       completedCount: 0,
       flowRecap: {
-        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, incompleteCount: 1 }],
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, unfinishedCount: 1 }],
         completedCount: 0,
-        incompleteCount: 1,
+        unfinishedCount: 1,
       },
-      incompleteCount: 1,
+      unfinishedCount: 1,
       moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       pendingMigrationBuckets: [dailyBucket],
       sourceBucket: dailyBucket,
@@ -491,11 +491,11 @@ describe('MigrationFlow', () => {
       carryForwardDestination: createBucket({ id: 5, period: '2026-07-04', type: 'daily' }),
       completedCount: 0,
       flowRecap: {
-        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, incompleteCount: 1 }],
+        bucketBreakdown: [{ bucket: dailyBucket, completedCount: 0, unfinishedCount: 1 }],
         completedCount: 0,
-        incompleteCount: 1,
+        unfinishedCount: 1,
       },
-      incompleteCount: 1,
+      unfinishedCount: 1,
       moveBackDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       pendingMigrationBuckets: [dailyBucket],
       sourceBucket: dailyBucket,
@@ -547,11 +547,11 @@ describe('MigrationFlow', () => {
       carryForwardDestination: createBucket({ id: 4, period: '2026-W28', type: 'weekly' }),
       completedCount: 0,
       flowRecap: {
-        bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 0, incompleteCount: 2 }],
+        bucketBreakdown: [{ bucket: weeklyBucket, completedCount: 0, unfinishedCount: 2 }],
         completedCount: 0,
-        incompleteCount: 2,
+        unfinishedCount: 2,
       },
-      incompleteCount: 2,
+      unfinishedCount: 2,
       moveBackDestination: createBucket({ id: 3, period: '2026-07', type: 'monthly' }),
       pendingMigrationBuckets: [weeklyBucket],
       sourceBucket: weeklyBucket,

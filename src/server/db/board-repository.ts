@@ -316,7 +316,7 @@ async function readBoardSnapshot(
   }
 }
 
-/** Retires locked stale Buckets: those with an incomplete Todo await migration, the rest are archived. */
+/** Retires locked stale Buckets: those with an unfinished Todo await migration, the rest are archived. */
 async function retireBuckets(
   tx: Transaction,
   { at, staleBuckets, userId }: { at: Date; staleBuckets: Array<BoardBucket>; userId: string },
@@ -341,13 +341,13 @@ async function retireBuckets(
   const countTodos = (bucketId: number, completed: boolean) =>
     todoCounts.find((row) => row.bucketId === bucketId && row.completed === completed)?.todoCount ?? 0
   const retiredBuckets = staleBuckets.map((bucket) => {
-    const incompleteCount = countTodos(bucket.id, false)
+    const unfinishedCount = countTodos(bucket.id, false)
 
     return {
       bucket,
       completedCount: countTodos(bucket.id, true),
-      incompleteCount,
-      status: incompleteCount > 0 ? ('pending_migration' as const) : ('archived' as const),
+      unfinishedCount,
+      status: unfinishedCount > 0 ? ('pending_migration' as const) : ('archived' as const),
     }
   })
   const idsWithStatus = (status: RetiredBucket['status']) =>

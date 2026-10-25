@@ -381,7 +381,7 @@ describe('reconcileLifecycleForUser', () => {
     )
   })
 
-  test('turns an expired Future Bucket into the Migration Step source after a gap', async () => {
+  test('turns a Future Bucket past its Period End into the Migration Step source after a gap', async () => {
     const repository = createInMemoryBoardRepository({
       buckets: createCurrentBoard('2026-07-04'),
       todos: [createTodo({ bucketId: 5, completed: false, id: 1, title: 'Planned ahead Todo' })],
@@ -499,7 +499,7 @@ describe('finishTodayForUser', () => {
         { id: 6, period: '2026-07-04', type: 'daily' },
       ],
       planningDate: '2026-07-04',
-      recap: { completedCount: 2, incompleteCount: 0, kind: 'all_complete' },
+      recap: { completedCount: 2, unfinishedCount: 0, kind: 'all_complete' },
       status: 'completed',
       timeZone: BERLIN,
     })
@@ -509,7 +509,7 @@ describe('finishTodayForUser', () => {
     })
   })
 
-  test('gates the board for migration and returns the Completion Recap when Todos are unfinished', async () => {
+  test('gates the board for migration and returns the Day Recap when Todos are unfinished', async () => {
     const repository = createInMemoryBoardRepository({
       buckets: createCurrentBoard('2026-07-03'),
       todos: [
@@ -529,10 +529,10 @@ describe('finishTodayForUser', () => {
     expect(result).toMatchObject({
       migrationRecap: {
         bucketBreakdown: [
-          { bucket: { id: 5, period: '2026-07-03', type: 'daily' }, completedCount: 1, incompleteCount: 1 },
+          { bucket: { id: 5, period: '2026-07-03', type: 'daily' }, completedCount: 1, unfinishedCount: 1 },
         ],
         completedCount: 1,
-        incompleteCount: 1,
+        unfinishedCount: 1,
       },
       pendingMigrationBuckets: [{ id: 5, period: '2026-07-03', type: 'daily' }],
       planningDate: '2026-07-04',

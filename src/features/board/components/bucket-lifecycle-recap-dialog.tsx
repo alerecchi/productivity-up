@@ -9,7 +9,7 @@ import type { Bucket } from '@/lib/types/Bucket'
 type BucketRecapRow = {
   bucket: Pick<Bucket, 'id' | 'period' | 'type'>
   completedCount: number
-  incompleteCount: number
+  unfinishedCount: number
 }
 
 type BucketLifecycleRecapDialogProps = {
@@ -18,7 +18,7 @@ type BucketLifecycleRecapDialogProps = {
   bucketBreakdown?: Array<BucketRecapRow>
   completedCount: number
   headline: string
-  incompleteCount: number
+  unfinishedCount: number
   migrationStepDetail: string
   migrationStepTitle: string
   onAction: () => void
@@ -32,7 +32,7 @@ export function BucketLifecycleRecapDialog({
   bucketBreakdown = [],
   completedCount,
   headline,
-  incompleteCount,
+  unfinishedCount,
   migrationStepDetail,
   migrationStepTitle,
   onAction,
@@ -65,10 +65,10 @@ export function BucketLifecycleRecapDialog({
             icon={<ClipboardCheck aria-hidden='true' />}
             title='Review ended buckets'
             detail='Capture the close of each bucket before choosing what happens next.'
-            summary={<ReviewSummary completedCount={completedCount} incompleteCount={incompleteCount} />}
+            summary={<ReviewSummary completedCount={completedCount} unfinishedCount={unfinishedCount} />}
           />
           <TimelineStep
-            active={incompleteCount > 0}
+            active={unfinishedCount > 0}
             icon={<ListChecks aria-hidden='true' />}
             title={migrationStepTitle}
             detail={migrationStepDetail}
@@ -87,7 +87,7 @@ export function BucketLifecycleRecapDialog({
               <div className='grid grid-cols-[minmax(0,1fr)_auto] gap-4 p-4' key={row.bucket.id}>
                 <h3 className='truncate text-sm font-medium'>{formatBucketName(row.bucket)}</h3>
                 <p className='text-sm text-muted-foreground'>
-                  {row.completedCount} completed, {row.incompleteCount} incomplete
+                  {row.completedCount} completed, {row.unfinishedCount} incomplete
                 </p>
               </div>
             ))}
@@ -136,17 +136,17 @@ function TimelineStep({
   )
 }
 
-function ReviewSummary({ completedCount, incompleteCount }: { completedCount: number; incompleteCount: number }) {
+function ReviewSummary({ completedCount, unfinishedCount }: { completedCount: number; unfinishedCount: number }) {
   return (
     <div className='flex shrink-0 items-center gap-2'>
       <span className='inline-flex items-center gap-1.5 rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-800'>
         <CheckCircle2 className='size-3.5' aria-hidden='true' />
         {completedCount} completed
       </span>
-      {incompleteCount > 0 ? (
+      {unfinishedCount > 0 ? (
         <span className='inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800'>
           <ListChecks className='size-3.5' aria-hidden='true' />
-          {incompleteCount} incomplete
+          {unfinishedCount} incomplete
         </span>
       ) : null}
     </div>
