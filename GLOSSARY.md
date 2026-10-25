@@ -44,7 +44,6 @@ _Avoid_: Display date, selected date.
 The user's action of ending the current Planning Date before the day is over. The most granular bucket is completed, the Planning Date moves to tomorrow, and any unfinished todos go through a migration flow.
 _Avoid_: Complete day, wrap up the day.
 
-
 **Future Bucket**:
 A bucket that belongs to the user's Planning Date while that Planning Date is still ahead of today in the user's timezone. Future buckets are visible planning-ahead state and cannot be finished with Finish Today.
 _Avoid_: Tomorrow bucket, upcoming bucket.
