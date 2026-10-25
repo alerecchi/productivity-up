@@ -56,7 +56,7 @@ type TodoMoved = {
   type: 'todo-moved'
 }
 
-/** Lifecycle Reconciliation or Complete Day committed `board`. */
+/** Lifecycle Reconciliation or Finish Today committed `board`. */
 type LifecycleCommitted = {
   board: CanonicalBoard
   type: 'lifecycle-committed'

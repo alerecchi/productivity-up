@@ -3,8 +3,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 
 import { getUserSession } from '@/server/functions/auth'
 import {
-  completeDay,
   confirmMigrationStep,
+  finishToday,
   getBoard,
   getMigrationStep,
   reconcileLifecycle,
@@ -61,7 +61,7 @@ vi.mock('@/server/auth', () => ({
 const privateFunctions = [
   ['board.get', getBoard],
   ['board.reconcileLifecycle', reconcileLifecycle],
-  ['board.completeDay', completeDay],
+  ['board.finishToday', finishToday],
   ['board.getMigrationStep', getMigrationStep],
   ['board.confirmMigrationStep', confirmMigrationStep],
   ['categories.create', createCategory],

@@ -2,7 +2,7 @@
 export const VERIFIED_USER_OPERATION_NAMES = [
   'board.get',
   'board.reconcileLifecycle',
-  'board.completeDay',
+  'board.finishToday',
   'board.getMigrationStep',
   'board.confirmMigrationStep',
   'categories.create',

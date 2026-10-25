@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 
-import { completeDayForUser, getBoardForUser, reconcileLifecycleForUser } from '@/server/functions/board/lifecycle'
+import { finishTodayForUser, getBoardForUser, reconcileLifecycleForUser } from '@/server/functions/board/lifecycle'
 import { getMigrationStepForUser } from '@/server/functions/board/operations'
 import { createBucket, createInMemoryBoardRepository, createTodo, readOnly } from '@/test/in-memory-board-repository'
 
@@ -476,7 +476,7 @@ describe('reconcileLifecycleForUser', () => {
   })
 })
 
-describe('completeDayForUser', () => {
+describe('finishTodayForUser', () => {
   test('archives an all-done daily Bucket and plans tomorrow', async () => {
     const repository = createInMemoryBoardRepository({
       buckets: createCurrentBoard('2026-07-03'),
@@ -488,7 +488,7 @@ describe('completeDayForUser', () => {
     })
     const now = () => new Date('2026-07-03T15:30:00.000Z')
 
-    const result = await completeDayForUser({ data: { planningDate: '2026-07-03' }, now, repository, userId: 'user-1' })
+    const result = await finishTodayForUser({ data: { planningDate: '2026-07-03' }, now, repository, userId: 'user-1' })
 
     expect(result).toEqual({
       buckets: [
@@ -519,7 +519,7 @@ describe('completeDayForUser', () => {
       user: { planningDate: '2026-07-03', timeZone: BERLIN },
     })
 
-    const result = await completeDayForUser({
+    const result = await finishTodayForUser({
       data: { planningDate: '2026-07-03' },
       now: () => new Date('2026-07-03T15:30:00.000Z'),
       repository,
@@ -567,7 +567,7 @@ describe('completeDayForUser', () => {
     })
 
     await expect(
-      completeDayForUser({ data: { planningDate: requested }, now: () => new Date(now), repository, userId: 'user-1' }),
+      finishTodayForUser({ data: { planningDate: requested }, now: () => new Date(now), repository, userId: 'user-1' }),
     ).rejects.toMatchObject({ code: 'CONFLICT', status: 409 })
     await expect(repository.readBoard('user-1')).resolves.toMatchObject({
       activeBuckets: createCurrentBoard(planningDate).map(({ id, period, type }) => ({ id, period, type })),
@@ -585,7 +585,7 @@ describe('completeDayForUser', () => {
     })
 
     await expect(
-      completeDayForUser({
+      finishTodayForUser({
         data: { planningDate: '2026-07-03' },
         now: () => new Date('2026-07-03T15:30:00.000Z'),
         repository,
@@ -601,7 +601,7 @@ describe('completeDayForUser', () => {
       user: { planningDate: '2026-07-03', timeZone: BERLIN },
     })
     const request = () =>
-      completeDayForUser({
+      finishTodayForUser({
         data: { planningDate: '2026-07-03' },
         now: () => new Date('2026-07-03T15:30:00.000Z'),
         repository,
@@ -629,7 +629,7 @@ describe('completeDayForUser', () => {
       user: { planningDate: '2026-12-31', timeZone: BERLIN },
     })
 
-    const result = await completeDayForUser({
+    const result = await finishTodayForUser({
       data: { planningDate: '2026-12-31' },
       now: () => new Date('2026-12-31T15:30:00.000Z'),
       repository,

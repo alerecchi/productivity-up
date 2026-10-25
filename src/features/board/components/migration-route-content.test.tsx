@@ -11,8 +11,8 @@ import { getMigrationStep } from '@/server/functions/board'
 import { createTestQueryClient, render } from '@/test'
 
 vi.mock('@/server/functions/board', () => ({
-  completeDay: vi.fn(),
   confirmMigrationStep: vi.fn(),
+  finishToday: vi.fn(),
   getBoard: vi.fn(),
   getMigrationStep: vi.fn(),
 }))

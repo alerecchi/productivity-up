@@ -3,15 +3,15 @@ import type { z } from 'zod'
 
 import { createVerifiedUserMiddleware, validateInput } from '@/server/core'
 import { createBoardRepository } from '@/server/db/board-repository'
-import { completeDayForUser, getBoardForUser, reconcileLifecycleForUser } from '@/server/functions/board/lifecycle'
+import { finishTodayForUser, getBoardForUser, reconcileLifecycleForUser } from '@/server/functions/board/lifecycle'
 import { confirmMigrationStepForUser, getMigrationStepForUser } from '@/server/functions/board/operations'
 import { boardChangedHint } from '@/server/functions/board/realtime-hints'
 import {
   BoardResponse,
-  CompleteDayInput,
-  CompleteDayResponse,
   ConfirmMigrationStepInput,
   ConfirmMigrationStepResponse,
+  FinishTodayInput,
+  FinishTodayResponse,
   GetBoardInput,
   GetMigrationStepInput,
   MigrationStepResponse,
@@ -46,17 +46,17 @@ export const reconcileLifecycle = createServerFn({ method: 'POST' })
     })
   })
 
-export const completeDay = createServerFn({ method: 'POST' })
+export const finishToday = createServerFn({ method: 'POST' })
   .middleware([
     createVerifiedUserMiddleware({
       hints: boardChangedHint,
-      operation: 'board.completeDay',
-      response: CompleteDayResponse,
+      operation: 'board.finishToday',
+      response: FinishTodayResponse,
     }),
   ])
-  .validator(validateInput(CompleteDayInput))
-  .handler(async ({ data, context }): Promise<z.output<typeof CompleteDayResponse>> => {
-    return completeDayForUser({
+  .validator(validateInput(FinishTodayInput))
+  .handler(async ({ data, context }): Promise<z.output<typeof FinishTodayResponse>> => {
+    return finishTodayForUser({
       data,
       repository: createBoardRepository(context.db),
       userId: context.user.id,
