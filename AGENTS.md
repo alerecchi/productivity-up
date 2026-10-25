@@ -17,8 +17,10 @@ The current stack is:
 - Better Auth for authentication;
 - Zod for validation;
 - Drizzle as a DB ORM (using a Neon backend)
-- Tailwind v4 and shadcn/ui for CSS and UI components. Prefer using shadcn's components when available over creating your own. Never use BaseUI components directly, better propose to install the shadcn component.
-- @cloudflare/vite-plugin and Wrangler build, preview, and deploy the TanStack Start application on Cloudflare Workers.
+- Tailwind v4 and shadcn/ui (CLI 4.x) for CSS and UI components. Prefer using shadcn's components when available over creating your own. Never use BaseUI components directly, better propose to install the shadcn component.
+- @fontsource-variable/geist self-hosts the Geist variable font for body text and headings.
+- lucide-react 1.x provides UI icons.
+- Vite 8, @vitejs/plugin-react 5 (with Babel for React Compiler), @cloudflare/vite-plugin and Wrangler build, preview, and deploy the TanStack Start application on Cloudflare Workers.
 - pg provides PostgreSQL connections for local Neon development and Cloudflare Hyperdrive at runtime.
 - @playwright/test (dev) drives the app in a real browser for agent verification (`pnpm verify`), and is the intended base for end-to-end tests (#111).
 

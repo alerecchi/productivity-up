@@ -8,30 +8,30 @@ Run every check on staging after `pnpm deploy:staging` has deployed the revision
 
 ### Registration and onboarding
 
-- [X] Sign up with a real inbox. The verification email reaches that address, and its link verifies the account and signs the User in.
-- [X] The first `/board` visit shows "We are creating your board", then exactly one Inbox and the current Buckets. Reloading, or opening `/board` in two tabs at once, creates no duplicates.
-- [X] An unverified User cannot see board data but can resend verification, sign out, and reset the password. The resend action shows a 60-second countdown.
+- [ ] Sign up with a real inbox. The verification email reaches that address, and its link verifies the account and signs the User in.
+- [ ] The first `/board` visit shows "We are creating your board", then exactly one Inbox and the current Buckets. Reloading, or opening `/board` in two tabs at once, creates no duplicates.
+- [ ] An unverified User cannot see board data but can resend verification, sign out, and reset the password. The resend action shows a 60-second countdown.
 
 ### Authentication
 
-- [X] Sign out, then sign in again.
-- [X] Password reset works end to end: the email arrives, the new password works, and the old one fails.
-- [X] With device A signed in, reset the password from device B. Device A loses access within five minutes.
-- [X] A password-reset request for an unknown email shows the same message as one for an existing account.
+- [ ] Sign out, then sign in again.
+- [ ] Password reset works end to end: the email arrives, the new password works, and the old one fails.
+- [ ] With device A signed in, reset the password from device B. Device A loses access within five minutes.
+- [ ] A password-reset request for an unknown email shows the same message as one for an existing account.
 
 ### Board
 
-- [X] Create, edit, toggle, and delete a Todo, including one with a Category and Tags.
-- [X] Drag a Todo within a Bucket and across Buckets. Drag repeatedly into the same gap until positions rebalance. The order survives a reload.
-- [X] Create, rename, and delete a Category and a Tag. Renames appear on Todo cards. A duplicate name shows a conflict message, not a generic error.
-- [X] Complete Day and confirm a Migration Step with incomplete Todos. Every Todo moves and the source Bucket archives together.
-- [X] Open the same Migration Step in two tabs and confirm it in both. The second tab refreshes with "another tab already resolved…".
+- [ ] Create, edit, toggle, and delete a Todo, including one with a Category and Tags.
+- [ ] Drag a Todo within a Bucket and across Buckets. Drag repeatedly into the same gap until positions rebalance. The order survives a reload.
+- [ ] Create, rename, and delete a Category and a Tag. Renames appear on Todo cards. A duplicate name shows a conflict message, not a generic error.
+- [ ] Complete Day and confirm a Migration Step with incomplete Todos. Every Todo moves and the source Bucket archives together.
+- [ ] Open the same Migration Step in two tabs and confirm it in both. The second tab refreshes with "another tab already resolved…".
 
 ### Realtime
 
 Open the two windows of the same User side by side, so both stay visible, and do not click into the observing window. A window that becomes visible or gains focus runs a full resynchronization, which converges even when realtime delivery is broken. With both windows visible, only the `/api/realtime` WebSocket can explain the update.
 
-- [X] Run the [manual realtime convergence check](../deployment.md#manual-realtime-convergence-check), steps 1 to 6: convergence between tabs, no hints echoed to the originating tab, isolation from another User, and recovery after going offline.
+- [ ] Run the [manual realtime convergence check](../deployment.md#manual-realtime-convergence-check), steps 1 to 6: convergence between tabs, no hints echoed to the originating tab, isolation from another User, and recovery after going offline.
 
 ### Production configuration
 
