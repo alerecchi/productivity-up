@@ -1,14 +1,12 @@
 # CODING STANDARDS
 
-- Avoid `any` unless there is no reasonable typed alternative or the user specifically asks for it.
-- Comments describe how a thing is used, and move when the code moves. To be used mostly to describe functions, not to annotate every line of behavior.
-- Prefer concise, simple solutions over heavy abstractions. Channel YAGNI principles.
+## Performance without compromise
 
-## Core Priorities
+We are proud of the performance of Productivity Up. We regularly audit for performance regressions, make sure all changes are considerate of performance impact.
 
-1. Performance
-2. Reliability
-3. Maintainability
+## Maintainability as first class citizen
+
+Prefer concise, simple solutions over heavy abstractions. Channel YAGNI principles.
 
 ## Backend changes
 

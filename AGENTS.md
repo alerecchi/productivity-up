@@ -1,10 +1,5 @@
 # AGENTS.md
 
-## Project Snapshot
-
-Productivity Up is an opinionated Todo App that uses time-based buckets (e.g. This Year, This Month, This Week, Today) to manage your todos (Kanban style, todos should flow from bigger sized buckets to smaller ones).
-This repository is a VERY EARLY WIP. Larger maintainability proposals are welcome when justified.
-
 ## Tech Stack
 
 The current stack is:
@@ -17,27 +12,6 @@ The current stack is:
 - Better Auth for authentication;
 - Zod for validation;
 - Drizzle as a DB ORM (using a Neon backend)
-- Tailwind v4 and shadcn/ui (CLI 4.x) for CSS and UI components. Prefer using shadcn's components when available over creating your own. Never use BaseUI components directly, better propose to install the shadcn component.
-- @fontsource-variable/geist self-hosts the Geist variable font for body text and headings.
-- lucide-react 1.x provides UI icons.
-- Vite 8, @vitejs/plugin-react 5 (with Babel for React Compiler), @cloudflare/vite-plugin and Wrangler build, preview, and deploy the TanStack Start application on Cloudflare Workers.
-- pg provides PostgreSQL connections for local Neon development and Cloudflare Hyperdrive at runtime.
-- @playwright/test (dev) drives the app in a real browser for agent verification (`pnpm verify`), and is the intended base for end-to-end tests (#111).
-
-For the TanStack libraries, you have access to the TanStack CLI and you can query docs using that:
-`tanstack search-docs <query> [options]`
-
-```txt
-Options:
-  --library <id>       Filter by library ID
-  --framework <name>   Filter by framework
-  --limit <n>          Max results (default 10, max 50)
-  --json               Output machine-readable JSON
-```
-
-For the rest you can search online when needed.
-If you think to add a library to the project ALWAYS ASK FOR APPROVAL first and add it to this list with a few words explaining what it does.
-If some library gets a major update or is removed from the project update the tech stack list above.
 
 ## Project Structure
 
@@ -56,7 +30,19 @@ The project has an opinionated structure that is feature-based but does not colo
 As this is a WIP project this project structure is subject to changes.
 When folders contain many elements that are exported for other modules/components an `index.ts` file should be added to improve dev experience.
 
+## Version control
+
+This repo is a colocated jj repository, and each workspace is a jj workspace. Don't run mutating `git` commands directly.
+
 ## Agent skills
+
+### Product
+
+Purpose, users and brand personality guide every UI, UX and copy decision. See `docs/PRODUCT.md`.
+
+### Design system
+
+Theme, component, layout rules that apply to all UI work. See `docs/DESIGN.md`.
 
 ### Issue tracker
 
