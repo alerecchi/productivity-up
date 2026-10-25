@@ -8,8 +8,8 @@ import { Board } from '@/features/board/components/board'
 import { getBoardQueryOptions } from '@/features/board/queries/todo-queries'
 import type { Bucket } from '@/lib/types/Bucket'
 import {
-  completeDay,
   confirmMigrationStep,
+  finishToday,
   getBoard,
   getMigrationStep,
   reconcileLifecycle,
@@ -34,7 +34,7 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('@/server/functions/board', () => ({
   confirmMigrationStep: vi.fn(),
-  completeDay: vi.fn(),
+  finishToday: vi.fn(),
   getBoard: vi.fn(),
   getMigrationStep: vi.fn(),
   reconcileLifecycle: vi.fn(),
@@ -73,7 +73,7 @@ const tomorrowBuckets = [
   createBucket({ id: 6, period: '2026-07-04', type: 'daily' }),
 ] satisfies Array<Bucket>
 
-const mockedCompleteDay = vi.mocked(completeDay)
+const mockedFinishToday = vi.mocked(finishToday)
 const mockedConfirmMigrationStep = vi.mocked(confirmMigrationStep)
 const mockedGetBoard = vi.mocked(getBoard)
 const mockedGetMigrationStep = vi.mocked(getMigrationStep)
@@ -84,7 +84,7 @@ describe('Board lifecycle controls', () => {
     window.sessionStorage.clear()
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-07-03T15:30:00.000Z'))
-    mockedCompleteDay.mockReset()
+    mockedFinishToday.mockReset()
     mockedConfirmMigrationStep.mockReset()
     mockedGetBoard.mockReset()
     mockedGetMigrationStep.mockReset()
@@ -98,7 +98,7 @@ describe('Board lifecycle controls', () => {
   })
 
   it('shows the Completion Recap after completing an all-done day', async () => {
-    mockedCompleteDay.mockResolvedValue({
+    mockedFinishToday.mockResolvedValue({
       buckets: tomorrowBuckets,
       planningDate: '2026-07-04',
       recap: {
@@ -141,16 +141,16 @@ describe('Board lifecycle controls', () => {
       expect(screen.queryByRole('heading', { name: '2026-07-03 is wrapped' })).not.toBeInTheDocument()
     })
     expect(queryClient.getQueryData(getBoardQueryOptions.queryKey)).not.toHaveProperty('completionRecap')
-    expect(mockedCompleteDay).toHaveBeenCalledWith({ data: { planningDate: '2026-07-03' } })
+    expect(mockedFinishToday).toHaveBeenCalledWith({ data: { planningDate: '2026-07-03' } })
   })
 
-  it('shows the Migration Recap immediately from the Complete day response when migration is required', async () => {
+  it('shows the Migration Recap immediately from the Finish Today response when migration is required', async () => {
     const pendingBucket = createBucket({
       id: 7,
       period: '2026-07-03',
       type: 'daily',
     })
-    mockedCompleteDay.mockResolvedValue({
+    mockedFinishToday.mockResolvedValue({
       buckets: tomorrowBuckets,
       migrationRecap: {
         bucketBreakdown: [{ bucket: pendingBucket, completedCount: 1, incompleteCount: 2 }],
@@ -189,7 +189,7 @@ describe('Board lifecycle controls', () => {
     })
   })
 
-  it('disables Complete day with planning-ahead feedback when Planning Date is tomorrow', () => {
+  it('disables Finish Today with planning-ahead feedback when Planning Date is tomorrow', () => {
     const queryClient = createTestQueryClient()
     setBoard(queryClient, {
       buckets: tomorrowBuckets,
@@ -291,8 +291,8 @@ describe('Board lifecycle controls', () => {
     expect(await screen.findByRole('region', { name: 'daily Bucket' })).toBeInTheDocument()
   })
 
-  it('shows toast feedback when Complete day fails', async () => {
-    mockedCompleteDay.mockRejectedValue(new Error('Cannot complete day while Todos are incomplete'))
+  it('shows toast feedback when Finish Today fails', async () => {
+    mockedFinishToday.mockRejectedValue(new Error('Cannot complete day while Todos are incomplete'))
     const queryClient = createTestQueryClient()
     setBoard(queryClient, {
       buckets: todayBuckets,
@@ -311,8 +311,8 @@ describe('Board lifecycle controls', () => {
     expect(screen.queryByRole('heading', { name: 'Day complete' })).not.toBeInTheDocument()
   })
 
-  it('refreshes the board when Complete day conflicts with a newer Planning Date', async () => {
-    mockedCompleteDay.mockRejectedValue(
+  it('refreshes the board when Finish Today conflicts with a newer Planning Date', async () => {
+    mockedFinishToday.mockRejectedValue(
       operationErrorResponse(409, 'CONFLICT', 'The board changed; refresh and try again'),
     )
     mockedGetBoard.mockResolvedValue({

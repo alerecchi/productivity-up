@@ -18,7 +18,7 @@ import type { ReconciledBoard } from '@/features/board/hooks/use-reconciled-boar
 import { Button } from '@/features/shared/components/ui/button'
 import { getTodayLocalDate, isFutureBucket } from '@/lib/periods'
 import type { Bucket } from '@/lib/types/Bucket'
-import { completeDay } from '@/server/functions/board'
+import { finishToday } from '@/server/functions/board'
 
 const BUCKET_TYPE_ORDER = ['inbox', 'yearly', 'monthly', 'weekly', 'daily']
 // Helper for O(1) lookups during sort
@@ -44,8 +44,8 @@ export function Board() {
 function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
   const navigate = useNavigate()
   const cache = useBoardCache()
-  const completeDayMutation = useMutation({
-    mutationFn: () => completeDay({ data: { planningDate: board.planningDate } }),
+  const finishTodayMutation = useMutation({
+    mutationFn: () => finishToday({ data: { planningDate: board.planningDate } }),
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Could not complete day')
       void cache.recover(error, { type: 'board' })
@@ -103,15 +103,15 @@ function ReconciledBoardView({ board }: { board: ReconciledBoard }) {
             )}
           </div>
           <Button
-            aria-describedby={isPlanningAhead ? 'complete-day-disabled-reason' : undefined}
-            disabled={isMigrationRequired || isPlanningAhead || completeDayMutation.isPending}
-            onClick={() => completeDayMutation.mutate()}
+            aria-describedby={isPlanningAhead ? 'finish-today-disabled-reason' : undefined}
+            disabled={isMigrationRequired || isPlanningAhead || finishTodayMutation.isPending}
+            onClick={() => finishTodayMutation.mutate()}
           >
             <CheckCircle2 />
             Complete day
           </Button>
           {isPlanningAhead && (
-            <span className='sr-only' id='complete-day-disabled-reason'>
+            <span className='sr-only' id='finish-today-disabled-reason'>
               Complete day is disabled while planning ahead.
             </span>
           )}

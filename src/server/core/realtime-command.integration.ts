@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { CategoryDisplay } from '@/lib/types/Category'
 import type { TagDisplay } from '@/lib/types/Tag'
-import { completeDay, confirmMigrationStep, reconcileLifecycle } from '@/server/functions/board'
+import { confirmMigrationStep, finishToday, reconcileLifecycle } from '@/server/functions/board'
 import { createCategory, deleteCategory, updateCategory } from '@/server/functions/categories'
 import type { CategoryRepository } from '@/server/functions/categories/operations'
 import { createTag, deleteTag, updateTag } from '@/server/functions/tags'
@@ -173,7 +173,7 @@ describe('exported commands publish committed realtime consequences', () => {
     await expect(publishedBoard).resolves.toMatchObject({ planningDate: TODAY, timeZone: 'UTC' })
   })
 
-  it('complete day commits the next Planning Date before publishing', async () => {
+  it('finish today commits the next Planning Date before publishing', async () => {
     const repository = boardFor('user-1')
     fixture.board = repository
     let publishedBoard: ReturnType<typeof repository.readBoard> | undefined
@@ -181,7 +181,7 @@ describe('exported commands publish committed realtime consequences', () => {
       publishedBoard = repository.readBoard('user-1')
       return Promise.resolve()
     })
-    expect((await request(completeDay, { planningDate: TODAY })).status).toBe(200)
+    expect((await request(finishToday, { planningDate: TODAY })).status).toBe(200)
     expectPublished('board-changed')
     await expect(publishedBoard).resolves.toMatchObject({ planningDate: '2026-07-07' })
   })
@@ -206,7 +206,7 @@ describe('exported commands publish committed realtime consequences', () => {
 
   it.each([
     ['reconciliation', reconcileLifecycle, {}, 400],
-    ['complete day', completeDay, { planningDate: '2026-07-05' }, 409],
+    ['finish today', finishToday, { planningDate: '2026-07-05' }, 409],
     ['migration', confirmMigrationStep, { decisions: {}, sourceBucketId: 999 }, 404],
   ])('%s publishes nothing when rejected', async (_name, command, data, status) => {
     if (command === reconcileLifecycle) fixture.board = createInMemoryBoardRepository({ buckets: [], user: {} })

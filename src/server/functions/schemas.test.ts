@@ -12,8 +12,8 @@ import {
 } from '@/server/core/validation'
 import {
   BoardResponse,
-  CompleteDayInput,
   ConfirmMigrationStepInput,
+  FinishTodayInput,
   GetBoardInput,
   GetMigrationStepInput,
   MigrationStepResponse,
@@ -49,7 +49,7 @@ import {
 const schemaCases: Array<[string, z.ZodType, unknown]> = [
   ['board.get', GetBoardInput, undefined],
   ['board.reconcileLifecycle', ReconcileLifecycleInput, undefined],
-  ['board.completeDay', CompleteDayInput, { planningDate: '2026-07-03' }],
+  ['board.finishToday', FinishTodayInput, { planningDate: '2026-07-03' }],
   ['board.getMigrationStep', GetMigrationStepInput, { sourceBucketId: 1 }],
   ['board.confirmMigrationStep', ConfirmMigrationStepInput, { decisions: { 1: 'carry_forward' }, sourceBucketId: 1 }],
   ['categories.create', CreateCategoryInput, { colorKey: 'blue', name: 'a' }],
@@ -77,10 +77,10 @@ describe('private operation input schemas', () => {
     }
   })
 
-  it('requires Complete Day to name a valid Planning Date', () => {
-    expect(CompleteDayInput.safeParse(undefined).success).toBe(false)
-    expect(CompleteDayInput.safeParse({ planningDate: '2026-02-30' }).success).toBe(false)
-    expect(CompleteDayInput.safeParse({ planningDate: '2026-07-03T00:00:00Z' }).success).toBe(false)
+  it('requires Finish Today to name a valid Planning Date', () => {
+    expect(FinishTodayInput.safeParse(undefined).success).toBe(false)
+    expect(FinishTodayInput.safeParse({ planningDate: '2026-02-30' }).success).toBe(false)
+    expect(FinishTodayInput.safeParse({ planningDate: '2026-07-03T00:00:00Z' }).success).toBe(false)
   })
 
   it('accepts an optional valid timezone for Lifecycle Reconciliation', () => {

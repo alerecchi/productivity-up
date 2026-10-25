@@ -36,7 +36,7 @@ export type RetiredBucket = {
 
 export type LifecycleTransition = {
   at: Date
-  /** Complete Day only: this daily Bucket must still be active and no Pending Migration Bucket may exist. */
+  /** Finish Today only: this daily Bucket must still be active and no Pending Migration Bucket may exist. */
   completedDailyPeriod?: string
   currentPeriods: Record<BucketType, string>
   expectedPlanningDate: string
@@ -106,7 +106,7 @@ type ProvisionInitialBoardDependencies = {
   userId: string
 }
 
-type CompleteDayDependencies = {
+type FinishTodayDependencies = {
   data: {
     planningDate: string
   }
@@ -224,12 +224,12 @@ export async function reconcileLifecycleForUser({
 }
 
 /** Completes the Planning Date the client showed and plans the next day. */
-export async function completeDayForUser({
+export async function finishTodayForUser({
   data,
   now = () => new Date(),
   repository,
   userId,
-}: CompleteDayDependencies): Promise<CompletedBoardState | CompletedDayMigrationState> {
+}: FinishTodayDependencies): Promise<CompletedBoardState | CompletedDayMigrationState> {
   const snapshot = await requireSnapshot(repository, userId)
   const completedAt = now()
 

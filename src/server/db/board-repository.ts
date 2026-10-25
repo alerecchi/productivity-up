@@ -92,11 +92,11 @@ export function createBoardRepository(db: Database): BoardRepository {
                   ),
                 ),
               )
-            const canCompleteDay =
+            const canFinishToday =
               guardBuckets.some((bucket) => bucket.type === 'daily' && bucket.status === 'active') &&
               !guardBuckets.some((bucket) => bucket.status === 'pending_migration')
 
-            if (!canCompleteDay) {
+            if (!canFinishToday) {
               tx.rollback()
             }
           }

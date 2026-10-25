@@ -14,7 +14,7 @@ export const PlanningDateSchema = z.iso.date()
 
 export const GetBoardInput = EmptyInputSchema
 export const ReconcileLifecycleInput = strictInput({ timeZone: UserTimeZoneSchema.optional() }).default({})
-export const CompleteDayInput = strictInput({ planningDate: PlanningDateSchema })
+export const FinishTodayInput = strictInput({ planningDate: PlanningDateSchema })
 export const GetMigrationStepInput = strictInput({ sourceBucketId: PositiveIdSchema.optional() })
 export const ConfirmMigrationStepInput = strictInput({
   decisions: z
@@ -98,7 +98,7 @@ const CompletedBoardResponse = z.object({
   timeZone: UserTimeZoneSchema,
 })
 
-export const CompleteDayResponse = z.discriminatedUnion('status', [
+export const FinishTodayResponse = z.discriminatedUnion('status', [
   CompletedBoardResponse,
   MigrationRequiredBoardResponse.extend({ migrationRecap: MigrationRecapResponse }),
 ])

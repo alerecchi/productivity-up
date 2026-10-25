@@ -51,12 +51,12 @@ Anything else gets silence, because the visible change is the feedback. Form out
 
 Celebrations scale with the achievement and reward finishing work (`PRODUCT.md`). The moments:
 
-| Moment | Size | Copy |
-| --- | --- | --- |
-| A todo is done | Smallest | No words; a quick check animation |
-| Today cleared (the last open todo in Today is done) | Biggest daily moment | "All done for today!" + "Finish today when you're ready." |
-| Daily recap (after the day finishes) | One size for every period | See [The end of a day](#the-end-of-a-day) |
-| Today empty | A nudge, not a celebration | "Nothing planned for today." + one action pointing to the nearest broader bucket that has todos ("Pull from this week"), or "Add a todo" if everything is empty |
+| Moment                                              | Size                       | Copy                                                                                                                                                            |
+| --------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A todo is done                                      | Smallest                   | No words; a quick check animation                                                                                                                               |
+| Today cleared (the last open todo in Today is done) | Biggest daily moment       | "All done for today!" + "Finish today when you're ready."                                                                                                       |
+| Daily recap (after the day finishes)                | One size for every period  | See [The end of a day](#the-end-of-a-day)                                                                                                                       |
+| Today empty                                         | A nudge, not a celebration | "Nothing planned for today." + one action pointing to the nearest broader bucket that has todos ("Pull from this week"), or "Add a todo" if everything is empty |
 
 - Celebration lines rotate through a small pool of 3–4 variants each so they don't go stale ("All done for today!" / "Today's clear!" / "That's everything for today!"). Every other string is fixed.
 - When nothing was done, nothing is celebrated: the copy gives one calm line and no "0 done".
@@ -69,11 +69,11 @@ Celebrations scale with the achievement and reward finishing work (`PRODUCT.md`)
 
 Each time-based bucket has a **relative name** ("Today", "This week", "This month", "This year") and a **date**. Which one to show depends on what the user is doing:
 
-| User is… | Show | Examples |
-| --- | --- | --- |
-| **Choosing or orienting** (column headings, the "When" picker, a "Move to…" sheet) | Relative name with the date as a second line | Today *Sunday 25 October*; This week *19–25 October*; This month *October*; This year *2026* |
-| **Acting** (buttons, toasts, running text, tight spaces like the phone bucket switcher) | Relative name only, lower case mid-sentence | "Move to this week", "Added to this month" |
-| **Looking back** (recaps, anything about a period that has ended) | Date only | "Sunday 25 October", "19–25 October" |
+| User is…                                                                                | Show                                         | Examples                                                                                     |
+| --------------------------------------------------------------------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| **Choosing or orienting** (column headings, the "When" picker, a "Move to…" sheet)      | Relative name with the date as a second line | Today _Sunday 25 October_; This week _19–25 October_; This month _October_; This year _2026_ |
+| **Acting** (buttons, toasts, running text, tight spaces like the phone bucket switcher) | Relative name only, lower case mid-sentence  | "Move to this week", "Added to this month"                                                   |
+| **Looking back** (recaps, anything about a period that has ended)                       | Date only                                    | "Sunday 25 October", "19–25 October"                                                         |
 
 **Someday** has no period and is always just "Someday".
 
@@ -96,32 +96,32 @@ Relative names are always computed against the user's real today, never against 
 
 ### One name per concept
 
-| Concept | Say | Never |
-| --- | --- | --- |
-| Signing in | Sign in | Login, Log in |
-| Signing out | Sign out | Logout, Log out |
-| Making an account | Create account | Signup, Sign up, Register |
-| An item of work | todo, todos | task, to-do, TODO |
-| Finishing work (verb) | finish ("Finish today", "5 todos finished") | complete, wrap |
-| Its state | done / unfinished | completed, complete, incomplete, wrapped |
-| A todo with no category | No category | No Category, None |
-| A period's end | ends ("Sunday has ended.") | expires, closes, reaches its end |
+| Concept                 | Say                                         | Never                                    |
+| ----------------------- | ------------------------------------------- | ---------------------------------------- |
+| Signing in              | Sign in                                     | Login, Log in                            |
+| Signing out             | Sign out                                    | Logout, Log out                          |
+| Making an account       | Create account                              | Signup, Sign up, Register                |
+| An item of work         | todo, todos                                 | task, to-do, TODO                        |
+| Finishing work (verb)   | finish ("Finish today", "5 todos finished") | complete, wrap                           |
+| Its state               | done / unfinished                           | completed, complete, incomplete, wrapped |
+| A todo with no category | No category                                 | No Category, None                        |
+| A period's end          | ends ("Sunday has ended.")                  | expires, closes, reaches its end         |
 
 ### Domain terms in copy
 
-| Domain term (`GLOSSARY.md`) | In copy |
-| --- | --- |
-| Bucket | "bucket", used sparingly. Name the specific bucket wherever possible ("This week"). A field that picks a bucket is labelled **"When"**. |
-| Inbox | **Someday**. It completes the time ladder (Someday, This year, This month, This week, Today) and reads naturally as a destination ("Move to someday"). |
-| Bucket Migration, Migration Flow | **Unfinished todos**. Entry button: "Review unfinished todos". Nothing to review: "Nothing left to sort". |
-| Carry forward / move back | The **destination's name**: "Tomorrow", "This week", "Someday"; bulk: "Move all to this week" |
-| Day Recap | Its copy is in [The end of a day](#the-end-of-a-day) |
-| Planning Date ahead of today | "Today's finished. You're planning tomorrow." |
-| Lifecycle Reconciliation | Loading copy only: "Getting today ready…"; first visit "Setting up your board…" |
+| Domain term (`GLOSSARY.md`)      | In copy                                                                                                                                                |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Bucket                           | "bucket", used sparingly. Name the specific bucket wherever possible ("This week"). A field that picks a bucket is labelled **"When"**.                |
+| Inbox                            | **Someday**. It completes the time ladder (Someday, This year, This month, This week, Today) and reads naturally as a destination ("Move to someday"). |
+| Bucket Migration, Migration Flow | **Unfinished todos**. Entry button: "Review unfinished todos". Nothing to review: "Nothing left to sort".                                              |
+| Carry forward / move back        | The **destination's name**: "Tomorrow", "This week", "Someday"; bulk: "Move all to this week"                                                          |
+| Day Recap                        | Its copy is in [The end of a day](#the-end-of-a-day)                                                                                                   |
+| Planning Date ahead of today     | "Today's finished. You're planning tomorrow."                                                                                                          |
+| Lifecycle Reconciliation         | Loading copy only: "Getting today ready…"; first visit "Setting up your board…"                                                                        |
 
 Any glossary term that is neither in this table nor in the mechanism list below is used as it is, following [Mechanics](#mechanics) for casing: todo, category, tag, "Finish today", and a period that ends ("Sunday has ended.").
 
-These are mechanisms, not experiences, so they never appear in copy: *Pending Migration Bucket, Migration Step, Bucket Horizon, horizon, Period Key, Planning Date, Future Bucket, Skipped Period, Lifecycle Reconciliation, lifecycle, archived*. Copy describes what the user sees ("Done todos leave the board when the day ends.").
+These are mechanisms, not experiences, so they never appear in copy: _Pending Migration Bucket, Migration Step, Bucket Horizon, horizon, Period Key, Planning Date, Future Bucket, Skipped Period, Lifecycle Reconciliation, lifecycle, archived_. Copy describes what the user sees ("Done todos leave the board when the day ends.").
 
 ### Naming a new concept
 
@@ -134,8 +134,8 @@ These are mechanisms, not experiences, so they never appear in copy: *Pending Mi
 
 The day ends in one of two ways, and the copy must read correctly in both:
 
-- **Finished early.** The user pressed Finish today, so the day isn't over yet: they're sorting *today's* unfinished todos for *tomorrow*.
-- **The period ended.** The user opens the app after midnight, or after days away: they're sorting *yesterday's* (or an older day's) todos for the *new today*.
+- **Finished early.** The user pressed Finish today, so the day isn't over yet: they're sorting _today's_ unfinished todos for _tomorrow_.
+- **The period ended.** The user opens the app after midnight, or after days away: they're sorting _yesterday's_ (or an older day's) todos for the _new today_.
 
 Applying [Relative to the real today](#relative-to-the-real-today) covers both without special cases:
 
