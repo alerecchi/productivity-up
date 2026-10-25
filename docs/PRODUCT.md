@@ -33,14 +33,6 @@ Everything must make sense to someone who has never heard of GTD or productivity
 - **Hustle culture.** No "crush your goals" pressure. Energy encourages, it never pushes.
 - **A generic SaaS template.** It needs a look of its own.
 
-## Brand Voice
-
-Upbeat and brief. Short sentences, a clear next step, and no filler. Reference lines:
-
-- Unfinished todos after the day ends: "3 didn't make it yesterday. Give them another go today, or send them back to this week?"
-- Empty Today: "Today's clear! Grab something from this week."
-- Error: "Couldn't save that. Check your connection and try again."
-
 ## Platform
 
 Web (Desktop and Mobile)
