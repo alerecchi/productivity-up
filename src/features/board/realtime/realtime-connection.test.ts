@@ -174,7 +174,7 @@ describe('realtime connection', () => {
     expect(resyncCount()).toBe(2)
   })
 
-  it('refetches only the Todo Buckets named by known hints, once per Bucket', async () => {
+  it('refetches only the Buckets named by known hints, once per Bucket', async () => {
     const { connection, resyncCount, socket, todoRefetchCounts } = setup()
     connection.start()
     socket().open()

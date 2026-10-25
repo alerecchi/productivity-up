@@ -166,3 +166,6 @@ sketches/
 
 # Verification harness instances and evidence (scripts/verify)
 .verify/
+
+# Local planning scratchpad
+.scratch/

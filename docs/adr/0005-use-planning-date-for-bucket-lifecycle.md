@@ -1,6 +1,6 @@
 # Use Planning Date for Bucket Lifecycle
 
-Todo Buckets uses a stored Planning Date, interpreted in the user's stored timezone, to decide which time-based Buckets belong on the board. This lets a user manually complete the most granular Bucket early and plan tomorrow while keeping lifecycle reconciliation deterministic: destination Buckets are created for the Planning Date, pending source Buckets gate board access until migration is resolved, and skipped periods are not backfilled.
+Productivity Up uses a stored Planning Date, interpreted in the user's stored timezone, to decide which time-based Buckets belong on the board. This lets a user manually complete the most granular Bucket early and plan tomorrow while keeping lifecycle reconciliation deterministic: destination Buckets are created for the Planning Date, pending source Buckets gate board access until migration is resolved, and skipped periods are not backfilled.
 
 **Considered Options**
 
